@@ -24,7 +24,7 @@ PROMPTS[
 - Organization: Companies, institutions, government bodies, groups
 - Location: Geographic places (cities, countries, buildings, regions)
 - Event: Occurrences, incidents, ceremonies, meetings
-- Concept: Abstract ideas, theories, principles, beliefs
+- Concept: Abstract ideas, theories, principles, beliefs, scientific fields (Chemistry, Electrical Engineering, Construction)
 - Method: Procedures, techniques, algorithms, workflows
 - Content: Creative or informational works (books, articles, films, reports)
 - Data: Quantitative or structured information (statistics, datasets, measurements)

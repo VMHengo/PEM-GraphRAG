@@ -1,0 +1,4 @@
+{$MCP_DOMAIN} {
+	reverse_proxy /mcp* mcp-gateway:8000
+	reverse_proxy /healthz mcp-gateway:8000
+}

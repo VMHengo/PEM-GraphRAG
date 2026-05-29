@@ -1,0 +1,233 @@
+### Domain-specific entity extraction profile for PEM GraphRAG.
+### Copy this file to PROMPT_DIR/entity_type/pem_graphrag_entity_type_prompt.yml
+### and set ENTITY_TYPE_PROMPT_FILE=pem_graphrag_entity_type_prompt.yml.
+### Both example sections are included so the profile works with
+### ENTITY_EXTRACTION_USE_JSON=false and ENTITY_EXTRACTION_USE_JSON=true.
+
+entity_types_guidance: |
+  Classify each entity using one of the following broad, stable types. If no type fits, use `Other`.
+
+  - ResearchField: Scientific or engineering domains and subdomains, such as electrical engineering, energy systems, chemistry, electrochemistry, industrial engineering, construction engineering, digital manufacturing, and production engineering.
+  - Concept: Theories, phenomena, technologies, modeling ideas, mechanisms, safety phenomena, system ideas, and degradation mechanisms, such as lithium-ion battery technology, solid-state battery technology, thermal runaway, ion transport mechanisms, crossover phenomena, and digital twins.
+  - Method: Testing, characterization, analysis, optimization, modeling, simulation, control, life cycle assessment, and data-driven methods, such as electrochemical testing, half-cell testing, predictive control, machine learning-based parameter optimization, and manufacturing cost modeling.
+  - Process: Manufacturing, assembly, drying, recycling, integration, scaling, planning, production, and process-chain workflows, such as battery cell manufacturing, electrode drying, cell assembly, battery pack integration, lithium-ion battery recycling, and factory planning.
+  - Artifact: Engineered systems, devices, components, cells, packs, motors, equipment, and industrial lines, such as lithium-ion battery cells, battery electrodes, PEM electrolyzers, fuel cell systems, battery energy storage systems, power electronics systems, production equipment, and automated assembly systems.
+  - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials, such as lithium compounds, graphite, metal oxides, solid electrolytes, fuel cell membranes, catalytic materials, and Al/C electrode materials.
+  - Organization: Universities, institutes, associations, companies, project partners, and industrial actors, such as PEM RWTH Aachen, RWTH Aachen University, VDMA, Fraunhofer FFB, and industrial OEM partners.
+  - Content: Publications and document types, such as journal articles, conference proceedings, PhD theses, technical reports, whitepapers, guidelines, books, handbooks, and poster presentations.
+  - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, lifecycle metrics, model parameters, cost data, and production metrics.
+  - Other: Fallback for important entities that do not fit the defined types.
+
+  Extraction rules:
+  - Prefer domain-specific canonical names over vague names. For example, use `Proton Exchange Membrane Electrolysis` instead of `electrolysis` when the context supports it.
+  - Extract cross-domain relationships between research fields, concepts, methods, processes, artifacts, materials, organizations, data, and publication outputs.
+  - Keep publication types as `Content` nodes when explicitly mentioned.
+  - Avoid over-specific one-off phrases unless they are central technical terms in the input.
+  - Treat `PEM RWTH Aachen` and `RWTH Aachen University` as distinct but related `Organization` nodes when both are present.
+
+entity_extraction_examples:
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    PEM RWTH Aachen investigated the Battery Cell Manufacturing Process for Lithium-Ion Battery Cell production. The study compared conventional Electrode Drying Process settings with Laser-Based Drying and used Machine Learning-Based Production Optimization to reduce drying time while preserving electrode quality.
+    ```
+
+    ---Output---
+    entity{tuple_delimiter}PEM RWTH Aachen{tuple_delimiter}Organization{tuple_delimiter}PEM RWTH Aachen is an organization investigating production engineering topics for lithium-ion battery cell manufacturing.
+    entity{tuple_delimiter}Battery Cell Manufacturing Process{tuple_delimiter}Process{tuple_delimiter}Battery Cell Manufacturing Process is a production workflow used to manufacture lithium-ion battery cells.
+    entity{tuple_delimiter}Lithium-Ion Battery Cell{tuple_delimiter}Artifact{tuple_delimiter}Lithium-Ion Battery Cell is the engineered product produced by the battery cell manufacturing process.
+    entity{tuple_delimiter}Electrode Drying Process{tuple_delimiter}Process{tuple_delimiter}Electrode Drying Process is a battery manufacturing stage whose settings were compared in the study.
+    entity{tuple_delimiter}Laser-Based Drying{tuple_delimiter}Process{tuple_delimiter}Laser-Based Drying is an alternative electrode drying process investigated for reducing drying time.
+    entity{tuple_delimiter}Machine Learning-Based Production Optimization{tuple_delimiter}Method{tuple_delimiter}Machine Learning-Based Production Optimization is a method used to optimize battery production parameters.
+    relation{tuple_delimiter}PEM RWTH Aachen{tuple_delimiter}Battery Cell Manufacturing Process{tuple_delimiter}research focus, production engineering{tuple_delimiter}PEM RWTH Aachen investigated the battery cell manufacturing process.
+    relation{tuple_delimiter}Battery Cell Manufacturing Process{tuple_delimiter}Lithium-Ion Battery Cell{tuple_delimiter}artifact production, manufacturing output{tuple_delimiter}The battery cell manufacturing process produces lithium-ion battery cells.
+    relation{tuple_delimiter}Electrode Drying Process{tuple_delimiter}Battery Cell Manufacturing Process{tuple_delimiter}manufacturing stage, process chain{tuple_delimiter}The electrode drying process is a stage within the battery cell manufacturing process.
+    relation{tuple_delimiter}Laser-Based Drying{tuple_delimiter}Electrode Drying Process{tuple_delimiter}process alternative, drying technology{tuple_delimiter}Laser-based drying was compared with conventional electrode drying settings.
+    relation{tuple_delimiter}Machine Learning-Based Production Optimization{tuple_delimiter}Laser-Based Drying{tuple_delimiter}parameter optimization, process improvement{tuple_delimiter}Machine learning-based production optimization was used to reduce drying time while preserving electrode quality.
+    {completion_delimiter}
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    A journal article on Lithium-Ion Battery Technology analyzed Lithium Plating and Intercalation Processes in Graphite Electrode Material. The authors combined Electrochemical Characterization with Battery Aging Analysis to explain degradation mechanisms observed during fast charging.
+    ```
+
+    ---Output---
+    entity{tuple_delimiter}Journal Article{tuple_delimiter}Content{tuple_delimiter}Journal Article is the publication type of the work analyzing lithium-ion battery technology.
+    entity{tuple_delimiter}Lithium-Ion Battery Technology{tuple_delimiter}Concept{tuple_delimiter}Lithium-Ion Battery Technology is the battery technology studied in the journal article.
+    entity{tuple_delimiter}Lithium Plating{tuple_delimiter}Concept{tuple_delimiter}Lithium Plating is a degradation mechanism analyzed in the context of fast charging.
+    entity{tuple_delimiter}Intercalation Processes{tuple_delimiter}Concept{tuple_delimiter}Intercalation Processes are electrode mechanisms analyzed in graphite electrode material.
+    entity{tuple_delimiter}Graphite Electrode Material{tuple_delimiter}Material{tuple_delimiter}Graphite Electrode Material is the electrode material in which intercalation processes were analyzed.
+    entity{tuple_delimiter}Electrochemical Characterization{tuple_delimiter}Method{tuple_delimiter}Electrochemical Characterization is a method used to study degradation mechanisms in lithium-ion battery technology.
+    entity{tuple_delimiter}Battery Aging Analysis{tuple_delimiter}Method{tuple_delimiter}Battery Aging Analysis is a method used to explain degradation mechanisms during fast charging.
+    relation{tuple_delimiter}Journal Article{tuple_delimiter}Lithium-Ion Battery Technology{tuple_delimiter}publication topic, research output{tuple_delimiter}The journal article focuses on lithium-ion battery technology.
+    relation{tuple_delimiter}Lithium Plating{tuple_delimiter}Lithium-Ion Battery Technology{tuple_delimiter}degradation mechanism, fast charging{tuple_delimiter}Lithium plating is a degradation mechanism in lithium-ion battery technology during fast charging.
+    relation{tuple_delimiter}Intercalation Processes{tuple_delimiter}Graphite Electrode Material{tuple_delimiter}material behavior, electrode mechanism{tuple_delimiter}Intercalation processes occur in graphite electrode material.
+    relation{tuple_delimiter}Electrochemical Characterization{tuple_delimiter}Lithium Plating{tuple_delimiter}characterization method, degradation analysis{tuple_delimiter}Electrochemical characterization was used to analyze lithium plating.
+    relation{tuple_delimiter}Battery Aging Analysis{tuple_delimiter}Lithium Plating{tuple_delimiter}testing support, degradation explanation{tuple_delimiter}Battery aging analysis helped explain lithium plating and related degradation mechanisms.
+    {completion_delimiter}
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    A Technical Report by VDMA and Fraunhofer FFB discussed Industrial Scaling Of Battery Manufacturing and Factory Planning For Battery Gigafactories. The report also compared PEM Electrolysis with fuel cell applications, including the role of the PEM Electrolyzer and Fuel Cell Membrane in energy systems.
+    ```
+
+    ---Output---
+    entity{tuple_delimiter}Technical Report{tuple_delimiter}Content{tuple_delimiter}Technical Report is the publication type produced by VDMA and Fraunhofer FFB.
+    entity{tuple_delimiter}VDMA{tuple_delimiter}Organization{tuple_delimiter}VDMA is an organization associated with the technical report on battery manufacturing scale-up.
+    entity{tuple_delimiter}Fraunhofer FFB{tuple_delimiter}Organization{tuple_delimiter}Fraunhofer FFB is an organization associated with the technical report on battery manufacturing scale-up.
+    entity{tuple_delimiter}Industrial Scaling Of Battery Manufacturing{tuple_delimiter}Process{tuple_delimiter}Industrial Scaling Of Battery Manufacturing is a process topic discussed in the technical report.
+    entity{tuple_delimiter}Factory Planning For Battery Gigafactories{tuple_delimiter}Process{tuple_delimiter}Factory Planning For Battery Gigafactories is an industrial planning process discussed in the technical report.
+    entity{tuple_delimiter}PEM Electrolysis{tuple_delimiter}Concept{tuple_delimiter}PEM Electrolysis is an energy systems technology compared with fuel cell applications.
+    entity{tuple_delimiter}PEM Electrolyzer{tuple_delimiter}Artifact{tuple_delimiter}PEM Electrolyzer is an engineered device used in PEM electrolysis.
+    entity{tuple_delimiter}Fuel Cell Membrane{tuple_delimiter}Material{tuple_delimiter}Fuel Cell Membrane is a material component relevant to fuel cell applications.
+    relation{tuple_delimiter}VDMA{tuple_delimiter}Technical Report{tuple_delimiter}publication output, industrial guidance{tuple_delimiter}VDMA contributed to the technical report.
+    relation{tuple_delimiter}Fraunhofer FFB{tuple_delimiter}Technical Report{tuple_delimiter}publication output, research collaboration{tuple_delimiter}Fraunhofer FFB contributed to the technical report.
+    relation{tuple_delimiter}Technical Report{tuple_delimiter}Industrial Scaling Of Battery Manufacturing{tuple_delimiter}industrial guidance, scale-up topic{tuple_delimiter}The technical report discussed industrial scaling of battery manufacturing.
+    relation{tuple_delimiter}Factory Planning For Battery Gigafactories{tuple_delimiter}Industrial Scaling Of Battery Manufacturing{tuple_delimiter}factory planning, industrial scale-up{tuple_delimiter}Factory planning for battery gigafactories supports industrial scaling of battery manufacturing.
+    relation{tuple_delimiter}PEM Electrolyzer{tuple_delimiter}PEM Electrolysis{tuple_delimiter}artifact-process relation, electrolysis system{tuple_delimiter}A PEM electrolyzer is an engineered device used for PEM electrolysis.
+    relation{tuple_delimiter}Fuel Cell Membrane{tuple_delimiter}PEM Electrolysis{tuple_delimiter}energy systems comparison, membrane technology{tuple_delimiter}The technical report compared PEM electrolysis with fuel cell applications involving fuel cell membranes.
+    {completion_delimiter}
+
+entity_extraction_json_examples:
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    PEM RWTH Aachen investigated the Battery Cell Manufacturing Process for Lithium-Ion Battery Cell production. The study compared conventional Electrode Drying Process settings with Laser-Based Drying and used Machine Learning-Based Production Optimization to reduce drying time while preserving electrode quality.
+    ```
+
+    ---Output---
+    {
+      "entities": [
+        {"name": "PEM RWTH Aachen", "type": "Organization", "description": "PEM RWTH Aachen is an organization investigating production engineering topics for lithium-ion battery cell manufacturing."},
+        {"name": "Battery Cell Manufacturing Process", "type": "Process", "description": "Battery Cell Manufacturing Process is a production workflow used to manufacture lithium-ion battery cells."},
+        {"name": "Lithium-Ion Battery Cell", "type": "Artifact", "description": "Lithium-Ion Battery Cell is the engineered product produced by the battery cell manufacturing process."},
+        {"name": "Electrode Drying Process", "type": "Process", "description": "Electrode Drying Process is a battery manufacturing stage whose settings were compared in the study."},
+        {"name": "Laser-Based Drying", "type": "Process", "description": "Laser-Based Drying is an alternative electrode drying process investigated for reducing drying time."},
+        {"name": "Machine Learning-Based Production Optimization", "type": "Method", "description": "Machine Learning-Based Production Optimization is a method used to optimize battery production parameters."}
+      ],
+      "relationships": [
+        {"source": "PEM RWTH Aachen", "target": "Battery Cell Manufacturing Process", "keywords": "research focus, production engineering", "description": "PEM RWTH Aachen investigated the battery cell manufacturing process."},
+        {"source": "Battery Cell Manufacturing Process", "target": "Lithium-Ion Battery Cell", "keywords": "artifact production, manufacturing output", "description": "The battery cell manufacturing process produces lithium-ion battery cells."},
+        {"source": "Electrode Drying Process", "target": "Battery Cell Manufacturing Process", "keywords": "manufacturing stage, process chain", "description": "The electrode drying process is a stage within the battery cell manufacturing process."},
+        {"source": "Laser-Based Drying", "target": "Electrode Drying Process", "keywords": "process alternative, drying technology", "description": "Laser-based drying was compared with conventional electrode drying settings."},
+        {"source": "Machine Learning-Based Production Optimization", "target": "Laser-Based Drying", "keywords": "parameter optimization, process improvement", "description": "Machine learning-based production optimization was used to reduce drying time while preserving electrode quality."}
+      ]
+    }
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    A journal article on Lithium-Ion Battery Technology analyzed Lithium Plating and Intercalation Processes in Graphite Electrode Material. The authors combined Electrochemical Characterization with Battery Aging Analysis to explain degradation mechanisms observed during fast charging.
+    ```
+
+    ---Output---
+    {
+      "entities": [
+        {"name": "Journal Article", "type": "Content", "description": "Journal Article is the publication type of the work analyzing lithium-ion battery technology."},
+        {"name": "Lithium-Ion Battery Technology", "type": "Concept", "description": "Lithium-Ion Battery Technology is the battery technology studied in the journal article."},
+        {"name": "Lithium Plating", "type": "Concept", "description": "Lithium Plating is a degradation mechanism analyzed in the context of fast charging."},
+        {"name": "Intercalation Processes", "type": "Concept", "description": "Intercalation Processes are electrode mechanisms analyzed in graphite electrode material."},
+        {"name": "Graphite Electrode Material", "type": "Material", "description": "Graphite Electrode Material is the electrode material in which intercalation processes were analyzed."},
+        {"name": "Electrochemical Characterization", "type": "Method", "description": "Electrochemical Characterization is a method used to study degradation mechanisms in lithium-ion battery technology."},
+        {"name": "Battery Aging Analysis", "type": "Method", "description": "Battery Aging Analysis is a method used to explain degradation mechanisms during fast charging."}
+      ],
+      "relationships": [
+        {"source": "Journal Article", "target": "Lithium-Ion Battery Technology", "keywords": "publication topic, research output", "description": "The journal article focuses on lithium-ion battery technology."},
+        {"source": "Lithium Plating", "target": "Lithium-Ion Battery Technology", "keywords": "degradation mechanism, fast charging", "description": "Lithium plating is a degradation mechanism in lithium-ion battery technology during fast charging."},
+        {"source": "Intercalation Processes", "target": "Graphite Electrode Material", "keywords": "material behavior, electrode mechanism", "description": "Intercalation processes occur in graphite electrode material."},
+        {"source": "Electrochemical Characterization", "target": "Lithium Plating", "keywords": "characterization method, degradation analysis", "description": "Electrochemical characterization was used to analyze lithium plating."},
+        {"source": "Battery Aging Analysis", "target": "Lithium Plating", "keywords": "testing support, degradation explanation", "description": "Battery aging analysis helped explain lithium plating and related degradation mechanisms."}
+      ]
+    }
+  - |
+    ---Entity Types---
+    - ResearchField: Scientific or engineering domains and subdomains
+    - Concept: Theories, phenomena, technologies, mechanisms, and system ideas
+    - Method: Testing, optimization, modeling, simulation, control, and analysis methods
+    - Process: Manufacturing, assembly, drying, recycling, integration, scaling, and planning workflows
+    - Artifact: Engineered systems, devices, components, cells, packs, motors, and equipment
+    - Material: Chemical compounds, electrode materials, electrolytes, membranes, catalysts, and other physical materials
+    - Organization: Universities, institutes, associations, companies, project partners, and industrial actors
+    - Content: Publications and document types
+    - Data: Quantitative or structured information, measurements, KPIs, test results, datasets, and model parameters
+
+    ---Input Text---
+    ```
+    A Technical Report by VDMA and Fraunhofer FFB discussed Industrial Scaling Of Battery Manufacturing and Factory Planning For Battery Gigafactories. The report also compared PEM Electrolysis with fuel cell applications, including the role of the PEM Electrolyzer and Fuel Cell Membrane in energy systems.
+    ```
+
+    ---Output---
+    {
+      "entities": [
+        {"name": "Technical Report", "type": "Content", "description": "Technical Report is the publication type produced by VDMA and Fraunhofer FFB."},
+        {"name": "VDMA", "type": "Organization", "description": "VDMA is an organization associated with the technical report on battery manufacturing scale-up."},
+        {"name": "Fraunhofer FFB", "type": "Organization", "description": "Fraunhofer FFB is an organization associated with the technical report on battery manufacturing scale-up."},
+        {"name": "Industrial Scaling Of Battery Manufacturing", "type": "Process", "description": "Industrial Scaling Of Battery Manufacturing is a process topic discussed in the technical report."},
+        {"name": "Factory Planning For Battery Gigafactories", "type": "Process", "description": "Factory Planning For Battery Gigafactories is an industrial planning process discussed in the technical report."},
+        {"name": "PEM Electrolysis", "type": "Concept", "description": "PEM Electrolysis is an energy systems technology compared with fuel cell applications."},
+        {"name": "PEM Electrolyzer", "type": "Artifact", "description": "PEM Electrolyzer is an engineered device used in PEM electrolysis."},
+        {"name": "Fuel Cell Membrane", "type": "Material", "description": "Fuel Cell Membrane is a material component relevant to fuel cell applications."}
+      ],
+      "relationships": [
+        {"source": "VDMA", "target": "Technical Report", "keywords": "publication output, industrial guidance", "description": "VDMA contributed to the technical report."},
+        {"source": "Fraunhofer FFB", "target": "Technical Report", "keywords": "publication output, research collaboration", "description": "Fraunhofer FFB contributed to the technical report."},
+        {"source": "Technical Report", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "industrial guidance, scale-up topic", "description": "The technical report discussed industrial scaling of battery manufacturing."},
+        {"source": "Factory Planning For Battery Gigafactories", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "factory planning, industrial scale-up", "description": "Factory planning for battery gigafactories supports industrial scaling of battery manufacturing."},
+        {"source": "PEM Electrolyzer", "target": "PEM Electrolysis", "keywords": "artifact-process relation, electrolysis system", "description": "A PEM electrolyzer is an engineered device used for PEM electrolysis."},
+        {"source": "Fuel Cell Membrane", "target": "PEM Electrolysis", "keywords": "energy systems comparison, membrane technology", "description": "The technical report compared PEM electrolysis with fuel cell applications involving fuel cell membranes."}
+      ]
+    }
