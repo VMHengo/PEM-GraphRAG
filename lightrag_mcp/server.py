@@ -51,12 +51,15 @@ async def healthz(_request):
     return JSONResponse({"status": "ok", "service": "pem-graphrag-mcp"})
 
 
+mcp_app = mcp.streamable_http_app()
+
 app = Starlette(
     routes=[
         Route("/healthz", healthz, methods=["GET"]),
-        Mount("/mcp", app=mcp.streamable_http_app()),
+        Mount("/mcp", app=mcp_app),
     ],
     middleware=[Middleware(BearerAuthMiddleware, config=config)],
+    lifespan=mcp_app.lifespan,
 )
 
 
@@ -66,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

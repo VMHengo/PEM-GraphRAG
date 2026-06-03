@@ -33,7 +33,15 @@ LightRAG `/query` endpoint and returns answers with references.
    docker compose -f deploy/mcp/docker-compose.vps.yml up -d --build
    ```
 
-4. Check the public health endpoint:
+4. Pull the Ollama models used by LightRAG:
+
+   ```bash
+   docker compose -f deploy/mcp/docker-compose.vps.yml exec ollama ollama pull qwen2.5:7b
+   docker compose -f deploy/mcp/docker-compose.vps.yml exec ollama ollama pull nomic-embed-text
+   docker compose -f deploy/mcp/docker-compose.vps.yml restart lightrag
+   ```
+
+5. Check the public health endpoint:
 
    ```bash
    curl https://mcp.example.edu/healthz
@@ -76,4 +84,3 @@ query_pem_graphrag(question, mode="mix")
 ```
 
 Document ingestion remains an admin workflow through LightRAG WebUI/API.
-
