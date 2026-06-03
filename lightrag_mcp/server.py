@@ -17,6 +17,7 @@ config = get_config()
 
 mcp = FastMCP(
     "PEM GraphRAG",
+    host="0.0.0.0",
     stateless_http=True,
     json_response=True,
     streamable_http_path="/",
@@ -59,7 +60,7 @@ app = Starlette(
         Mount("/mcp", app=mcp_app),
     ],
     middleware=[Middleware(BearerAuthMiddleware, config=config)],
-    lifespan=mcp_app.lifespan,
+    lifespan=mcp_app.router.lifespan_context,
 )
 
 

@@ -6,6 +6,8 @@ import httpx
 
 QueryMode = Literal["mix", "local", "global", "hybrid", "naive"]
 ALLOWED_QUERY_MODES: set[str] = {"mix", "local", "global", "hybrid", "naive"}
+DEFAULT_TOP_K = 80
+DEFAULT_CHUNK_TOP_K = 20
 
 
 class LightRAGQueryError(Exception):
@@ -26,6 +28,11 @@ def map_lightrag_response(payload: dict[str, Any], mode: QueryMode) -> dict[str,
         "answer": payload.get("response", ""),
         "references": payload.get("references") or [],
         "mode": mode,
+        "retrieval": {
+            "top_k": DEFAULT_TOP_K,
+            "chunk_top_k": DEFAULT_CHUNK_TOP_K,
+            "include_chunk_content": True,
+        },
     }
 
 
@@ -41,7 +48,10 @@ async def query_lightrag(
     payload = {
         "query": question,
         "mode": query_mode,
+        "top_k": DEFAULT_TOP_K,
+        "chunk_top_k": DEFAULT_CHUNK_TOP_K,
         "include_references": True,
+        "include_chunk_content": True,
         "stream": False,
         "response_type": "Multiple Paragraphs",
     }
@@ -63,4 +73,3 @@ async def query_lightrag(
         raise LightRAGQueryError("LightRAG query service is unavailable") from exc
 
     return map_lightrag_response(response.json(), query_mode)
-
