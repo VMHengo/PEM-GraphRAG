@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -17,6 +18,17 @@ import { uploadDocument } from '@/api/lightrag'
 import { UploadIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+const ESTIMATE_CHUNK_SIZE_CHARS = 4135
+const ESTIMATE_CHARS_PER_PDF_PAGE = 3500
+const ESTIMATE_SECONDS_PER_CHUNK_LOW = 5
+const ESTIMATE_SECONDS_PER_CHUNK_HIGH = 15
+const ESTIMATE_INPUT_TOKENS_PER_CHUNK = 3000
+const ESTIMATE_OUTPUT_TOKENS_PER_CHUNK = 800
+const GPT_4_1_INPUT_USD_PER_1M = 2
+const GPT_4_1_OUTPUT_USD_PER_1M = 8
+const WARN_CHUNKS = 80
+const WARN_COST_USD = 0.05
+
 interface UploadDocumentsDialogProps {
   onDocumentsUploaded?: () => Promise<void>
   /**
@@ -25,6 +37,102 @@ interface UploadDocumentsDialogProps {
    * than waiting for the whole sequential batch to finish).
    */
   onUploadBatchAccepted?: () => void
+}
+
+interface UploadEstimate {
+  fileCount: number
+  totalBytes: number
+  estimatedTextLength: number
+  estimatedChunks: number
+  estimatedInputTokens: number
+  estimatedOutputTokens: number
+  estimatedCostUsd: number
+  estimatedMinutesLow: number
+  estimatedMinutesHigh: number
+  warnings: string[]
+}
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
+const formatNumber = (value: number) => new Intl.NumberFormat().format(value)
+
+const formatCost = (value: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: value < 0.1 ? 3 : 2,
+    maximumFractionDigits: value < 0.1 ? 3 : 2
+  }).format(value)
+
+const countPdfPages = async (file: File) => {
+  try {
+    const buffer = await file.arrayBuffer()
+    const text = new TextDecoder('latin1').decode(buffer)
+    const matches = text.match(/\/Type\s*\/Page\b/g)
+    return matches?.length ?? 0
+  } catch {
+    return 0
+  }
+}
+
+const estimateTextLength = async (file: File) => {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  if (extension === 'txt' || extension === 'md' || extension === 'csv' || extension === 'json') {
+    return file.size
+  }
+  if (extension === 'pdf') {
+    const pageCount = await countPdfPages(file)
+    if (pageCount > 0) {
+      return pageCount * ESTIMATE_CHARS_PER_PDF_PAGE
+    }
+    return Math.round(file.size * 0.05)
+  }
+  return Math.round(file.size * 0.25)
+}
+
+const estimateUpload = async (files: File[]): Promise<UploadEstimate> => {
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+  const textLengths = await Promise.all(files.map(estimateTextLength))
+  const estimatedTextLength = textLengths.reduce((sum, length) => sum + length, 0)
+  const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / ESTIMATE_CHUNK_SIZE_CHARS))
+  const estimatedInputTokens = estimatedChunks * ESTIMATE_INPUT_TOKENS_PER_CHUNK
+  const estimatedOutputTokens = estimatedChunks * ESTIMATE_OUTPUT_TOKENS_PER_CHUNK
+  const estimatedCostUsd =
+    (estimatedInputTokens / 1_000_000) * GPT_4_1_INPUT_USD_PER_1M +
+    (estimatedOutputTokens / 1_000_000) * GPT_4_1_OUTPUT_USD_PER_1M
+  const estimatedMinutesLow = Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_LOW) / 60)
+  const estimatedMinutesHigh = Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_HIGH) / 60)
+  const warnings = []
+
+  if (estimatedChunks >= WARN_CHUNKS) {
+    warnings.push(`Large ingestion: estimated ${formatNumber(estimatedChunks)} chunks.`)
+  }
+  if (estimatedCostUsd >= WARN_COST_USD) {
+    warnings.push(`Estimated LLM extraction cost exceeds ${formatCost(WARN_COST_USD)}.`)
+  }
+
+  return {
+    fileCount: files.length,
+    totalBytes,
+    estimatedTextLength,
+    estimatedChunks,
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedCostUsd,
+    estimatedMinutesLow,
+    estimatedMinutesHigh,
+    warnings
+  }
 }
 
 export default function UploadDocumentsDialog({
@@ -36,6 +144,21 @@ export default function UploadDocumentsDialog({
   const [isUploading, setIsUploading] = useState(false)
   const [progresses, setProgresses] = useState<Record<string, number>>({})
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
+  const [pendingEstimate, setPendingEstimate] = useState<UploadEstimate | null>(null)
+
+  const requestUploadConfirmation = useCallback(async (filesToUpload: File[]) => {
+    setPendingFiles(filesToUpload)
+    setPendingEstimate(await estimateUpload(filesToUpload))
+  }, [])
+
+  const closeEstimateDialog = useCallback(() => {
+    if (isUploading) {
+      return
+    }
+    setPendingFiles(null)
+    setPendingEstimate(null)
+  }, [isUploading])
 
   const handleRejectedFiles = useCallback(
     (rejectedFiles: FileRejection[]) => {
@@ -203,43 +326,129 @@ export default function UploadDocumentsDialog({
     [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onUploadBatchAccepted]
   )
 
+  const handleConfirmUpload = useCallback(() => {
+    const files = pendingFiles
+    setPendingFiles(null)
+    setPendingEstimate(null)
+    if (files && files.length > 0) {
+      handleDocumentsUpload(files)
+    }
+  }, [handleDocumentsUpload, pendingFiles])
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (isUploading) {
-          return
-        }
-        if (!open) {
-          setProgresses({})
-          setFileErrors({})
-        }
-        setOpen(open)
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="default" side="bottom" tooltip={t('documentPanel.uploadDocuments.tooltip')} size="sm">
-          <UploadIcon /> {t('documentPanel.uploadDocuments.button')}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DialogHeader>
-          <DialogTitle>{t('documentPanel.uploadDocuments.title')}</DialogTitle>
-          <DialogDescription>
-            {t('documentPanel.uploadDocuments.description')}
-          </DialogDescription>
-        </DialogHeader>
-        <FileUploader
-          maxFileCount={Infinity}
-          maxSize={200 * 1024 * 1024}
-          description={t('documentPanel.uploadDocuments.fileTypes')}
-          onUpload={handleDocumentsUpload}
-          onReject={handleRejectedFiles}
-          progresses={progresses}
-          fileErrors={fileErrors}
-          disabled={isUploading}
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(open) => {
+          if (isUploading) {
+            return
+          }
+          if (!open) {
+            setProgresses({})
+            setFileErrors({})
+            setPendingFiles(null)
+            setPendingEstimate(null)
+          }
+          setOpen(open)
+        }}
+      >
+        <DialogTrigger asChild>
+          <Button variant="default" side="bottom" tooltip={t('documentPanel.uploadDocuments.tooltip')} size="sm">
+            <UploadIcon /> {t('documentPanel.uploadDocuments.button')}
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-xl" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>{t('documentPanel.uploadDocuments.title')}</DialogTitle>
+            <DialogDescription>
+              {t('documentPanel.uploadDocuments.description')}
+            </DialogDescription>
+          </DialogHeader>
+          <FileUploader
+            maxFileCount={Infinity}
+            maxSize={200 * 1024 * 1024}
+            description={t('documentPanel.uploadDocuments.fileTypes')}
+            onUpload={requestUploadConfirmation}
+            onReject={handleRejectedFiles}
+            progresses={progresses}
+            fileErrors={fileErrors}
+            disabled={isUploading}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingEstimate !== null} onOpenChange={(nextOpen) => {
+        if (!nextOpen) closeEstimateDialog()
+      }}>
+        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Confirm document ingestion</DialogTitle>
+            <DialogDescription>
+              Review the estimated processing time and LLM extraction cost before upload starts.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingEstimate && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+                <div>
+                  <div className="text-muted-foreground">Files</div>
+                  <div className="font-medium">{pendingEstimate.fileCount}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Upload size</div>
+                  <div className="font-medium">{formatBytes(pendingEstimate.totalBytes)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated text length</div>
+                  <div className="font-medium">{formatNumber(pendingEstimate.estimatedTextLength)} chars</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated chunks</div>
+                  <div className="font-medium">{formatNumber(pendingEstimate.estimatedChunks)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated time</div>
+                  <div className="font-medium">
+                    {pendingEstimate.estimatedMinutesLow}-{pendingEstimate.estimatedMinutesHigh} min
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated cost</div>
+                  <div className="font-medium">{formatCost(pendingEstimate.estimatedCostUsd)}</div>
+                </div>
+              </div>
+
+              <div className="rounded-md border p-3">
+                <div className="font-medium">Token estimate</div>
+                <div className="mt-1 text-muted-foreground">
+                  Input: {formatNumber(pendingEstimate.estimatedInputTokens)} tokens, output:{' '}
+                  {formatNumber(pendingEstimate.estimatedOutputTokens)} tokens. Assumes GPT-4.1 standard pricing
+                  at $2 / 1M input tokens and $8 / 1M output tokens.
+                </div>
+              </div>
+
+              {pendingEstimate.warnings.length > 0 && (
+                <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
+                  <div className="font-medium">Warnings</div>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {pendingEstimate.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEstimateDialog} disabled={isUploading}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmUpload} disabled={isUploading}>
+              Confirm and ingest
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
