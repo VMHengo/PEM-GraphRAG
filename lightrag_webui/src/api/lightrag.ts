@@ -870,10 +870,14 @@ export const insertTexts = async (texts: string[]): Promise<DocActionResponse> =
 
 export const uploadDocument = async (
   file: File,
-  onUploadProgress?: (percentCompleted: number) => void
+  onUploadProgress?: (percentCompleted: number) => void,
+  options?: { deferExtraction?: boolean }
 ): Promise<DocActionResponse> => {
   const formData = new FormData()
   formData.append('file', file)
+  if (options?.deferExtraction) {
+    formData.append('defer_extraction', 'true')
+  }
 
   const response = await axiosInstance.post('/documents/upload', formData, {
     headers: {
@@ -888,6 +892,11 @@ export const uploadDocument = async (
         }
         : undefined
   })
+  return response.data
+}
+
+export const confirmDocumentExtraction = async (docId: string): Promise<DocActionResponse> => {
+  const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/confirm_extraction`)
   return response.data
 }
 

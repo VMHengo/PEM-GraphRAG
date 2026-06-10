@@ -13,13 +13,12 @@ import {
 import FileUploader from '@/components/ui/FileUploader'
 import { toast } from 'sonner'
 import { errorMessage } from '@/lib/utils'
-import { uploadDocument } from '@/api/lightrag'
+import { confirmDocumentExtraction, getTrackStatus, uploadDocument } from '@/api/lightrag'
+import type { DocStatusResponse } from '@/api/lightrag'
 
-import { UploadIcon } from 'lucide-react'
+import { Loader2Icon, UploadIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-const ESTIMATE_CHUNK_SIZE_CHARS = 4135
-const ESTIMATE_CHARS_PER_PDF_PAGE = 3500
 const ESTIMATE_SECONDS_PER_CHUNK_LOW = 5
 const ESTIMATE_SECONDS_PER_CHUNK_HIGH = 15
 const ESTIMATE_INPUT_TOKENS_PER_CHUNK = 3000
@@ -27,7 +26,7 @@ const ESTIMATE_OUTPUT_TOKENS_PER_CHUNK = 800
 const GPT_4_1_INPUT_USD_PER_1M = 2
 const GPT_4_1_OUTPUT_USD_PER_1M = 8
 const WARN_CHUNKS = 80
-const WARN_COST_USD = 0.05
+const WARN_COST_USD = 0.5
 
 interface UploadDocumentsDialogProps {
   onDocumentsUploaded?: () => Promise<void>
@@ -41,7 +40,6 @@ interface UploadDocumentsDialogProps {
 
 interface UploadEstimate {
   fileCount: number
-  totalBytes: number
   estimatedTextLength: number
   estimatedChunks: number
   estimatedInputTokens: number
@@ -50,18 +48,6 @@ interface UploadEstimate {
   estimatedMinutesLow: number
   estimatedMinutesHigh: number
   warnings: string[]
-}
-
-const formatBytes = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB']
-  let value = bytes / 1024
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`
 }
 
 const formatNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -74,37 +60,12 @@ const formatCost = (value: number) =>
     maximumFractionDigits: value < 0.1 ? 3 : 2
   }).format(value)
 
-const countPdfPages = async (file: File) => {
-  try {
-    const buffer = await file.arrayBuffer()
-    const text = new TextDecoder('latin1').decode(buffer)
-    const matches = text.match(/\/Type\s*\/Page\b/g)
-    return matches?.length ?? 0
-  } catch {
-    return 0
-  }
-}
-
-const estimateTextLength = async (file: File) => {
-  const extension = file.name.split('.').pop()?.toLowerCase()
-  if (extension === 'txt' || extension === 'md' || extension === 'csv' || extension === 'json') {
-    return file.size
-  }
-  if (extension === 'pdf') {
-    const pageCount = await countPdfPages(file)
-    if (pageCount > 0) {
-      return pageCount * ESTIMATE_CHARS_PER_PDF_PAGE
-    }
-    return Math.round(file.size * 0.05)
-  }
-  return Math.round(file.size * 0.25)
-}
-
-const estimateUpload = async (files: File[]): Promise<UploadEstimate> => {
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
-  const textLengths = await Promise.all(files.map(estimateTextLength))
-  const estimatedTextLength = textLengths.reduce((sum, length) => sum + length, 0)
-  const estimatedChunks = Math.max(1, Math.ceil(estimatedTextLength / ESTIMATE_CHUNK_SIZE_CHARS))
+const estimateChunkedDocuments = (documents: DocStatusResponse[]): UploadEstimate => {
+  const estimatedTextLength = documents.reduce((sum, doc) => sum + (doc.content_length ?? 0), 0)
+  const estimatedChunks = Math.max(
+    1,
+    documents.reduce((sum, doc) => sum + (doc.chunks_count ?? 0), 0)
+  )
   const estimatedInputTokens = estimatedChunks * ESTIMATE_INPUT_TOKENS_PER_CHUNK
   const estimatedOutputTokens = estimatedChunks * ESTIMATE_OUTPUT_TOKENS_PER_CHUNK
   const estimatedCostUsd =
@@ -122,8 +83,7 @@ const estimateUpload = async (files: File[]): Promise<UploadEstimate> => {
   }
 
   return {
-    fileCount: files.length,
-    totalBytes,
+    fileCount: documents.length,
     estimatedTextLength,
     estimatedChunks,
     estimatedInputTokens,
@@ -135,6 +95,24 @@ const estimateUpload = async (files: File[]): Promise<UploadEstimate> => {
   }
 }
 
+const waitForChunking = async (trackId: string): Promise<DocStatusResponse[]> => {
+  const maxAttempts = 360
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const status = await getTrackStatus(trackId)
+    const documents = status.documents ?? []
+    const failed = documents.filter((doc) => doc.status === 'failed')
+    if (failed.length > 0) {
+      throw new Error(failed[0].error_msg || 'Chunking failed')
+    }
+    const chunked = documents.filter((doc) => doc.metadata?.skip_kg && doc.chunks_count)
+    if (chunked.length > 0 && chunked.length === documents.length) {
+      return chunked
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+  throw new Error('Timed out while waiting for chunking to finish')
+}
+
 export default function UploadDocumentsDialog({
   onDocumentsUploaded,
   onUploadBatchAccepted
@@ -144,19 +122,14 @@ export default function UploadDocumentsDialog({
   const [isUploading, setIsUploading] = useState(false)
   const [progresses, setProgresses] = useState<Record<string, number>>({})
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
+  const [pendingDocs, setPendingDocs] = useState<DocStatusResponse[]>([])
   const [pendingEstimate, setPendingEstimate] = useState<UploadEstimate | null>(null)
-
-  const requestUploadConfirmation = useCallback(async (filesToUpload: File[]) => {
-    setPendingFiles(filesToUpload)
-    setPendingEstimate(await estimateUpload(filesToUpload))
-  }, [])
 
   const closeEstimateDialog = useCallback(() => {
     if (isUploading) {
       return
     }
-    setPendingFiles(null)
+    setPendingDocs([])
     setPendingEstimate(null)
   }, [isUploading])
 
@@ -203,12 +176,13 @@ export default function UploadDocumentsDialog({
       });
 
       // Show uploading toast
-      const toastId = toast.loading(t('documentPanel.uploadDocuments.batch.uploading'))
+      const toastId = toast.loading('Uploading and chunking document(s)')
 
       try {
         // Track errors locally to ensure we have the final state
         const uploadErrors: Record<string, string> = {}
         let batchProbeTriggered = false
+        const preparedDocs: DocStatusResponse[] = []
 
         // Create a collator that supports Chinese sorting
         const collator = new Intl.Collator(['zh-CN', 'en'], {
@@ -234,7 +208,7 @@ export default function UploadDocumentsDialog({
                 ...pre,
                 [file.name]: percentCompleted
               }))
-            })
+            }, { deferExtraction: true })
 
             if (result.status !== 'success') {
               uploadErrors[file.name] = result.message
@@ -248,6 +222,10 @@ export default function UploadDocumentsDialog({
               if (!batchProbeTriggered) {
                 batchProbeTriggered = true
                 onUploadBatchAccepted?.()
+              }
+              if (result.track_id) {
+                const chunkedDocs = await waitForChunking(result.track_id)
+                preparedDocs.push(...chunkedDocs)
               }
             }
           } catch (err) {
@@ -304,7 +282,9 @@ export default function UploadDocumentsDialog({
         if (hasErrors) {
           toast.error(t('documentPanel.uploadDocuments.batch.error'), { id: toastId })
         } else {
-          toast.success(t('documentPanel.uploadDocuments.batch.success'), { id: toastId })
+          toast.success('Chunking complete. Confirm extraction to continue.', { id: toastId })
+          setPendingDocs(preparedDocs)
+          setPendingEstimate(estimateChunkedDocuments(preparedDocs))
         }
 
         // Only update if at least one file was uploaded successfully
@@ -326,30 +306,40 @@ export default function UploadDocumentsDialog({
     [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onUploadBatchAccepted]
   )
 
-  const handleConfirmUpload = useCallback(() => {
-    const files = pendingFiles
-    setPendingFiles(null)
-    setPendingEstimate(null)
-    if (files && files.length > 0) {
-      handleDocumentsUpload(files)
+  const handleConfirmUpload = useCallback(async () => {
+    const docs = pendingDocs
+    setIsUploading(true)
+    try {
+      for (const doc of docs) {
+        await confirmDocumentExtraction(doc.id)
+      }
+      toast.success('Extraction queued')
+      setPendingDocs([])
+      setPendingEstimate(null)
+      if (onDocumentsUploaded) {
+        onDocumentsUploaded().catch(err => {
+          console.error('Error refreshing documents:', err)
+        })
+      }
+    } catch (err) {
+      toast.error(`Failed to queue extraction: ${errorMessage(err)}`)
+    } finally {
+      setIsUploading(false)
     }
-  }, [handleDocumentsUpload, pendingFiles])
+  }, [onDocumentsUploaded, pendingDocs])
 
   return (
     <>
       <Dialog
         open={open}
-        onOpenChange={(open) => {
-          if (isUploading) {
-            return
-          }
-          if (!open) {
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !isUploading) {
             setProgresses({})
             setFileErrors({})
-            setPendingFiles(null)
+            setPendingDocs([])
             setPendingEstimate(null)
           }
-          setOpen(open)
+          setOpen(nextOpen)
         }}
       >
         <DialogTrigger asChild>
@@ -368,12 +358,24 @@ export default function UploadDocumentsDialog({
             maxFileCount={Infinity}
             maxSize={200 * 1024 * 1024}
             description={t('documentPanel.uploadDocuments.fileTypes')}
-            onUpload={requestUploadConfirmation}
+            onUpload={handleDocumentsUpload}
             onReject={handleRejectedFiles}
             progresses={progresses}
             fileErrors={fileErrors}
             disabled={isUploading}
           />
+          {isUploading && (
+            <div className="mt-4 flex items-start gap-3 rounded-md border bg-muted/40 p-3 text-sm">
+              <Loader2Icon className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+              <div>
+                <div className="font-medium">Preparing document chunks</div>
+                <div className="text-muted-foreground">
+                  Upload and chunking are running in the background. You can close this window; the extraction estimate
+                  will appear when chunking finishes.
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -384,7 +386,7 @@ export default function UploadDocumentsDialog({
           <DialogHeader>
             <DialogTitle>Confirm document ingestion</DialogTitle>
             <DialogDescription>
-              Review the estimated processing time and LLM extraction cost before upload starts.
+              Review the estimated processing time and LLM extraction cost before extraction starts.
             </DialogDescription>
           </DialogHeader>
           {pendingEstimate && (
@@ -395,8 +397,8 @@ export default function UploadDocumentsDialog({
                   <div className="font-medium">{pendingEstimate.fileCount}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">Upload size</div>
-                  <div className="font-medium">{formatBytes(pendingEstimate.totalBytes)}</div>
+                  <div className="text-muted-foreground">Stage</div>
+                  <div className="font-medium">Chunked, awaiting extraction</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Estimated text length</div>
@@ -444,7 +446,7 @@ export default function UploadDocumentsDialog({
               Cancel
             </Button>
             <Button onClick={handleConfirmUpload} disabled={isUploading}>
-              Confirm and ingest
+              Start extraction
             </Button>
           </DialogFooter>
         </DialogContent>

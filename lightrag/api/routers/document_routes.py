@@ -10,6 +10,7 @@ from uuid import uuid4
 from lightrag.utils import logger, get_pinyin_sort_key, performance_timing_log
 import aiofiles
 import traceback
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Literal
@@ -19,6 +20,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Form,
     HTTPException,
     UploadFile,
 )
@@ -1822,6 +1824,8 @@ async def pipeline_enqueue_file(
     file_path: Path,
     track_id: str = None,
     from_scan: bool = False,
+    process_options_override: str | None = None,
+    defer_extraction: bool = False,
 ) -> tuple[bool, str]:
     """Add a file to the queue for processing
 
@@ -1872,7 +1876,11 @@ async def pipeline_enqueue_file(
             )
             return False, track_id
 
-        api_process_options = process_options or PROCESS_OPTION_CHUNK_FIXED
+        api_process_options = (
+            process_options_override or process_options or PROCESS_OPTION_CHUNK_FIXED
+        )
+        if defer_extraction and "!" not in api_process_options:
+            api_process_options = f"{api_process_options}!"
         if extraction_engine != PARSER_ENGINE_LEGACY:
             try:
                 enqueue_kwargs = {
@@ -3089,7 +3097,9 @@ def create_document_routes(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
     )
     async def upload_to_input_dir(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
+        background_tasks: BackgroundTasks,
+        file: UploadFile = File(...),
+        defer_extraction: bool = Form(False),
     ):
         """
         Upload a file to the input directory and index it.
@@ -3297,7 +3307,14 @@ def create_document_routes(
             # loop's request_pending mechanism.
             async def _indexing_task():
                 try:
-                    await pipeline_index_file(rag, file_path, track_id)
+                    success, _ = await pipeline_enqueue_file(
+                        rag,
+                        file_path,
+                        track_id,
+                        defer_extraction=defer_extraction,
+                    )
+                    if success:
+                        await rag.apipeline_process_enqueue_documents()
                 finally:
                     await _release_enqueue_slot(rag)
 
@@ -3308,7 +3325,14 @@ def create_document_routes(
 
             return InsertResponse(
                 status="success",
-                message=f"File '{safe_filename}' uploaded successfully. Processing will continue in background.",
+                message=(
+                    f"File '{safe_filename}' uploaded successfully. "
+                    + (
+                        "Chunking will continue in background and extraction will wait for confirmation."
+                        if defer_extraction
+                        else "Processing will continue in background."
+                    )
+                ),
                 track_id=track_id,
             )
 
@@ -4459,6 +4483,74 @@ def create_document_routes(
 
         except Exception as e:
             logger.error(f"Error getting document status counts: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/{doc_id}/confirm_extraction",
+        response_model=InsertResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def confirm_document_extraction(
+        doc_id: str, background_tasks: BackgroundTasks
+    ):
+        """Start entity/relation extraction after a chunk-only upload."""
+        try:
+            status_doc = await rag.doc_status.get_by_id(doc_id)
+            if not status_doc:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            status_payload = (
+                asdict(status_doc)
+                if is_dataclass(status_doc)
+                else dict(status_doc)
+                if isinstance(status_doc, dict)
+                else dict(getattr(status_doc, "__dict__", {}))
+            )
+            metadata = dict(status_payload.get("metadata") or {})
+            if not metadata.get("skip_kg"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Document is not waiting for extraction confirmation",
+                )
+
+            content_data = await rag.full_docs.get_by_id(doc_id)
+            if not content_data:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Document content not found for extraction",
+                )
+
+            process_options = str(content_data.get("process_options") or "")
+            confirmed_process_options = process_options.replace("!", "")
+            if not confirmed_process_options:
+                confirmed_process_options = PROCESS_OPTION_CHUNK_FIXED
+            content_data["process_options"] = confirmed_process_options
+            await rag.full_docs.upsert({doc_id: content_data})
+
+            now = datetime.now(timezone.utc).isoformat()
+            metadata.pop("skip_kg", None)
+            metadata["extraction_confirmed_at"] = now
+            status_payload.update(
+                {
+                    "status": DocStatus.PENDING,
+                    "updated_at": now,
+                    "error_msg": None,
+                    "metadata": metadata,
+                }
+            )
+            await rag.doc_status.upsert({doc_id: status_payload})
+
+            background_tasks.add_task(rag.apipeline_process_enqueue_documents)
+            return InsertResponse(
+                status="success",
+                message="Document extraction has been queued.",
+                track_id=status_payload.get("track_id"),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error confirming extraction for {doc_id}: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 

@@ -22,6 +22,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -30,6 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 import {
   scanNewDocuments,
+  confirmDocumentExtraction,
   getDocumentsPaginatedWithTimeout,
   DocsStatusesResponse,
   DocStatus,
@@ -42,21 +44,88 @@ import { toast } from 'sonner'
 import { useBackendState } from '@/stores/state'
 import { copyToClipboard } from '@/utils/clipboard'
 
-import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon } from 'lucide-react'
+import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon, PlayIcon, Loader2Icon } from 'lucide-react'
 import PipelineStatusDialog from '@/components/documents/PipelineStatusDialog'
 import {
+  getGroupedStatusesForFilter,
   getStatusBucket,
-  matchesStatusFilter,
   type StatusBucket,
   type StatusFilter
 } from '@/features/documentStatusFilters'
 
 type StatusDisplayConfig = {
   labelKey: string
+  label?: string
   className: string
 }
 
 const STATUS_BUCKETS: StatusBucket[] = ['processed', 'analyzing', 'processing', 'pending', 'failed']
+const ESTIMATE_SECONDS_PER_CHUNK_LOW = 5
+const ESTIMATE_SECONDS_PER_CHUNK_HIGH = 15
+const ESTIMATE_INPUT_TOKENS_PER_CHUNK = 3000
+const ESTIMATE_OUTPUT_TOKENS_PER_CHUNK = 800
+const GPT_4_1_INPUT_USD_PER_1M = 2
+const GPT_4_1_OUTPUT_USD_PER_1M = 8
+const WARN_CHUNKS = 80
+const WARN_COST_USD = 0.5
+
+type ExtractionEstimate = {
+  estimatedTextLength: number
+  estimatedChunks: number
+  estimatedInputTokens: number
+  estimatedOutputTokens: number
+  estimatedCostUsd: number
+  estimatedMinutesLow: number
+  estimatedMinutesHigh: number
+  warnings: string[]
+}
+
+const isChunkedAwaitingExtraction = (doc: DocStatusResponse): boolean => Boolean(doc.metadata?.skip_kg)
+
+const getDocumentStatusBucket = (doc: DocStatusResponse): StatusBucket => {
+  if (isChunkedAwaitingExtraction(doc)) {
+    return 'processing'
+  }
+  return getStatusBucket(doc.status)
+}
+
+const formatNumber = (value: number) => new Intl.NumberFormat().format(value)
+
+const formatCost = (value: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: value < 0.1 ? 3 : 2,
+    maximumFractionDigits: value < 0.1 ? 3 : 2
+  }).format(value)
+
+const estimateExtraction = (doc: DocStatusResponse): ExtractionEstimate => {
+  const estimatedChunks = Math.max(1, doc.chunks_count ?? 0)
+  const estimatedInputTokens = estimatedChunks * ESTIMATE_INPUT_TOKENS_PER_CHUNK
+  const estimatedOutputTokens = estimatedChunks * ESTIMATE_OUTPUT_TOKENS_PER_CHUNK
+  const estimatedCostUsd =
+    (estimatedInputTokens / 1_000_000) * GPT_4_1_INPUT_USD_PER_1M +
+    (estimatedOutputTokens / 1_000_000) * GPT_4_1_OUTPUT_USD_PER_1M
+  const warnings = []
+
+  if (estimatedChunks >= WARN_CHUNKS) {
+    warnings.push(`Large extraction: ${formatNumber(estimatedChunks)} chunks.`)
+  }
+  if (estimatedCostUsd >= WARN_COST_USD) {
+    warnings.push(`Estimated LLM extraction cost exceeds ${formatCost(WARN_COST_USD)}.`)
+  }
+
+  return {
+    estimatedTextLength: doc.content_length ?? 0,
+    estimatedChunks,
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedCostUsd,
+    estimatedMinutesLow: Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_LOW) / 60),
+    estimatedMinutesHigh: Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_HIGH) / 60),
+    warnings
+  }
+}
 
 // Utility functions defined outside component for better performance and to avoid dependency issues
 const getCountValue = (counts: Record<string, number>, ...keys: string[]): number => {
@@ -84,7 +153,7 @@ const buildLegacyDocs = (documents: DocStatusResponse[]): DocsStatusesResponse =
   }, {} as Record<StatusBucket, DocStatusResponse[]>)
 
   documents.forEach((doc) => {
-    statuses[getStatusBucket(doc.status)].push(doc)
+    statuses[getDocumentStatusBucket(doc)].push(doc)
   })
 
   return { statuses }
@@ -442,6 +511,9 @@ export default function DocumentManager() {
   // State for document selection
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const isSelectionMode = selectedDocIds.length > 0
+  const [extractionDoc, setExtractionDoc] = useState<DocStatusResponse | null>(null)
+  const [extractionEstimate, setExtractionEstimate] = useState<ExtractionEstimate | null>(null)
+  const [confirmingExtractionDocId, setConfirmingExtractionDocId] = useState<string | null>(null)
 
   // Add refs to track previous pipelineActive state and current interval
   const prevPipelineActiveRef = useRef<boolean | undefined>(undefined);
@@ -577,6 +649,7 @@ export default function DocumentManager() {
       case 'processing':
         return {
           labelKey: 'documentPanel.documentManager.status.processing',
+          label: 'Extraction',
           className: 'text-blue-600'
         }
       case 'pending':
@@ -597,10 +670,12 @@ export default function DocumentManager() {
     // Use currentPageDocs directly if available (from paginated API)
     // This preserves the backend's sort order and prevents status grouping
     if (currentPageDocs && currentPageDocs.length > 0) {
-      return currentPageDocs.map(doc => ({
-        ...doc,
-        status: doc.status as DocStatus
-      })) as DocStatusWithStatus[];
+      return currentPageDocs
+        .filter((doc) => statusFilter === 'all' || getDocumentStatusBucket(doc) === statusFilter)
+        .map(doc => ({
+          ...doc,
+          status: doc.status as DocStatus
+        })) as DocStatusWithStatus[];
     }
 
     // Fallback to legacy docs structure for backward compatibility
@@ -615,7 +690,7 @@ export default function DocumentManager() {
       for (const doc of documents ?? []) {
         const documentStatus = doc.status ?? fallbackStatus
 
-        if (matchesStatusFilter(documentStatus, statusFilter)) {
+        if (statusFilter === 'all' || getDocumentStatusBucket({ ...doc, status: documentStatus }) === statusFilter) {
           allDocuments.push({
             ...doc,
             status: documentStatus
@@ -703,6 +778,12 @@ export default function DocumentManager() {
     0;
   const pendingCount = getCountValue(statusCounts, 'PENDING', 'pending') || documentCounts.pending || 0;
   const failedCount = getCountValue(statusCounts, 'FAILED', 'failed') || documentCounts.failed || 0;
+  const visibleChunkedCount = useMemo(
+    () => currentPageDocs.filter(isChunkedAwaitingExtraction).length,
+    [currentPageDocs]
+  )
+  const displayedProcessedCount = Math.max(0, processedCount - visibleChunkedCount)
+  const displayedProcessingCount = processingCount + visibleChunkedCount
 
   // Store previous status counts
   const prevStatusCounts = useRef({
@@ -739,13 +820,22 @@ export default function DocumentManager() {
   const buildDocumentsRequest = useCallback((
     query: QuerySnapshot,
     page: number = query.page
-  ): DocumentsRequest => ({
-    status_filter: query.statusFilter === 'all' ? null : query.statusFilter,
-    page,
-    page_size: query.pageSize,
-    sort_field: query.sortField,
-    sort_direction: query.sortDirection
-  }), [])
+  ): DocumentsRequest => {
+    const groupedStatuses = getGroupedStatusesForFilter(query.statusFilter)
+    const statusFilters =
+      query.statusFilter === 'processing'
+        ? ['processing', 'processed'] as DocStatus[]
+        : groupedStatuses
+
+    return {
+      status_filter: statusFilters === null || statusFilters.length > 1 ? null : statusFilters[0],
+      status_filters: statusFilters && statusFilters.length > 1 ? statusFilters : null,
+      page,
+      page_size: query.pageSize,
+      sort_field: query.sortField,
+      sort_direction: query.sortDirection
+    }
+  }, [])
 
   // Utility function to update component state
   const updateComponentState = useCallback((response: any) => {
@@ -1099,6 +1189,35 @@ export default function DocumentManager() {
     })
     probeTimersRef.current = timers
   }, [refreshDocumentsThrottled]);
+
+  const openExtractionDialog = useCallback((doc: DocStatusResponse) => {
+    setExtractionDoc(doc)
+    setExtractionEstimate(estimateExtraction(doc))
+  }, [])
+
+  const closeExtractionDialog = useCallback(() => {
+    if (confirmingExtractionDocId) return
+    setExtractionDoc(null)
+    setExtractionEstimate(null)
+  }, [confirmingExtractionDocId])
+
+  const handleConfirmExtraction = useCallback(async () => {
+    if (!extractionDoc) return
+
+    setConfirmingExtractionDocId(extractionDoc.id)
+    try {
+      await confirmDocumentExtraction(extractionDoc.id)
+      toast.success('Extraction queued')
+      setExtractionDoc(null)
+      setExtractionEstimate(null)
+      refreshDocumentsThrottled()
+      startActivityProbe('confirm-extraction')
+    } catch (err) {
+      toast.error(`Failed to queue extraction: ${errorMessage(err)}`)
+    } finally {
+      setConfirmingExtractionDocId(null)
+    }
+  }, [extractionDoc, refreshDocumentsThrottled, startActivityProbe])
 
   // New paginated data fetching function
   const fetchPaginatedDocuments = useCallback(async (
@@ -1485,11 +1604,11 @@ export default function DocumentManager() {
                     onClick={() => handleStatusFilterChange('processed')}
                     disabled={isRefreshing}
                     className={cn(
-                      processedCount > 0 ? 'text-green-600' : 'text-gray-500',
+                      displayedProcessedCount > 0 ? 'text-green-600' : 'text-gray-500',
                       statusFilter === 'processed' && 'bg-green-100 dark:bg-green-900/30 font-medium border border-green-400 dark:border-green-600 shadow-sm'
                     )}
                   >
-                    {t('documentPanel.documentManager.filters.completed')} ({processedCount})
+                    {t('documentPanel.documentManager.filters.completed')} ({displayedProcessedCount})
                   </Button>
                   <Button
                     size="sm"
@@ -1509,11 +1628,11 @@ export default function DocumentManager() {
                     onClick={() => handleStatusFilterChange('processing')}
                     disabled={isRefreshing}
                     className={cn(
-                      processingCount > 0 ? 'text-blue-600' : 'text-gray-500',
+                      displayedProcessingCount > 0 ? 'text-blue-600' : 'text-gray-500',
                       statusFilter === 'processing' && 'bg-blue-100 dark:bg-blue-900/30 font-medium border border-blue-400 dark:border-blue-600 shadow-sm'
                     )}
                   >
-                    {t('documentPanel.documentManager.filters.processing')} ({processingCount})
+                    {t('documentPanel.documentManager.filters.processing')} ({displayedProcessingCount})
                   </Button>
                   <Button
                     size="sm"
@@ -1638,6 +1757,9 @@ export default function DocumentManager() {
                             </div>
                           </TableHead>
                           <TableHead className="w-16 text-center">
+                            Action
+                          </TableHead>
+                          <TableHead className="w-16 text-center">
                             {t('documentPanel.documentManager.columns.select')}
                           </TableHead>
                         </TableRow>
@@ -1688,10 +1810,16 @@ export default function DocumentManager() {
                             <TableCell>
                               <div className="flex items-center">
                                 {(() => {
-                                  const statusDisplay = getStatusDisplay(doc.status)
+                                  const statusDisplay = doc.metadata?.skip_kg
+                                    ? {
+                                        labelKey: 'documentPanel.documentManager.status.processed',
+                                        label: 'Chunked',
+                                        className: 'text-purple-600'
+                                      }
+                                    : getStatusDisplay(doc.status)
                                   return (
                                     <span className={statusDisplay.className}>
-                                      {t(statusDisplay.labelKey)}
+                                      {statusDisplay.label ?? t(statusDisplay.labelKey)}
                                     </span>
                                   )
                                 })()}
@@ -1706,6 +1834,27 @@ export default function DocumentManager() {
                             </TableCell>
                             <TableCell className="truncate">
                               {new Date(doc.updated_at).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {isChunkedAwaitingExtraction(doc) ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openExtractionDialog(doc)}
+                                  disabled={confirmingExtractionDocId === doc.id}
+                                  side="bottom"
+                                  tooltip="Review estimate and start extraction"
+                                >
+                                  {confirmingExtractionDocId === doc.id ? (
+                                    <Loader2Icon className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <PlayIcon className="h-4 w-4" />
+                                  )}
+                                  Extract
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-center">
                               <Checkbox
@@ -1726,6 +1875,83 @@ export default function DocumentManager() {
           </CardContent>
         </Card>
       </CardContent>
+      <Dialog open={extractionDoc !== null} onOpenChange={(open) => {
+        if (!open) closeExtractionDialog()
+      }}>
+        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Start extraction</DialogTitle>
+            <DialogDescription>
+              Review the estimated LLM extraction time and cost before this chunked document is processed.
+            </DialogDescription>
+          </DialogHeader>
+          {extractionDoc && extractionEstimate && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-md border p-3">
+                <div className="text-muted-foreground">Document</div>
+                <div className="mt-1 truncate font-medium">
+                  {showFileName ? getDisplayFileName(extractionDoc, 80) : extractionDoc.id}
+                </div>
+                {showFileName && <div className="mt-1 truncate text-xs text-muted-foreground">{extractionDoc.id}</div>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+                <div>
+                  <div className="text-muted-foreground">Stage</div>
+                  <div className="font-medium">Chunked, awaiting extraction</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Chunks</div>
+                  <div className="font-medium">{formatNumber(extractionEstimate.estimatedChunks)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Text length</div>
+                  <div className="font-medium">{formatNumber(extractionEstimate.estimatedTextLength)} chars</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated time</div>
+                  <div className="font-medium">
+                    {extractionEstimate.estimatedMinutesLow}-{extractionEstimate.estimatedMinutesHigh} min
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Input tokens</div>
+                  <div className="font-medium">{formatNumber(extractionEstimate.estimatedInputTokens)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Estimated cost</div>
+                  <div className="font-medium">{formatCost(extractionEstimate.estimatedCostUsd)}</div>
+                </div>
+              </div>
+
+              <div className="rounded-md border p-3 text-muted-foreground">
+                Assumes GPT-4.1 standard pricing at $2 / 1M input tokens and $8 / 1M output tokens.
+                Actual provider pricing and prompt output length can differ.
+              </div>
+
+              {extractionEstimate.warnings.length > 0 && (
+                <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
+                  <div className="font-medium">Warnings</div>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {extractionEstimate.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeExtractionDialog} disabled={confirmingExtractionDocId !== null}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmExtraction} disabled={confirmingExtractionDocId !== null}>
+              {confirmingExtractionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+              Start extraction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

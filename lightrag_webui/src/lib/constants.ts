@@ -88,7 +88,7 @@ export const supportedFileTypes = {
 }
 
 export const SiteInfo = {
-  name: 'LightRAG',
+  name: 'PEM GraphRAG',
   home: '/',
-  github: 'https://github.com/HKUDS/LightRAG'
+  github: 'https://github.com/VMHengo/PEM-GraphRAG'
 }
