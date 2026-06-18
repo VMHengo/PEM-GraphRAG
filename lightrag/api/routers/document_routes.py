@@ -111,6 +111,47 @@ def is_valid_file_source(file_source: str | None) -> bool:
     return normalize_file_path(file_source) != UNKNOWN_FILE_SOURCE
 
 
+def _doc_waiting_for_extraction(doc: Any) -> bool:
+    """Return True when a processed document only completed chunking."""
+    metadata = getattr(doc, "metadata", None)
+    if metadata is None and isinstance(doc, dict):
+        metadata = doc.get("metadata")
+    return bool((metadata or {}).get("skip_kg"))
+
+
+async def _adjust_status_counts_for_deferred_extraction(rag) -> dict[str, int]:
+    """Count chunk-only documents under processing instead of completed."""
+    status_counts = dict(await rag.doc_status.get_all_status_counts())
+
+    # Some route tests use a minimal fake storage. Real DocStatusStorage
+    # backends implement get_docs_by_status, but keep this helper tolerant.
+    if not hasattr(rag.doc_status, "get_docs_by_status"):
+        return status_counts
+
+    processed_docs = await rag.doc_status.get_docs_by_status(DocStatus.PROCESSED)
+    deferred_count = sum(
+        1 for doc in processed_docs.values() if _doc_waiting_for_extraction(doc)
+    )
+    if not deferred_count:
+        return status_counts
+
+    processed_key = (
+        DocStatus.PROCESSED.value
+        if DocStatus.PROCESSED.value in status_counts
+        else DocStatus.PROCESSED.name
+    )
+    processing_key = (
+        DocStatus.PROCESSING.value
+        if DocStatus.PROCESSING.value in status_counts
+        else DocStatus.PROCESSING.name
+    )
+    status_counts[processed_key] = max(
+        0, status_counts.get(processed_key, 0) - deferred_count
+    )
+    status_counts[processing_key] = status_counts.get(processing_key, 0) + deferred_count
+    return status_counts
+
+
 def sanitize_filename(filename: str, input_dir: Path) -> str:
     """
     Sanitize uploaded filename to prevent Path Traversal attacks.
@@ -4370,7 +4411,7 @@ def create_document_routes(
             status_counts_task = asyncio.create_task(
                 _timed_call(
                     "get_all_status_counts",
-                    rag.doc_status.get_all_status_counts(),
+                    _adjust_status_counts_for_deferred_extraction(rag),
                 )
             )
             query_task_create_elapsed = time.perf_counter() - query_task_create_start
@@ -4478,7 +4519,7 @@ def create_document_routes(
             HTTPException: If an error occurs while retrieving status counts (500).
         """
         try:
-            status_counts = await rag.doc_status.get_all_status_counts()
+            status_counts = await _adjust_status_counts_for_deferred_extraction(rag)
             return StatusCountsResponse(status_counts=status_counts)
 
         except Exception as e:

@@ -778,12 +778,6 @@ export default function DocumentManager() {
     0;
   const pendingCount = getCountValue(statusCounts, 'PENDING', 'pending') || documentCounts.pending || 0;
   const failedCount = getCountValue(statusCounts, 'FAILED', 'failed') || documentCounts.failed || 0;
-  const visibleChunkedCount = useMemo(
-    () => currentPageDocs.filter(isChunkedAwaitingExtraction).length,
-    [currentPageDocs]
-  )
-  const displayedProcessedCount = Math.max(0, processedCount - visibleChunkedCount)
-  const displayedProcessingCount = processingCount + visibleChunkedCount
 
   // Store previous status counts
   const prevStatusCounts = useRef({
@@ -1604,11 +1598,11 @@ export default function DocumentManager() {
                     onClick={() => handleStatusFilterChange('processed')}
                     disabled={isRefreshing}
                     className={cn(
-                      displayedProcessedCount > 0 ? 'text-green-600' : 'text-gray-500',
+                      processedCount > 0 ? 'text-green-600' : 'text-gray-500',
                       statusFilter === 'processed' && 'bg-green-100 dark:bg-green-900/30 font-medium border border-green-400 dark:border-green-600 shadow-sm'
                     )}
                   >
-                    {t('documentPanel.documentManager.filters.completed')} ({displayedProcessedCount})
+                    {t('documentPanel.documentManager.filters.completed')} ({processedCount})
                   </Button>
                   <Button
                     size="sm"
@@ -1628,11 +1622,11 @@ export default function DocumentManager() {
                     onClick={() => handleStatusFilterChange('processing')}
                     disabled={isRefreshing}
                     className={cn(
-                      displayedProcessingCount > 0 ? 'text-blue-600' : 'text-gray-500',
+                      processingCount > 0 ? 'text-blue-600' : 'text-gray-500',
                       statusFilter === 'processing' && 'bg-blue-100 dark:bg-blue-900/30 font-medium border border-blue-400 dark:border-blue-600 shadow-sm'
                     )}
                   >
-                    {t('documentPanel.documentManager.filters.processing')} ({displayedProcessingCount})
+                    {t('documentPanel.documentManager.filters.processing')} ({processingCount})
                   </Button>
                   <Button
                     size="sm"
