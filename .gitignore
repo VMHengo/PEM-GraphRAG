@@ -13,7 +13,19 @@ venv/
 
 # Enviroment Variable Files
 .env
+.env.*
+!.env.example
 .env.backup.*
+
+# Local secrets / certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+acme.json
+letsencrypt/
+secrets/
 
 # Generated Docker Compose files (output of setup wizard)
 docker-compose.*.yml
@@ -54,6 +66,7 @@ inputs/
 output/
 rag_storage/
 data/
+data-*/
 
 # User cumstomized prompt directory
 prompts/entity_type/
