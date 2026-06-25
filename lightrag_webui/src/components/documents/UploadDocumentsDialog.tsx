@@ -26,7 +26,7 @@ const ESTIMATE_OUTPUT_TOKENS_PER_CHUNK = 800
 const GPT_4_1_INPUT_USD_PER_1M = 2
 const GPT_4_1_OUTPUT_USD_PER_1M = 8
 const WARN_CHUNKS = 80
-const WARN_COST_USD = 0.5
+const WARN_COST_USD = 0.05
 
 interface UploadDocumentsDialogProps {
   onDocumentsUploaded?: () => Promise<void>
