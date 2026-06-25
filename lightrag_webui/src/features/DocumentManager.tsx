@@ -32,6 +32,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   scanNewDocuments,
   confirmDocumentExtraction,
+  getDocumentBatchExtractionStatus,
+  importDocumentBatchExtraction,
+  startDocumentBatchExtraction,
   getDocumentsPaginatedWithTimeout,
   DocsStatusesResponse,
   DocStatus,
@@ -81,6 +84,10 @@ type ExtractionEstimate = {
 }
 
 const isChunkedAwaitingExtraction = (doc: DocStatusResponse): boolean => Boolean(doc.metadata?.skip_kg)
+const getBatchStatus = (doc: DocStatusResponse): string | undefined => {
+  const status = doc.metadata?.batch_status
+  return typeof status === 'string' && status.length > 0 ? status : undefined
+}
 
 const getDocumentStatusBucket = (doc: DocStatusResponse): StatusBucket => {
   if (isChunkedAwaitingExtraction(doc)) {
@@ -514,6 +521,7 @@ export default function DocumentManager() {
   const [extractionDoc, setExtractionDoc] = useState<DocStatusResponse | null>(null)
   const [extractionEstimate, setExtractionEstimate] = useState<ExtractionEstimate | null>(null)
   const [confirmingExtractionDocId, setConfirmingExtractionDocId] = useState<string | null>(null)
+  const [batchActionDocId, setBatchActionDocId] = useState<string | null>(null)
 
   // Add refs to track previous pipelineActive state and current interval
   const prevPipelineActiveRef = useRef<boolean | undefined>(undefined);
@@ -1190,10 +1198,10 @@ export default function DocumentManager() {
   }, [])
 
   const closeExtractionDialog = useCallback(() => {
-    if (confirmingExtractionDocId) return
+    if (confirmingExtractionDocId || batchActionDocId) return
     setExtractionDoc(null)
     setExtractionEstimate(null)
-  }, [confirmingExtractionDocId])
+  }, [batchActionDocId, confirmingExtractionDocId])
 
   const handleConfirmExtraction = useCallback(async () => {
     if (!extractionDoc) return
@@ -1212,6 +1220,55 @@ export default function DocumentManager() {
       setConfirmingExtractionDocId(null)
     }
   }, [extractionDoc, refreshDocumentsThrottled, startActivityProbe])
+
+  const handleStartBatchExtraction = useCallback(async () => {
+    if (!extractionDoc) return
+
+    setBatchActionDocId(extractionDoc.id)
+    try {
+      const result = await startDocumentBatchExtraction(extractionDoc.id)
+      toast.success(result.message || 'Azure Batch extraction started')
+      setExtractionDoc(null)
+      setExtractionEstimate(null)
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to start Azure Batch extraction: ${errorMessage(err)}`)
+    } finally {
+      setBatchActionDocId(null)
+    }
+  }, [extractionDoc, refreshDocumentsThrottled])
+
+  const handleRefreshBatchStatus = useCallback(async () => {
+    if (!extractionDoc) return
+
+    setBatchActionDocId(extractionDoc.id)
+    try {
+      const result = await getDocumentBatchExtractionStatus(extractionDoc.id)
+      toast.success(`Azure Batch status: ${result.status}`)
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to refresh Azure Batch status: ${errorMessage(err)}`)
+    } finally {
+      setBatchActionDocId(null)
+    }
+  }, [extractionDoc, refreshDocumentsThrottled])
+
+  const handleImportBatchExtraction = useCallback(async () => {
+    if (!extractionDoc) return
+
+    setBatchActionDocId(extractionDoc.id)
+    try {
+      const result = await importDocumentBatchExtraction(extractionDoc.id)
+      toast.success(result.message || 'Azure Batch extraction imported')
+      setExtractionDoc(null)
+      setExtractionEstimate(null)
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to import Azure Batch extraction: ${errorMessage(err)}`)
+    } finally {
+      setBatchActionDocId(null)
+    }
+  }, [extractionDoc, refreshDocumentsThrottled])
 
   // New paginated data fetching function
   const fetchPaginatedDocuments = useCallback(async (
@@ -1807,7 +1864,7 @@ export default function DocumentManager() {
                                   const statusDisplay = doc.metadata?.skip_kg
                                     ? {
                                         labelKey: 'documentPanel.documentManager.status.processed',
-                                        label: 'Chunked',
+                                        label: getBatchStatus(doc) ? `Batch: ${getBatchStatus(doc)}` : 'Chunked',
                                         className: 'text-purple-600'
                                       }
                                     : getStatusDisplay(doc.status)
@@ -1835,11 +1892,11 @@ export default function DocumentManager() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => openExtractionDialog(doc)}
-                                  disabled={confirmingExtractionDocId === doc.id}
+                                  disabled={confirmingExtractionDocId === doc.id || batchActionDocId === doc.id}
                                   side="bottom"
                                   tooltip="Review estimate and start extraction"
                                 >
-                                  {confirmingExtractionDocId === doc.id ? (
+                                  {confirmingExtractionDocId === doc.id || batchActionDocId === doc.id ? (
                                     <Loader2Icon className="h-4 w-4 animate-spin" />
                                   ) : (
                                     <PlayIcon className="h-4 w-4" />
@@ -1919,9 +1976,23 @@ export default function DocumentManager() {
               </div>
 
               <div className="rounded-md border p-3 text-muted-foreground">
-                Assumes GPT-4.1 standard pricing at $2 / 1M input tokens and $8 / 1M output tokens.
-                Actual provider pricing and prompt output length can differ.
+                Normal extraction uses the synchronous extraction provider immediately.
+                Azure Batch creates an asynchronous job that can be cheaper but must be imported after completion.
               </div>
+
+              {getBatchStatus(extractionDoc) && (
+                <div className="rounded-md border border-purple-500/40 bg-purple-500/10 p-3">
+                  <div className="font-medium">Azure Batch</div>
+                  <div className="mt-1 text-muted-foreground">
+                    Current status: {getBatchStatus(extractionDoc)}
+                  </div>
+                  {typeof extractionDoc.metadata?.batch_id === 'string' && (
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
+                      Batch ID: {extractionDoc.metadata.batch_id}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {extractionEstimate.warnings.length > 0 && (
                 <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
@@ -1936,13 +2007,49 @@ export default function DocumentManager() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={closeExtractionDialog} disabled={confirmingExtractionDocId !== null}>
+            <Button
+              variant="outline"
+              onClick={closeExtractionDialog}
+              disabled={confirmingExtractionDocId !== null || batchActionDocId !== null}
+            >
               Cancel
             </Button>
-            <Button onClick={handleConfirmExtraction} disabled={confirmingExtractionDocId !== null}>
-              {confirmingExtractionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
-              Start extraction
-            </Button>
+            {extractionDoc && getBatchStatus(extractionDoc) && (
+              <Button
+                variant="outline"
+                onClick={handleRefreshBatchStatus}
+                disabled={batchActionDocId !== null || confirmingExtractionDocId !== null}
+              >
+                {batchActionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
+                Refresh batch
+              </Button>
+            )}
+            {extractionDoc && getBatchStatus(extractionDoc) === 'completed' && (
+              <Button
+                variant="default"
+                onClick={handleImportBatchExtraction}
+                disabled={batchActionDocId !== null || confirmingExtractionDocId !== null}
+              >
+                {batchActionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+                Import batch
+              </Button>
+            )}
+            {extractionDoc && !getBatchStatus(extractionDoc) && (
+              <Button
+                variant="outline"
+                onClick={handleStartBatchExtraction}
+                disabled={batchActionDocId !== null || confirmingExtractionDocId !== null}
+              >
+                {batchActionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+                Start Azure Batch
+              </Button>
+            )}
+            {extractionDoc && !getBatchStatus(extractionDoc) && (
+              <Button onClick={handleConfirmExtraction} disabled={confirmingExtractionDocId !== null || batchActionDocId !== null}>
+                {confirmingExtractionDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+                Start normal extraction
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

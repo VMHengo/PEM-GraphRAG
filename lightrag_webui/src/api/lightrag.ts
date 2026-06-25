@@ -900,6 +900,35 @@ export const confirmDocumentExtraction = async (docId: string): Promise<DocActio
   return response.data
 }
 
+export type BatchExtractionResponse = {
+  doc_id: string
+  enabled: boolean
+  status: string
+  batch_id?: string | null
+  input_file_id?: string | null
+  output_file_id?: string | null
+  error_file_id?: string | null
+  chunk_count?: number | null
+  request_counts?: Record<string, unknown> | null
+  imported_at?: string | null
+  message: string
+}
+
+export const startDocumentBatchExtraction = async (docId: string): Promise<BatchExtractionResponse> => {
+  const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/batch_extraction/start`)
+  return response.data
+}
+
+export const getDocumentBatchExtractionStatus = async (docId: string): Promise<BatchExtractionResponse> => {
+  const response = await axiosInstance.get(`/documents/${encodeURIComponent(docId)}/batch_extraction/status`)
+  return response.data
+}
+
+export const importDocumentBatchExtraction = async (docId: string): Promise<BatchExtractionResponse> => {
+  const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/batch_extraction/import`)
+  return response.data
+}
+
 export const batchUploadDocuments = async (
   files: File[],
   onUploadProgress?: (fileName: string, percentCompleted: number) => void
