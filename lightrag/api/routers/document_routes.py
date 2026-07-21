@@ -51,6 +51,14 @@ from lightrag.utils import (
     move_file_to_parsed_dir,
 )
 from lightrag.api.utils_api import get_combined_auth_dependency
+from lightrag.api.azure_batch import (
+    AzureBatchConfigError,
+    azure_batch_enabled,
+    import_azure_batch_extraction,
+    load_batch_job,
+    refresh_azure_batch_status,
+    start_azure_batch_extraction,
+)
 from ..config import global_args
 
 
@@ -725,6 +733,21 @@ class DocStatusResponse(BaseModel):
             }
         }
     )
+
+
+class BatchExtractionResponse(BaseModel):
+    doc_id: str
+    enabled: bool = True
+    status: str
+    batch_id: Optional[str] = None
+    input_file_id: Optional[str] = None
+    output_file_id: Optional[str] = None
+    error_file_id: Optional[str] = None
+    errors: Optional[Any] = None
+    chunk_count: Optional[int] = None
+    request_counts: Optional[dict[str, Any]] = None
+    imported_at: Optional[str] = None
+    message: str
 
 
 class DocsStatusesResponse(BaseModel):
@@ -4592,6 +4615,88 @@ def create_document_routes(
             raise
         except Exception as e:
             logger.error(f"Error confirming extraction for {doc_id}: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    def _batch_response(
+        doc_id: str, job: dict[str, Any] | None, message: str
+    ) -> BatchExtractionResponse:
+        return BatchExtractionResponse(
+            doc_id=doc_id,
+            enabled=azure_batch_enabled(),
+            status=(job or {}).get("status", "not_started"),
+            batch_id=(job or {}).get("batch_id"),
+            input_file_id=(job or {}).get("input_file_id"),
+            output_file_id=(job or {}).get("output_file_id"),
+            error_file_id=(job or {}).get("error_file_id"),
+            errors=(job or {}).get("errors"),
+            chunk_count=(job or {}).get("chunk_count"),
+            request_counts=(job or {}).get("request_counts"),
+            imported_at=(job or {}).get("imported_at"),
+            message=message,
+        )
+
+    @router.post(
+        "/{doc_id}/batch_extraction/start",
+        response_model=BatchExtractionResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def start_document_batch_extraction(doc_id: str):
+        """Start Azure Batch entity/relation extraction for a chunked document."""
+        try:
+            job = await start_azure_batch_extraction(rag, doc_id)
+            return _batch_response(doc_id, job, "Azure Batch extraction started.")
+        except AzureBatchConfigError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error starting Azure Batch extraction for {doc_id}: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/{doc_id}/batch_extraction/status",
+        response_model=BatchExtractionResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_document_batch_extraction_status(doc_id: str):
+        """Refresh and return Azure Batch extraction status."""
+        try:
+            job = await load_batch_job(rag, doc_id)
+            if not job:
+                return _batch_response(doc_id, None, "No Azure Batch job exists.")
+            job = await refresh_azure_batch_status(rag, doc_id)
+            return _batch_response(doc_id, job, "Azure Batch status refreshed.")
+        except AzureBatchConfigError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error checking Azure Batch extraction for {doc_id}: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/{doc_id}/batch_extraction/import",
+        response_model=BatchExtractionResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def import_document_batch_extraction(doc_id: str):
+        """Import completed Azure Batch extraction results into the graph."""
+        try:
+            job = await import_azure_batch_extraction(rag, doc_id)
+            return _batch_response(doc_id, job, "Azure Batch extraction imported.")
+        except AzureBatchConfigError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error importing Azure Batch extraction for {doc_id}: {e}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 
