@@ -40,7 +40,8 @@ import {
   DocStatus,
   DocStatusResponse,
   DocumentsRequest,
-  PaginationInfo
+  PaginationInfo,
+  type BatchExtractionResponse
 } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -88,6 +89,11 @@ const getBatchStatus = (doc: DocStatusResponse): string | undefined => {
   const status = doc.metadata?.batch_status
   return typeof status === 'string' && status.length > 0 ? status : undefined
 }
+
+const ACTIVE_BATCH_STATUSES = new Set(['validating', 'in_progress', 'finalizing'])
+const isActiveBatchStatus = (status: string | undefined): boolean =>
+  status ? ACTIVE_BATCH_STATUSES.has(status) : false
+const AZURE_BATCH_STATUS_POLL_MS = 30000
 
 const getDocumentStatusBucket = (doc: DocStatusResponse): StatusBucket => {
   if (isChunkedAwaitingExtraction(doc)) {
@@ -523,6 +529,31 @@ export default function DocumentManager() {
   const [confirmingExtractionDocId, setConfirmingExtractionDocId] = useState<string | null>(null)
   const [batchActionDocId, setBatchActionDocId] = useState<string | null>(null)
 
+  const mergeBatchResponseIntoDoc = useCallback((result: BatchExtractionResponse) => {
+    const patchDoc = (doc: DocStatusResponse): DocStatusResponse => {
+      if (doc.id !== result.doc_id) return doc
+
+      return {
+        ...doc,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...(doc.metadata ?? {}),
+          batch_extraction: true,
+          batch_status: result.status,
+          batch_id: result.batch_id ?? doc.metadata?.batch_id,
+          input_file_id: result.input_file_id ?? doc.metadata?.input_file_id,
+          output_file_id: result.output_file_id ?? doc.metadata?.output_file_id,
+          error_file_id: result.error_file_id ?? doc.metadata?.error_file_id,
+          batch_imported_at: result.imported_at ?? doc.metadata?.batch_imported_at,
+          batch_errors: result.errors ?? doc.metadata?.batch_errors
+        }
+      }
+    }
+
+    setCurrentPageDocs((prev) => prev.map(patchDoc))
+    setExtractionDoc((prev) => (prev ? patchDoc(prev) : prev))
+  }, [])
+
   // Add refs to track previous pipelineActive state and current interval
   const prevPipelineActiveRef = useRef<boolean | undefined>(undefined);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -715,6 +746,15 @@ export default function DocumentManager() {
     return allDocuments;
   }, [currentPageDocs, docs, sortField, sortDirection, statusFilter, sortDocuments]);
 
+  const activeBatchDocIds = useMemo(
+    () => currentPageDocs
+      .filter((doc) => isActiveBatchStatus(getBatchStatus(doc)))
+      .map((doc) => doc.id)
+      .sort()
+      .join('|'),
+    [currentPageDocs]
+  )
+
   // Calculate current page selection state (after filteredAndSortedDocs is defined)
   const currentPageDocIds = useMemo(() => {
     return filteredAndSortedDocs?.map(doc => doc.id) || []
@@ -844,6 +884,10 @@ export default function DocumentManager() {
     setPagination(response.pagination);
     setCurrentPageDocs(response.documents);
     setStatusCounts(response.status_counts);
+    setExtractionDoc((prev) => {
+      if (!prev) return prev
+      return response.documents.find((doc: DocStatusResponse) => doc.id === prev.id) ?? prev
+    })
 
     setDocs(response.pagination.total_count > 0 ? buildLegacyDocs(response.documents) : null);
   }, []);
@@ -1227,6 +1271,7 @@ export default function DocumentManager() {
     setBatchActionDocId(extractionDoc.id)
     try {
       const result = await startDocumentBatchExtraction(extractionDoc.id)
+      mergeBatchResponseIntoDoc(result)
       toast.success(result.message || 'Azure Batch extraction started')
       setExtractionDoc(null)
       setExtractionEstimate(null)
@@ -1236,7 +1281,7 @@ export default function DocumentManager() {
     } finally {
       setBatchActionDocId(null)
     }
-  }, [extractionDoc, refreshDocumentsThrottled])
+  }, [extractionDoc, mergeBatchResponseIntoDoc, refreshDocumentsThrottled])
 
   const handleRefreshBatchStatus = useCallback(async () => {
     if (!extractionDoc) return
@@ -1244,6 +1289,7 @@ export default function DocumentManager() {
     setBatchActionDocId(extractionDoc.id)
     try {
       const result = await getDocumentBatchExtractionStatus(extractionDoc.id)
+      mergeBatchResponseIntoDoc(result)
       toast.success(`Azure Batch status: ${result.status}`)
       refreshDocumentsThrottled()
     } catch (err) {
@@ -1251,7 +1297,7 @@ export default function DocumentManager() {
     } finally {
       setBatchActionDocId(null)
     }
-  }, [extractionDoc, refreshDocumentsThrottled])
+  }, [extractionDoc, mergeBatchResponseIntoDoc, refreshDocumentsThrottled])
 
   const handleImportBatchExtraction = useCallback(async () => {
     if (!extractionDoc) return
@@ -1259,6 +1305,7 @@ export default function DocumentManager() {
     setBatchActionDocId(extractionDoc.id)
     try {
       const result = await importDocumentBatchExtraction(extractionDoc.id)
+      mergeBatchResponseIntoDoc(result)
       toast.success(result.message || 'Azure Batch extraction imported')
       setExtractionDoc(null)
       setExtractionEstimate(null)
@@ -1268,7 +1315,7 @@ export default function DocumentManager() {
     } finally {
       setBatchActionDocId(null)
     }
-  }, [extractionDoc, refreshDocumentsThrottled])
+  }, [extractionDoc, mergeBatchResponseIntoDoc, refreshDocumentsThrottled])
 
   // New paginated data fetching function
   const fetchPaginatedDocuments = useCallback(async (
@@ -1399,6 +1446,49 @@ export default function DocumentManager() {
       clearPollingInterval();
     }
   }, [health, t, currentTab, statusCounts, pipelineActive, startPollingInterval, clearPollingInterval])
+
+  useEffect(() => {
+    if (currentTab !== 'documents' || !health) return
+
+    const activeBatchIds = activeBatchDocIds.split('|').filter(Boolean)
+    if (activeBatchIds.length === 0) return
+
+    let cancelled = false
+    const refreshActiveBatchDocs = async () => {
+      const results = await Promise.allSettled(
+        activeBatchIds.map((docId) => getDocumentBatchExtractionStatus(docId))
+      )
+
+      if (cancelled) return
+
+      let terminalStatusSeen = false
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue
+        mergeBatchResponseIntoDoc(result.value)
+        if (!isActiveBatchStatus(result.value.status)) {
+          terminalStatusSeen = true
+        }
+      }
+
+      if (terminalStatusSeen) {
+        refreshDocumentsThrottled()
+      }
+    }
+
+    const id = setInterval(refreshActiveBatchDocs, AZURE_BATCH_STATUS_POLL_MS)
+    refreshActiveBatchDocs().catch(() => undefined)
+
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [
+    activeBatchDocIds,
+    currentTab,
+    health,
+    mergeBatchResponseIntoDoc,
+    refreshDocumentsThrottled
+  ])
 
   // Monitor docs changes to check status counts and trigger health check if needed
   useEffect(() => {
@@ -1623,6 +1713,12 @@ export default function DocumentManager() {
             ) : null}
             <UploadDocumentsDialog
               onUploadBatchAccepted={() => startActivityProbe('upload')}
+              onDocumentsChunked={(documents) => {
+                const firstChunkedDocument = documents.find(isChunkedAwaitingExtraction)
+                if (firstChunkedDocument) {
+                  openExtractionDialog(firstChunkedDocument)
+                }
+              }}
               onDocumentsUploaded={async () => { refreshDocumentsThrottled() }}
             />
             <PipelineStatusDialog

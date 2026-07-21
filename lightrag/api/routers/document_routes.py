@@ -743,6 +743,7 @@ class BatchExtractionResponse(BaseModel):
     input_file_id: Optional[str] = None
     output_file_id: Optional[str] = None
     error_file_id: Optional[str] = None
+    errors: Optional[Any] = None
     chunk_count: Optional[int] = None
     request_counts: Optional[dict[str, Any]] = None
     imported_at: Optional[str] = None
@@ -4628,6 +4629,7 @@ def create_document_routes(
             input_file_id=(job or {}).get("input_file_id"),
             output_file_id=(job or {}).get("output_file_id"),
             error_file_id=(job or {}).get("error_file_id"),
+            errors=(job or {}).get("errors"),
             chunk_count=(job or {}).get("chunk_count"),
             request_counts=(job or {}).get("request_counts"),
             imported_at=(job or {}).get("imported_at"),

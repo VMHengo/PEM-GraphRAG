@@ -13,86 +13,21 @@ import {
 import FileUploader from '@/components/ui/FileUploader'
 import { toast } from 'sonner'
 import { errorMessage } from '@/lib/utils'
-import { confirmDocumentExtraction, getTrackStatus, uploadDocument } from '@/api/lightrag'
+import { getTrackStatus, uploadDocument } from '@/api/lightrag'
 import type { DocStatusResponse } from '@/api/lightrag'
 
 import { Loader2Icon, UploadIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-const ESTIMATE_SECONDS_PER_CHUNK_LOW = 5
-const ESTIMATE_SECONDS_PER_CHUNK_HIGH = 15
-const ESTIMATE_INPUT_TOKENS_PER_CHUNK = 3000
-const ESTIMATE_OUTPUT_TOKENS_PER_CHUNK = 800
-const GPT_4_1_INPUT_USD_PER_1M = 2
-const GPT_4_1_OUTPUT_USD_PER_1M = 8
-const WARN_CHUNKS = 80
-const WARN_COST_USD = 0.5
-
 interface UploadDocumentsDialogProps {
   onDocumentsUploaded?: () => Promise<void>
+  onDocumentsChunked?: (documents: DocStatusResponse[]) => void
   /**
    * Fired once per batch as soon as the first file is accepted by the server.
    * Lets the parent start its activity probe as early as possible (rather
    * than waiting for the whole sequential batch to finish).
    */
   onUploadBatchAccepted?: () => void
-}
-
-interface UploadEstimate {
-  fileCount: number
-  estimatedTextLength: number
-  estimatedChunks: number
-  estimatedInputTokens: number
-  estimatedOutputTokens: number
-  estimatedCostUsd: number
-  estimatedMinutesLow: number
-  estimatedMinutesHigh: number
-  warnings: string[]
-}
-
-const formatNumber = (value: number) => new Intl.NumberFormat().format(value)
-
-const formatCost = (value: number) =>
-  new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: value < 0.1 ? 3 : 2,
-    maximumFractionDigits: value < 0.1 ? 3 : 2
-  }).format(value)
-
-const estimateChunkedDocuments = (documents: DocStatusResponse[]): UploadEstimate => {
-  const estimatedTextLength = documents.reduce((sum, doc) => sum + (doc.content_length ?? 0), 0)
-  const estimatedChunks = Math.max(
-    1,
-    documents.reduce((sum, doc) => sum + (doc.chunks_count ?? 0), 0)
-  )
-  const estimatedInputTokens = estimatedChunks * ESTIMATE_INPUT_TOKENS_PER_CHUNK
-  const estimatedOutputTokens = estimatedChunks * ESTIMATE_OUTPUT_TOKENS_PER_CHUNK
-  const estimatedCostUsd =
-    (estimatedInputTokens / 1_000_000) * GPT_4_1_INPUT_USD_PER_1M +
-    (estimatedOutputTokens / 1_000_000) * GPT_4_1_OUTPUT_USD_PER_1M
-  const estimatedMinutesLow = Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_LOW) / 60)
-  const estimatedMinutesHigh = Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_HIGH) / 60)
-  const warnings = []
-
-  if (estimatedChunks >= WARN_CHUNKS) {
-    warnings.push(`Large ingestion: estimated ${formatNumber(estimatedChunks)} chunks.`)
-  }
-  if (estimatedCostUsd >= WARN_COST_USD) {
-    warnings.push(`Estimated LLM extraction cost exceeds ${formatCost(WARN_COST_USD)}.`)
-  }
-
-  return {
-    fileCount: documents.length,
-    estimatedTextLength,
-    estimatedChunks,
-    estimatedInputTokens,
-    estimatedOutputTokens,
-    estimatedCostUsd,
-    estimatedMinutesLow,
-    estimatedMinutesHigh,
-    warnings
-  }
 }
 
 const waitForChunking = async (trackId: string): Promise<DocStatusResponse[]> => {
@@ -115,6 +50,7 @@ const waitForChunking = async (trackId: string): Promise<DocStatusResponse[]> =>
 
 export default function UploadDocumentsDialog({
   onDocumentsUploaded,
+  onDocumentsChunked,
   onUploadBatchAccepted
 }: UploadDocumentsDialogProps) {
   const { t } = useTranslation()
@@ -122,16 +58,6 @@ export default function UploadDocumentsDialog({
   const [isUploading, setIsUploading] = useState(false)
   const [progresses, setProgresses] = useState<Record<string, number>>({})
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
-  const [pendingDocs, setPendingDocs] = useState<DocStatusResponse[]>([])
-  const [pendingEstimate, setPendingEstimate] = useState<UploadEstimate | null>(null)
-
-  const closeEstimateDialog = useCallback(() => {
-    if (isUploading) {
-      return
-    }
-    setPendingDocs([])
-    setPendingEstimate(null)
-  }, [isUploading])
 
   const handleRejectedFiles = useCallback(
     (rejectedFiles: FileRejection[]) => {
@@ -283,8 +209,10 @@ export default function UploadDocumentsDialog({
           toast.error(t('documentPanel.uploadDocuments.batch.error'), { id: toastId })
         } else {
           toast.success('Chunking complete. Confirm extraction to continue.', { id: toastId })
-          setPendingDocs(preparedDocs)
-          setPendingEstimate(estimateChunkedDocuments(preparedDocs))
+          if (preparedDocs.length > 0) {
+            setOpen(false)
+            onDocumentsChunked?.(preparedDocs)
+          }
         }
 
         // Only update if at least one file was uploaded successfully
@@ -303,30 +231,8 @@ export default function UploadDocumentsDialog({
         setIsUploading(false)
       }
     },
-    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onUploadBatchAccepted]
+    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onDocumentsChunked, onUploadBatchAccepted]
   )
-
-  const handleConfirmUpload = useCallback(async () => {
-    const docs = pendingDocs
-    setIsUploading(true)
-    try {
-      for (const doc of docs) {
-        await confirmDocumentExtraction(doc.id)
-      }
-      toast.success('Extraction queued')
-      setPendingDocs([])
-      setPendingEstimate(null)
-      if (onDocumentsUploaded) {
-        onDocumentsUploaded().catch(err => {
-          console.error('Error refreshing documents:', err)
-        })
-      }
-    } catch (err) {
-      toast.error(`Failed to queue extraction: ${errorMessage(err)}`)
-    } finally {
-      setIsUploading(false)
-    }
-  }, [onDocumentsUploaded, pendingDocs])
 
   return (
     <>
@@ -336,8 +242,6 @@ export default function UploadDocumentsDialog({
           if (!nextOpen && !isUploading) {
             setProgresses({})
             setFileErrors({})
-            setPendingDocs([])
-            setPendingEstimate(null)
           }
           setOpen(nextOpen)
         }}
@@ -376,79 +280,6 @@ export default function UploadDocumentsDialog({
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={pendingEstimate !== null} onOpenChange={(nextOpen) => {
-        if (!nextOpen) closeEstimateDialog()
-      }}>
-        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle>Confirm document ingestion</DialogTitle>
-            <DialogDescription>
-              Review the estimated processing time and LLM extraction cost before extraction starts.
-            </DialogDescription>
-          </DialogHeader>
-          {pendingEstimate && (
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
-                <div>
-                  <div className="text-muted-foreground">Files</div>
-                  <div className="font-medium">{pendingEstimate.fileCount}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Stage</div>
-                  <div className="font-medium">Chunked, awaiting extraction</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Estimated text length</div>
-                  <div className="font-medium">{formatNumber(pendingEstimate.estimatedTextLength)} chars</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Estimated chunks</div>
-                  <div className="font-medium">{formatNumber(pendingEstimate.estimatedChunks)}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Estimated time</div>
-                  <div className="font-medium">
-                    {pendingEstimate.estimatedMinutesLow}-{pendingEstimate.estimatedMinutesHigh} min
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Estimated cost</div>
-                  <div className="font-medium">{formatCost(pendingEstimate.estimatedCostUsd)}</div>
-                </div>
-              </div>
-
-              <div className="rounded-md border p-3">
-                <div className="font-medium">Token estimate</div>
-                <div className="mt-1 text-muted-foreground">
-                  Input: {formatNumber(pendingEstimate.estimatedInputTokens)} tokens, output:{' '}
-                  {formatNumber(pendingEstimate.estimatedOutputTokens)} tokens. Assumes GPT-4.1 standard pricing
-                  at $2 / 1M input tokens and $8 / 1M output tokens.
-                </div>
-              </div>
-
-              {pendingEstimate.warnings.length > 0 && (
-                <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
-                  <div className="font-medium">Warnings</div>
-                  <ul className="mt-1 list-disc space-y-1 pl-5">
-                    {pendingEstimate.warnings.map((warning) => (
-                      <li key={warning}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={closeEstimateDialog} disabled={isUploading}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmUpload} disabled={isUploading}>
-              Start extraction
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

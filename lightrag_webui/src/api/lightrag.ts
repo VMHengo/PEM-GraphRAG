@@ -908,6 +908,7 @@ export type BatchExtractionResponse = {
   input_file_id?: string | null
   output_file_id?: string | null
   error_file_id?: string | null
+  errors?: unknown
   chunk_count?: number | null
   request_counts?: Record<string, unknown> | null
   imported_at?: string | null

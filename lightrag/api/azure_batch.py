@@ -17,6 +17,7 @@ from lightrag.constants import (
     PROCESS_OPTION_CHUNK_FIXED,
 )
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
+from lightrag.kg.shared_storage import get_namespace_data, get_namespace_lock
 from lightrag.operate import (
     _process_extraction_result,
     _process_json_extraction_result,
@@ -67,6 +68,10 @@ def _status_payload(status_doc: Any) -> dict[str, Any]:
     return dict(getattr(status_doc, "__dict__", {}))
 
 
+def _batch_error_payload(batch: dict[str, Any]) -> Any:
+    return batch.get("errors") or batch.get("error") or batch.get("last_error")
+
+
 async def load_batch_job(rag, doc_id: str) -> dict[str, Any] | None:
     path = _job_path(rag, doc_id)
     if not path.exists():
@@ -106,12 +111,24 @@ def _azure_batch_endpoint() -> str:
     return (os.getenv("AZURE_BATCH_ENDPOINT") or "/chat/completions").strip()
 
 
+def _uses_responses_endpoint() -> bool:
+    return _azure_batch_endpoint().rstrip("/").endswith("/responses")
+
+
 def _completion_window() -> str:
     return (os.getenv("AZURE_BATCH_COMPLETION_WINDOW") or "24h").strip()
 
 
 def _batch_timeout() -> float:
     return float(os.getenv("AZURE_BATCH_HTTP_TIMEOUT", "120"))
+
+
+def _max_output_tokens() -> int | None:
+    value = (os.getenv("AZURE_BATCH_MAX_OUTPUT_TOKENS") or "").strip()
+    if not value:
+        return None
+    parsed = int(value)
+    return parsed if parsed > 0 else None
 
 
 def _response_format(use_json_extraction: bool) -> dict[str, str] | None:
@@ -176,6 +193,7 @@ def build_batch_request_lines(
         content = strip_internal_multimodal_markup_for_extraction(
             chunk_dp.get("content", "") or ""
         )
+        max_output_tokens = _max_output_tokens()
         if use_json_extraction:
             system_prompt = PROMPTS["entity_extraction_json_system_prompt"].format(
                 **context_base
@@ -191,16 +209,30 @@ def build_batch_request_lines(
                 **{**context_base, "input_text": content}
             )
 
-        body: dict[str, Any] = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-        response_format = _response_format(use_json_extraction)
-        if response_format:
-            body["response_format"] = response_format
+        if _uses_responses_endpoint():
+            body = {
+                "model": model,
+                "instructions": system_prompt,
+                "input": user_prompt,
+            }
+            response_format = _response_format(use_json_extraction)
+            if response_format:
+                body["text"] = {"format": response_format}
+            if max_output_tokens:
+                body["max_output_tokens"] = max_output_tokens
+        else:
+            body = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            }
+            response_format = _response_format(use_json_extraction)
+            if response_format:
+                body["response_format"] = response_format
+            if max_output_tokens:
+                body["max_completion_tokens"] = max_output_tokens
 
         lines.append(
             {
@@ -309,6 +341,7 @@ async def start_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
         "input_file_id": input_file_id,
         "output_file_id": batch.get("output_file_id"),
         "error_file_id": batch.get("error_file_id"),
+        "errors": _batch_error_payload(batch),
         "status": batch.get("status", "validating"),
         "chunk_count": len(request_lines),
         "use_json_extraction": use_json_extraction,
@@ -349,6 +382,7 @@ async def refresh_azure_batch_status(rag, doc_id: str) -> dict[str, Any]:
             "output_file_id": batch.get("output_file_id"),
             "error_file_id": batch.get("error_file_id"),
             "request_counts": batch.get("request_counts"),
+            "errors": _batch_error_payload(batch),
             "updated_at": _now_iso(),
         }
     )
@@ -389,10 +423,7 @@ async def _parse_output_jsonl(
                 f"Batch request failed for {chunk_id or line_number}: {response}"
             )
         body = response.get("body") or {}
-        choices = body.get("choices") or []
-        if not choices:
-            raise RuntimeError(f"Batch response has no choices for {chunk_id}")
-        content = ((choices[0].get("message") or {}).get("content") or "").strip()
+        content = _extract_batch_response_text(body)
         if not chunk_id or not content:
             raise RuntimeError(f"Batch response missing custom_id/content at line {line_number}")
 
@@ -420,6 +451,28 @@ async def _parse_output_jsonl(
     return parsed
 
 
+def _extract_batch_response_text(body: dict[str, Any]) -> str:
+    choices = body.get("choices") or []
+    if choices:
+        return ((choices[0].get("message") or {}).get("content") or "").strip()
+
+    output_text = body.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    output_parts: list[str] = []
+    for item in body.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content_item in item.get("content") or []:
+            if not isinstance(content_item, dict):
+                continue
+            text = content_item.get("text")
+            if isinstance(text, str) and text:
+                output_parts.append(text)
+    return "\n".join(output_parts).strip()
+
+
 async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
     job = await refresh_azure_batch_status(rag, doc_id)
     if job.get("status") != "completed":
@@ -444,6 +497,19 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
         raise FileNotFoundError("Document not found")
     status_payload = _status_payload(status_doc)
 
+    pipeline_status = await get_namespace_data(
+        "pipeline_status", workspace=rag.workspace
+    )
+    pipeline_status_lock = get_namespace_lock(
+        "pipeline_status", workspace=rag.workspace
+    )
+    async with pipeline_status_lock:
+        pipeline_status.setdefault("history_messages", [])
+        pipeline_status["latest_message"] = (
+            f"Importing Azure Batch extraction for {doc_id}"
+        )
+        pipeline_status["history_messages"].append(pipeline_status["latest_message"])
+
     await merge_nodes_and_edges(
         chunk_results=chunk_results,
         knowledge_graph_inst=rag.chunk_entity_relation_graph,
@@ -453,6 +519,8 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
         full_entities_storage=rag.full_entities,
         full_relations_storage=rag.full_relations,
         doc_id=doc_id,
+        pipeline_status=pipeline_status,
+        pipeline_status_lock=pipeline_status_lock,
         llm_response_cache=rag.llm_response_cache,
         entity_chunks_storage=rag.entity_chunks,
         relation_chunks_storage=rag.relation_chunks,
