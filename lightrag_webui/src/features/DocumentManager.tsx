@@ -14,6 +14,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/Card'
 import EmptyCard from '@/components/ui/EmptyCard'
 import Checkbox from '@/components/ui/Checkbox'
+import Input from '@/components/ui/Input'
 import UploadDocumentsDialog from '@/components/documents/UploadDocumentsDialog'
 import ClearDocumentsDialog from '@/components/documents/ClearDocumentsDialog'
 import DeleteDocumentsDialog from '@/components/documents/DeleteDocumentsDialog'
@@ -35,6 +36,7 @@ import {
   getDocumentBatchExtractionStatus,
   importDocumentBatchExtraction,
   startDocumentBatchExtraction,
+  updateDocumentMetadata,
   getDocumentsPaginatedWithTimeout,
   DocsStatusesResponse,
   DocStatus,
@@ -48,7 +50,7 @@ import { toast } from 'sonner'
 import { useBackendState } from '@/stores/state'
 import { copyToClipboard } from '@/utils/clipboard'
 
-import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon, PlayIcon, Loader2Icon } from 'lucide-react'
+import { RefreshCwIcon, ActivityIcon, ArrowUpIcon, ArrowDownIcon, RotateCcwIcon, CheckSquareIcon, XIcon, AlertTriangle, Info, CopyIcon, PlayIcon, Loader2Icon, LinkIcon } from 'lucide-react'
 import PipelineStatusDialog from '@/components/documents/PipelineStatusDialog'
 import {
   getGroupedStatusesForFilter,
@@ -88,6 +90,14 @@ const isChunkedAwaitingExtraction = (doc: DocStatusResponse): boolean => Boolean
 const getBatchStatus = (doc: DocStatusResponse): string | undefined => {
   const status = doc.metadata?.batch_status
   return typeof status === 'string' && status.length > 0 ? status : undefined
+}
+
+const getDocumentSourceUrl = (doc: DocStatusResponse): string => {
+  const sourceUrl = doc.metadata?.source_url
+  const downloadUrl = doc.metadata?.download_url
+  if (typeof sourceUrl === 'string' && sourceUrl.trim()) return sourceUrl.trim()
+  if (typeof downloadUrl === 'string' && downloadUrl.trim()) return downloadUrl.trim()
+  return ''
 }
 
 const ACTIVE_BATCH_STATUSES = new Set(['validating', 'in_progress', 'finalizing'])
@@ -528,6 +538,9 @@ export default function DocumentManager() {
   const [extractionEstimate, setExtractionEstimate] = useState<ExtractionEstimate | null>(null)
   const [confirmingExtractionDocId, setConfirmingExtractionDocId] = useState<string | null>(null)
   const [batchActionDocId, setBatchActionDocId] = useState<string | null>(null)
+  const [sourceUrlDoc, setSourceUrlDoc] = useState<DocStatusResponse | null>(null)
+  const [sourceUrlValue, setSourceUrlValue] = useState('')
+  const [savingSourceUrlDocId, setSavingSourceUrlDocId] = useState<string | null>(null)
 
   const mergeBatchResponseIntoDoc = useCallback((result: BatchExtractionResponse) => {
     const patchDoc = (doc: DocStatusResponse): DocStatusResponse => {
@@ -1241,6 +1254,54 @@ export default function DocumentManager() {
     setExtractionEstimate(estimateExtraction(doc))
   }, [])
 
+  const openSourceUrlDialog = useCallback((doc: DocStatusResponse) => {
+    setSourceUrlDoc(doc)
+    setSourceUrlValue(getDocumentSourceUrl(doc))
+  }, [])
+
+  const closeSourceUrlDialog = useCallback(() => {
+    if (savingSourceUrlDocId) return
+    setSourceUrlDoc(null)
+    setSourceUrlValue('')
+  }, [savingSourceUrlDocId])
+
+  const handleSaveSourceUrl = useCallback(async () => {
+    if (!sourceUrlDoc) return
+
+    const normalizedUrl = sourceUrlValue.trim()
+    if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) {
+      toast.error('Source URL must start with http:// or https://')
+      return
+    }
+
+    setSavingSourceUrlDocId(sourceUrlDoc.id)
+    try {
+      const result = await updateDocumentMetadata(sourceUrlDoc.id, {
+        source_url: normalizedUrl || null,
+        download_url: normalizedUrl || null
+      })
+      const patchDoc = (doc: DocStatusResponse): DocStatusResponse => {
+        if (doc.id !== result.doc_id) return doc
+        return {
+          ...doc,
+          updated_at: new Date().toISOString(),
+          metadata: result.metadata
+        }
+      }
+      setCurrentPageDocs((prev) => prev.map(patchDoc))
+      setExtractionDoc((prev) => (prev ? patchDoc(prev) : prev))
+      setSourceUrlDoc((prev) => (prev ? patchDoc(prev) : prev))
+      toast.success(result.message || 'Source URL saved')
+      setSourceUrlDoc(null)
+      setSourceUrlValue('')
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to save source URL: ${errorMessage(err)}`)
+    } finally {
+      setSavingSourceUrlDocId(null)
+    }
+  }, [refreshDocumentsThrottled, sourceUrlDoc, sourceUrlValue])
+
   const closeExtractionDialog = useCallback(() => {
     if (confirmingExtractionDocId || batchActionDocId) return
     setExtractionDoc(null)
@@ -1903,7 +1964,7 @@ export default function DocumentManager() {
                               )}
                             </div>
                           </TableHead>
-                          <TableHead className="w-16 text-center">
+                          <TableHead className="w-44 text-center">
                             Action
                           </TableHead>
                           <TableHead className="w-16 text-center">
@@ -1983,7 +2044,23 @@ export default function DocumentManager() {
                               {new Date(doc.updated_at).toLocaleString()}
                             </TableCell>
                             <TableCell className="text-center">
-                              {isChunkedAwaitingExtraction(doc) ? (
+                              <div className="flex justify-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openSourceUrlDialog(doc)}
+                                  disabled={savingSourceUrlDocId === doc.id}
+                                  side="bottom"
+                                  tooltip={getDocumentSourceUrl(doc) ? 'Edit source URL' : 'Add source URL'}
+                                >
+                                  {savingSourceUrlDocId === doc.id ? (
+                                    <Loader2Icon className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <LinkIcon className="h-4 w-4" />
+                                  )}
+                                  URL
+                                </Button>
+                                {isChunkedAwaitingExtraction(doc) ? (
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -2000,8 +2077,9 @@ export default function DocumentManager() {
                                   Extract
                                 </Button>
                               ) : (
-                                <span className="text-muted-foreground">-</span>
+                                null
                               )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-center">
                               <Checkbox
@@ -2022,6 +2100,60 @@ export default function DocumentManager() {
           </CardContent>
         </Card>
       </CardContent>
+      <Dialog open={sourceUrlDoc !== null} onOpenChange={(open) => {
+        if (!open) closeSourceUrlDialog()
+      }}>
+        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Document source URL</DialogTitle>
+            <DialogDescription>
+              Add a stable URL where users can open or download this source document.
+            </DialogDescription>
+          </DialogHeader>
+          {sourceUrlDoc && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-md border p-3">
+                <div className="text-muted-foreground">Document</div>
+                <div className="mt-1 truncate font-medium">
+                  {showFileName ? getDisplayFileName(sourceUrlDoc, 80) : sourceUrlDoc.id}
+                </div>
+                {showFileName && <div className="mt-1 truncate text-xs text-muted-foreground">{sourceUrlDoc.id}</div>}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="document-source-url">
+                  Source / download URL
+                </label>
+                <Input
+                  id="document-source-url"
+                  value={sourceUrlValue}
+                  onChange={(event) => setSourceUrlValue(event.target.value)}
+                  placeholder="https://example.edu/path/to/document.pdf"
+                  disabled={savingSourceUrlDocId !== null}
+                />
+                <div className="text-xs text-muted-foreground">
+                  This URL is included in query references and MCP citations when this document is used as a source.
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeSourceUrlDialog}
+              disabled={savingSourceUrlDocId !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveSourceUrl}
+              disabled={savingSourceUrlDocId !== null}
+            >
+              {savingSourceUrlDocId ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
+              Save URL
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={extractionDoc !== null} onOpenChange={(open) => {
         if (!open) closeExtractionDialog()
       }}>

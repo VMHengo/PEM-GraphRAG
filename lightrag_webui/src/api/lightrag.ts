@@ -900,6 +900,21 @@ export const confirmDocumentExtraction = async (docId: string): Promise<DocActio
   return response.data
 }
 
+export type DocumentMetadataUpdateResponse = {
+  status: 'success'
+  doc_id: string
+  metadata: Record<string, any>
+  message: string
+}
+
+export const updateDocumentMetadata = async (
+  docId: string,
+  metadata: Record<string, any>
+): Promise<DocumentMetadataUpdateResponse> => {
+  const response = await axiosInstance.patch(`/documents/${encodeURIComponent(docId)}/metadata`, { metadata })
+  return response.data
+}
+
 export type BatchExtractionResponse = {
   doc_id: string
   enabled: boolean

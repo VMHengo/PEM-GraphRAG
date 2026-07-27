@@ -735,6 +735,50 @@ class DocStatusResponse(BaseModel):
     )
 
 
+class DocumentMetadataUpdateRequest(BaseModel):
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Document metadata fields to merge into the existing document metadata",
+    )
+
+    @field_validator("metadata", mode="after")
+    @classmethod
+    def validate_metadata(cls, metadata: dict[str, Any]) -> dict[str, Any]:
+        cleaned: dict[str, Any] = {}
+        allowed_url_keys = {"source_url", "download_url"}
+        allowed_text_keys = {"title", "authors", "year", "publisher", "document_type"}
+        allowed_keys = allowed_url_keys | allowed_text_keys
+
+        for key, value in metadata.items():
+            if key not in allowed_keys:
+                continue
+            if value is None:
+                cleaned[key] = None
+                continue
+            if isinstance(value, list):
+                cleaned[key] = [
+                    str(item).strip() for item in value if str(item).strip()
+                ]
+                continue
+            cleaned[key] = str(value).strip()
+
+        for key in allowed_url_keys:
+            value = cleaned.get(key)
+            if value in {None, ""}:
+                continue
+            if not isinstance(value, str) or not re.match(r"^https?://", value):
+                raise ValueError(f"{key} must be an http(s) URL")
+
+        return cleaned
+
+
+class DocumentMetadataUpdateResponse(BaseModel):
+    status: Literal["success"] = "success"
+    doc_id: str
+    metadata: dict[str, Any]
+    message: str
+
+
 class BatchExtractionResponse(BaseModel):
     doc_id: str
     enabled: bool = True
@@ -4547,6 +4591,53 @@ def create_document_routes(
 
         except Exception as e:
             logger.error(f"Error getting document status counts: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.patch(
+        "/{doc_id}/metadata",
+        response_model=DocumentMetadataUpdateResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def update_document_metadata(
+        doc_id: str, request: DocumentMetadataUpdateRequest
+    ) -> DocumentMetadataUpdateResponse:
+        """Merge editable source metadata into a document status record."""
+        try:
+            status_doc = await rag.doc_status.get_by_id(doc_id)
+            if not status_doc:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            status_payload = (
+                asdict(status_doc)
+                if is_dataclass(status_doc)
+                else dict(status_doc)
+                if isinstance(status_doc, dict)
+                else dict(getattr(status_doc, "__dict__", {}))
+            )
+            metadata = dict(status_payload.get("metadata") or {})
+            for key, value in request.metadata.items():
+                if value is None or value == "" or value == []:
+                    metadata.pop(key, None)
+                else:
+                    metadata[key] = value
+
+            now = datetime.now(timezone.utc).isoformat()
+            status_payload.update({"metadata": metadata, "updated_at": now})
+            await rag.doc_status.upsert({doc_id: status_payload})
+            await rag._insert_done()
+
+            return DocumentMetadataUpdateResponse(
+                doc_id=doc_id,
+                metadata=metadata,
+                message="Document metadata updated.",
+            )
+        except HTTPException:
+            raise
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error updating metadata for {doc_id}: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 

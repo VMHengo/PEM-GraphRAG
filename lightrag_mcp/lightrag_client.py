@@ -77,17 +77,36 @@ def _basename(path: str | None) -> str:
 
 
 def _document_title(document: dict[str, Any]) -> str:
+    metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
+    title = metadata.get("title") if isinstance(metadata, dict) else None
+    if isinstance(title, str) and title.strip():
+        return title.strip()
     file_path = str(document.get("file_path") or "")
     if file_path:
         return _basename(file_path)
     return str(document.get("id") or "Untitled document")
 
 
+def _source_url_from_metadata(metadata: Any) -> str | None:
+    if not isinstance(metadata, dict):
+        return None
+    for key in ("source_url", "download_url"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _normalize_document(document: dict[str, Any]) -> dict[str, Any]:
+    metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
+    source_url = _source_url_from_metadata(metadata)
     return {
         "document_id": document.get("id"),
         "title": _document_title(document),
         "file_path": document.get("file_path"),
+        "source_url": metadata.get("source_url") if isinstance(metadata, dict) else None,
+        "download_url": metadata.get("download_url") if isinstance(metadata, dict) else None,
+        "url": source_url,
         "status": _normalize_status(document.get("status")),
         "content_summary": document.get("content_summary") or "",
         "created_at": document.get("created_at"),
@@ -137,7 +156,12 @@ def _trim_content(content: Any, remaining_chars: int) -> str:
     return text[: min(MAX_CHARS_PER_CHUNK, remaining_chars)]
 
 
-def _citation_url(_source: dict[str, Any]) -> str | None:
+def _citation_url(source: dict[str, Any]) -> str | None:
+    for key in ("url", "source_url", "download_url"):
+        value = source.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
     # Future hook: return a stable HTTPS URL for a source document or chunk here,
     # e.g. https://lightrag.example.edu/sources/{document_id}?chunk={chunk_id}
 
@@ -175,6 +199,8 @@ def build_citations(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
         citation_source = {
             "document_id": source.get("document_id"),
             "file_path": file_path,
+            "source_url": source.get("source_url"),
+            "download_url": source.get("download_url"),
             "chunk_id": source.get("chunk_id"),
             "reference_id": source.get("reference_id"),
             "page": source.get("page"),
@@ -333,6 +359,9 @@ async def search_documents(
                     "document_id": document.get("document_id"),
                     "title": document.get("title"),
                     "content": document.get("content_summary"),
+                    "url": document.get("url"),
+                    "source_url": document.get("source_url"),
+                    "download_url": document.get("download_url"),
                 }
                 for _, document in scored_documents[:capped_limit]
             ]
@@ -446,6 +475,9 @@ async def fetch_document_context(
             "source": {
                 "document_id": normalized_document_id,
                 "file_path": document.get("file_path"),
+                "source_url": document.get("source_url"),
+                "download_url": document.get("download_url"),
+                "url": document.get("url"),
                 "chunk_id": raw_chunk.get("chunk_id"),
                 "reference_id": raw_chunk.get("reference_id"),
                 "page": raw_chunk.get("page"),
