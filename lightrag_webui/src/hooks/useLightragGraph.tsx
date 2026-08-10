@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/stores/settings'
 
 import seedrandom from 'seedrandom'
 import { resolveNodeColor, DEFAULT_NODE_COLOR } from '@/utils/graphColor'
+import { getRelationLabel } from '@/utils/graphRelation'
 
 // Select color based on node type
 const getNodeColorByType = (nodeType: string | undefined): string => {
@@ -221,7 +222,7 @@ const createSigmaGraph = (rawGraph: RawGraph | null) => {
     const weight = rawEdge.properties?.weight !== undefined ? Number(rawEdge.properties.weight) : 1
 
     rawEdge.dynamicId = graph.addEdge(rawEdge.source, rawEdge.target, {
-      label: rawEdge.properties?.keywords || undefined,
+      label: getRelationLabel(rawEdge),
       size: weight, // Set initial size based on weight
       originalWeight: weight, // Store original weight for recalculation
       type: 'curvedNoArrow' // Explicitly set edge type to no arrow
@@ -769,7 +770,7 @@ const useLightrangeGraph = () => {
 
           // Add the edge to the sigma graph
           newEdge.dynamicId = sigmaGraph.addEdge(newEdge.source, newEdge.target, {
-            label: newEdge.properties?.keywords || undefined,
+            label: getRelationLabel(newEdge),
             size: weight, // Set initial size based on weight
             originalWeight: weight, // Store original weight for recalculation
             type: 'curvedNoArrow' // Explicitly set edge type to no arrow

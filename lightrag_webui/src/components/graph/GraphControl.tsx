@@ -224,10 +224,11 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
     const edgeColor = isDarkTheme ? Constants.edgeColorDarkTheme : undefined
 
     // Update all dynamic settings directly without recreating the sigma container
+    const showContextEdgeLabels = Boolean(focusedNode || selectedNode || focusedEdge || selectedEdge)
     setSettings({
       // Update display settings
       enableEdgeEvents,
-      renderEdgeLabels,
+      renderEdgeLabels: renderEdgeLabels || showContextEdgeLabels,
       renderLabels,
 
       // Node reducer for node appearance
@@ -311,10 +312,13 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
               if (hideUnselectedEdges) {
                 if (!graph.extremities(edge).includes(_focusedNode)) {
                   newData.hidden = true
+                  if (!renderEdgeLabels) newData.label = ''
                 }
               } else {
                 if (graph.extremities(edge).includes(_focusedNode)) {
                   newData.color = edgeHighlightColor
+                } else if (!renderEdgeLabels) {
+                  newData.label = ''
                 }
               }
             } catch (error) {
@@ -332,6 +336,9 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
                 newData.color = edgeHighlightColor
               } else if (hideUnselectedEdges) {
                 newData.hidden = true
+                if (!renderEdgeLabels) newData.label = ''
+              } else if (!renderEdgeLabels) {
+                newData.label = ''
               }
             }
           }
