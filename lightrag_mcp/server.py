@@ -137,11 +137,82 @@ async def healthz(_request):
     return JSONResponse({"status": "ok", "service": "pem-graphrag-mcp"})
 
 
+def _auth0_issuer() -> str:
+    domain = (config.auth0_domain or "").strip()
+    if not domain.startswith(("http://", "https://")):
+        domain = f"https://{domain}"
+    return domain.rstrip("/")
+
+
+async def oauth_protected_resource_metadata(_request):
+    issuer = _auth0_issuer()
+    return JSONResponse(
+        {
+            "resource": config.auth0_audience,
+            "authorization_servers": [issuer],
+            "bearer_methods_supported": ["header"],
+            "scopes_supported": ["openid", "profile", "email"],
+            "resource_name": "PEM GraphRAG MCP",
+        }
+    )
+
+
+async def oauth_authorization_server_metadata(_request):
+    issuer = _auth0_issuer()
+    return JSONResponse(
+        {
+            "issuer": issuer + "/",
+            "authorization_endpoint": f"{issuer}/authorize",
+            "token_endpoint": f"{issuer}/oauth/token",
+            "jwks_uri": f"{issuer}/.well-known/jwks.json",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code", "refresh_token"],
+            "scopes_supported": ["openid", "profile", "email"],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_basic",
+                "client_secret_post",
+                "none",
+            ],
+            "code_challenge_methods_supported": ["S256", "plain"],
+        }
+    )
+
+
 mcp_app = mcp.streamable_http_app()
 
 app = Starlette(
     routes=[
         Route("/healthz", healthz, methods=["GET"]),
+        Route(
+            "/.well-known/oauth-protected-resource",
+            oauth_protected_resource_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/oauth-authorization-server",
+            oauth_authorization_server_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/.well-known/openid-configuration",
+            oauth_authorization_server_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/mcp/.well-known/oauth-protected-resource",
+            oauth_protected_resource_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/mcp/.well-known/oauth-authorization-server",
+            oauth_authorization_server_metadata,
+            methods=["GET"],
+        ),
+        Route(
+            "/mcp/.well-known/openid-configuration",
+            oauth_authorization_server_metadata,
+            methods=["GET"],
+        ),
         Mount("/mcp", app=mcp_app),
     ],
     middleware=[Middleware(BearerAuthMiddleware, config=config)],

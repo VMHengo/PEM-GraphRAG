@@ -5,7 +5,7 @@ This module contains all query-related routes for the LightRAG API.
 import json
 from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from lightrag.base import QueryParam
+from lightrag.base import DocStatus, QueryParam
 from lightrag.api.utils_api import get_combined_auth_dependency
 from lightrag.utils import logger
 from pydantic import BaseModel, Field, field_validator
@@ -146,6 +146,14 @@ class ReferenceItem(BaseModel):
 
     reference_id: str = Field(description="Unique reference identifier")
     file_path: str = Field(description="Path to the source file")
+    title: Optional[str] = Field(default=None, description="Document title")
+    source_url: Optional[str] = Field(
+        default=None, description="Canonical source URL for the document"
+    )
+    download_url: Optional[str] = Field(
+        default=None, description="Download URL for the document"
+    )
+    url: Optional[str] = Field(default=None, description="Preferred citation URL")
     content: Optional[List[str]] = Field(
         default=None,
         description="List of chunk contents from this file (only present when include_chunk_content=True)",
@@ -186,6 +194,71 @@ class StreamChunkResponse(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Error message if processing fails"
     )
+
+
+def _normalize_reference_path(path: Any) -> str:
+    return str(path or "").replace("\\", "/").strip().lower()
+
+
+def _source_metadata_url(metadata: dict[str, Any]) -> str | None:
+    source_url = metadata.get("source_url")
+    download_url = metadata.get("download_url")
+    if isinstance(source_url, str) and source_url.strip():
+        return source_url.strip()
+    if isinstance(download_url, str) and download_url.strip():
+        return download_url.strip()
+    return None
+
+
+async def _metadata_by_file_path(rag) -> dict[str, dict[str, Any]]:
+    docs = await rag.doc_status.get_docs_by_statuses(list(DocStatus))
+    by_path: dict[str, dict[str, Any]] = {}
+    for _doc_id, doc in docs.items():
+        if isinstance(doc, dict):
+            metadata = doc.get("metadata")
+            file_path = doc.get("file_path")
+        else:
+            metadata = getattr(doc, "metadata", None)
+            file_path = getattr(doc, "file_path", None)
+        if not metadata or not file_path:
+            continue
+        normalized_path = _normalize_reference_path(file_path)
+        basename = normalized_path.rsplit("/", 1)[-1]
+        if normalized_path:
+            by_path[normalized_path] = dict(metadata)
+        if basename:
+            by_path[basename] = dict(metadata)
+    return by_path
+
+
+async def _enrich_references_with_source_metadata(
+    rag, references: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    if not references:
+        return references
+
+    try:
+        metadata_by_path = await _metadata_by_file_path(rag)
+    except Exception as exc:
+        logger.warning("Failed to enrich query references with document metadata: %s", exc)
+        return references
+
+    enriched_references: list[dict[str, Any]] = []
+    for ref in references:
+        ref_copy = ref.copy()
+        normalized_path = _normalize_reference_path(ref_copy.get("file_path"))
+        basename = normalized_path.rsplit("/", 1)[-1]
+        metadata = metadata_by_path.get(normalized_path) or metadata_by_path.get(basename)
+        if metadata:
+            for key in ("title", "source_url", "download_url"):
+                value = metadata.get(key)
+                if value and key not in ref_copy:
+                    ref_copy[key] = value
+            citation_url = _source_metadata_url(metadata)
+            if citation_url and not ref_copy.get("url"):
+                ref_copy["url"] = citation_url
+        enriched_references.append(ref_copy)
+    return enriched_references
 
 
 def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
@@ -419,6 +492,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             llm_response = result.get("llm_response", {})
             data = result.get("data", {})
             references = data.get("references", [])
+            references = await _enrich_references_with_source_metadata(rag, references)
 
             # Get the non-streaming response content
             response_content = llm_response.get("content", "")
@@ -676,6 +750,9 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             async def stream_generator():
                 # Extract references and LLM response from unified result
                 references = result.get("data", {}).get("references", [])
+                references = await _enrich_references_with_source_metadata(
+                    rag, references
+                )
                 llm_response = result.get("llm_response", {})
 
                 # Enrich references with chunk content if requested
@@ -1148,6 +1225,15 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
 
             # aquery_data returns the new format with status, message, data, and metadata
             if isinstance(response, dict):
+                data = response.get("data")
+                if isinstance(data, dict):
+                    references = data.get("references")
+                    if isinstance(references, list):
+                        data["references"] = (
+                            await _enrich_references_with_source_metadata(
+                                rag, references
+                            )
+                        )
                 return QueryDataResponse(**response)
             else:
                 # Handle unexpected response format

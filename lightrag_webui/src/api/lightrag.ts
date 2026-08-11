@@ -900,6 +900,21 @@ export const confirmDocumentExtraction = async (docId: string): Promise<DocActio
   return response.data
 }
 
+export type DocumentMetadataUpdateResponse = {
+  status: 'success'
+  doc_id: string
+  metadata: Record<string, any>
+  message: string
+}
+
+export const updateDocumentMetadata = async (
+  docId: string,
+  metadata: Record<string, any>
+): Promise<DocumentMetadataUpdateResponse> => {
+  const response = await axiosInstance.patch(`/documents/${encodeURIComponent(docId)}/metadata`, { metadata })
+  return response.data
+}
+
 export type BatchExtractionResponse = {
   doc_id: string
   enabled: boolean
@@ -915,6 +930,35 @@ export type BatchExtractionResponse = {
   message: string
 }
 
+export type BatchExtractionBulkItem = {
+  doc_id: string
+  status: string
+  message: string
+  batch?: BatchExtractionResponse | null
+  error?: string | null
+}
+
+export type BatchExtractionOverviewResponse = {
+  enabled: boolean
+  ready_for_batch: number
+  ready_chunks: number
+  running_batches: number
+  completed_not_imported: number
+  failed_batches: number
+  imported_batches: number
+  total_batch_jobs: number
+}
+
+export type BatchExtractionBulkResponse = {
+  enabled: boolean
+  started: number
+  imported: number
+  skipped: number
+  failed: number
+  results: BatchExtractionBulkItem[]
+  message: string
+}
+
 export const startDocumentBatchExtraction = async (docId: string): Promise<BatchExtractionResponse> => {
   const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/batch_extraction/start`)
   return response.data
@@ -927,6 +971,21 @@ export const getDocumentBatchExtractionStatus = async (docId: string): Promise<B
 
 export const importDocumentBatchExtraction = async (docId: string): Promise<BatchExtractionResponse> => {
   const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/batch_extraction/import`)
+  return response.data
+}
+
+export const getBatchExtractionOverview = async (): Promise<BatchExtractionOverviewResponse> => {
+  const response = await axiosInstance.get('/documents/batch_extraction/overview')
+  return response.data
+}
+
+export const startAllBatchExtractions = async (): Promise<BatchExtractionBulkResponse> => {
+  const response = await axiosInstance.post('/documents/batch_extraction/start_all')
+  return response.data
+}
+
+export const importCompletedBatchExtractions = async (): Promise<BatchExtractionBulkResponse> => {
+  const response = await axiosInstance.post('/documents/batch_extraction/import_completed')
   return response.data
 }
 

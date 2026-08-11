@@ -1,0 +1,192 @@
+services:
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      tags:
+        - ghcr.io/hkuds/lightrag:latest
+    expose:
+      - "9621"
+    networks:
+      - default
+    volumes:
+      - ../../data-staging/rag_storage:/app/data/rag_storage
+      - ../../data-staging/inputs:/app/data/inputs
+      - ../../data-staging/prompts:/app/data/prompts
+      - ../../.env.staging:/app/.env
+    environment:
+      WORKING_DIR: "/app/data/rag_storage"
+      INPUT_DIR: "/app/data/inputs"
+      PROMPT_DIR: "/app/data/prompts"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY:-}"
+      LIGHTRAG_GRAPH_STORAGE: "Neo4JStorage"
+      NEO4J_URI: "neo4j://neo4j:7687"
+      NEO4J_USERNAME: "${NEO4J_USERNAME:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?Set NEO4J_PASSWORD}"
+      NEO4J_DATABASE: "${NEO4J_DATABASE:-neo4j}"
+      ENTITY_TYPE_PROMPT_FILE: "${ENTITY_TYPE_PROMPT_FILE:-pem_graphrag_entity_type_prompt.yml}"
+      ENTITY_EXTRACTION_USE_JSON: "${ENTITY_EXTRACTION_USE_JSON:-true}"
+      LLM_BINDING: "${LLM_BINDING:-ollama}"
+      LLM_BINDING_HOST: "${LLM_BINDING_HOST:-http://ollama:11434}"
+      LLM_MODEL: "${LLM_MODEL:-qwen2.5:7b}"
+      LLM_BINDING_API_KEY: "${LLM_BINDING_API_KEY:-}"
+      LLM_TIMEOUT: "${LLM_TIMEOUT:-300}"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT:-}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY:-}"
+      AZURE_OPENAI_DEPLOYMENT: "${AZURE_OPENAI_DEPLOYMENT:-}"
+      AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}"
+      EXTRACT_LLM_BINDING: "${EXTRACT_LLM_BINDING:-${LLM_BINDING:-ollama}}"
+      EXTRACT_LLM_BINDING_HOST: "${EXTRACT_LLM_BINDING_HOST:-${LLM_BINDING_HOST:-http://ollama:11434}}"
+      EXTRACT_LLM_MODEL: "${EXTRACT_LLM_MODEL:-${LLM_MODEL:-qwen2.5:7b}}"
+      EXTRACT_LLM_BINDING_API_KEY: "${EXTRACT_LLM_BINDING_API_KEY:-${LLM_BINDING_API_KEY:-}}"
+      EXTRACT_LLM_TIMEOUT: "${EXTRACT_LLM_TIMEOUT:-${LLM_TIMEOUT:-300}}"
+      EXTRACT_MAX_ASYNC_LLM: "${EXTRACT_MAX_ASYNC_LLM:-1}"
+      MAX_ASYNC: "${MAX_ASYNC:-1}"
+      EMBEDDING_BINDING: "${EMBEDDING_BINDING:-ollama}"
+      EMBEDDING_BINDING_HOST: "${EMBEDDING_BINDING_HOST:-http://ollama:11434}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-nomic-embed-text}"
+      EMBEDDING_DIM: "${EMBEDDING_DIM:-768}"
+      EMBEDDING_TOKEN_LIMIT: "${EMBEDDING_TOKEN_LIMIT:-8192}"
+      EMBEDDING_TIMEOUT: "${EMBEDDING_TIMEOUT:-300}"
+      AZURE_EMBEDDING_ENDPOINT: "${AZURE_EMBEDDING_ENDPOINT:-${AZURE_OPENAI_ENDPOINT:-}}"
+      AZURE_EMBEDDING_API_KEY: "${AZURE_EMBEDDING_API_KEY:-${AZURE_OPENAI_API_KEY:-}}"
+      AZURE_EMBEDDING_DEPLOYMENT: "${AZURE_EMBEDDING_DEPLOYMENT:-}"
+      AZURE_EMBEDDING_API_VERSION: "${AZURE_EMBEDDING_API_VERSION:-${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}}"
+      AZURE_BATCH_ENABLED: "${AZURE_BATCH_ENABLED:-false}"
+      AZURE_BATCH_BINDING_HOST: "${AZURE_BATCH_BINDING_HOST:-}"
+      AZURE_BATCH_API_KEY: "${AZURE_BATCH_API_KEY:-}"
+      AZURE_BATCH_MODEL: "${AZURE_BATCH_MODEL:-gpt-4.1-mini}"
+      AZURE_BATCH_ENDPOINT: "${AZURE_BATCH_ENDPOINT:-/chat/completions}"
+      AZURE_BATCH_COMPLETION_WINDOW: "${AZURE_BATCH_COMPLETION_WINDOW:-24h}"
+      AZURE_BATCH_POLL_SECONDS: "${AZURE_BATCH_POLL_SECONDS:-60}"
+      AZURE_BATCH_HTTP_TIMEOUT: "${AZURE_BATCH_HTTP_TIMEOUT:-120}"
+      HOST: "0.0.0.0"
+      PORT: "9621"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    command:
+      - --provider=oidc
+      - --oidc-issuer-url=${OAUTH2_PROXY_ISSUER_URL}
+      - --client-id=${OAUTH2_PROXY_CLIENT_ID}
+      - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET}
+      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET}
+      - --email-domain=${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
+      - --http-address=0.0.0.0:4180
+      - --redirect-url=https://${LIGHTRAG_WEBUI_DOMAIN}/oauth2/callback
+      - --upstream=http://lightrag:9621
+      - --set-xauthrequest=true
+      - --pass-access-token=true
+      - --reverse-proxy=true
+      - --skip-provider-button=true
+    expose:
+      - "4180"
+    networks:
+      - default
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-n8n-compose_default}"
+      traefik.http.routers.lightrag-oauth-staging.rule: "Host(`${LIGHTRAG_WEBUI_DOMAIN}`)"
+      traefik.http.routers.lightrag-oauth-staging.entrypoints: "web,websecure"
+      traefik.http.routers.lightrag-oauth-staging.tls: "true"
+      traefik.http.routers.lightrag-oauth-staging.tls.certresolver: "${TRAEFIK_CERTRESOLVER:-mytlschallenge}"
+      traefik.http.services.lightrag-oauth-staging.loadbalancer.server.port: "4180"
+    depends_on:
+      lightrag:
+        condition: service_started
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    expose:
+      - "11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    expose:
+      - "7474"
+      - "7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'PORT_HEX="$(printf ''%04X'' 7687)"; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | grep -q ":$${PORT_HEX} "'
+      interval: 10s
+      timeout: 3s
+      retries: 120
+      start_period: 10s
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD}"
+      NEO4J_dbms_default__database: "${NEO4J_DATABASE:-neo4j}"
+
+  mcp-gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.mcp
+    expose:
+      - "8000"
+    networks:
+      - default
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-n8n-compose_default}"
+      traefik.http.routers.pem-mcp-staging.rule: "Host(`${MCP_DOMAIN}`) && (PathPrefix(`/mcp`) || Path(`/healthz`))"
+      traefik.http.routers.pem-mcp-staging.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.pem-mcp-staging.tls: "true"
+      traefik.http.routers.pem-mcp-staging.tls.certresolver: "${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      traefik.http.services.pem-mcp-staging.loadbalancer.server.port: "8000"
+    environment:
+      LIGHTRAG_BASE_URL: "http://lightrag:9621"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY:-}"
+      LIGHTRAG_MCP_TIMEOUT: "${LIGHTRAG_MCP_TIMEOUT:-120}"
+      MCP_AUTH_REQUIRED: "${MCP_AUTH_REQUIRED:-true}"
+      AUTH0_DOMAIN: "${AUTH0_DOMAIN:?Set AUTH0_DOMAIN}"
+      AUTH0_AUDIENCE: "${AUTH0_AUDIENCE:?Set AUTH0_AUDIENCE}"
+      AUTH0_ALGORITHMS: "${AUTH0_ALGORITHMS:-RS256}"
+    depends_on:
+      lightrag:
+        condition: service_started
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    profiles:
+      - caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      MCP_DOMAIN: "${MCP_DOMAIN:?Set MCP_DOMAIN}"
+    depends_on:
+      mcp-gateway:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  neo4j_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  traefik:
+    external: true
+    name: "${TRAEFIK_NETWORK:-n8n-compose_default}"
