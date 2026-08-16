@@ -24,6 +24,16 @@ entity_types_guidance: |
   - Keep publication types as `Content` nodes when explicitly mentioned.
   - Avoid over-specific one-off phrases unless they are central technical terms in the input.
   - Treat `PEM RWTH Aachen` and `RWTH Aachen University` as distinct but related `Organization` nodes when both are present.
+  - Prefer fewer, meaningful relationships over broad co-occurrence. A useful relationship should support causal reasoning, production-chain reasoning, material/process dependency tracing, measurement interpretation, evidence provenance, or document provenance.
+  - For JSON extraction, every relationship must include `directionality`, `relation_type`, `relation_importance`, and `chain_role`.
+  - Use `directionality: directed` for causal chains, production chains, dependency chains, material flows, optimization effects, measurements, evidence, and provenance when the text supports a clear source-to-target order.
+  - Use `directionality: undirected` only for symmetric relationships such as `collaborates_with`, `compared_with`, or `similar_to`.
+  - Prefer canonical `relation_type` values such as `causes`, `influences`, `affects`, `increases`, `leads_to`, `results_in`, `degrades`, `produces`, `uses`, `used_for`, `contains`, `part_of`, `occurs_in`, `optimizes`, `supports`, `studies`, `measures`, `published_by`, `collaborates_with`, and `compared_with`.
+  - Use `relation_importance` between `0.0` and `1.0`; assign high values to relations that help trace upstream root causes or downstream consequences.
+  - Use `chain_role` values such as `root_cause`, `process_step`, `process_parameter`, `material_dependency`, `measurement`, `defect`, `consequence`, `evidence`, `publication_metadata`, `process_improvement`, `process_input`, `process_output`, `quality_outcome`, `organization_context`, or `other`.
+  - Do not create a second reverse edge for the same directed fact. For example, store `Insufficient Electrode Thickness -> causes -> Coating Defect`, and answer root-cause questions by traversing that edge backwards.
+  - Canonical PEM chain example: `Electrode Stacking -> influences -> Electrode Thickness`; `Insufficient Electrode Thickness -> causes -> Coating Defect`; `Coating Defect -> results_in -> Quality Loss`.
+  - Avoid generic `related_to` or `co_occurs_with` unless the input explicitly makes the association central and no stronger predicate is supported.
 
 entity_extraction_examples:
   - |
@@ -150,11 +160,11 @@ entity_extraction_json_examples:
         {"name": "Machine Learning-Based Production Optimization", "type": "Method", "description": "Machine Learning-Based Production Optimization is a method used to optimize battery production parameters."}
       ],
       "relationships": [
-        {"source": "PEM RWTH Aachen", "target": "Battery Cell Manufacturing Process", "keywords": "research focus, production engineering", "description": "PEM RWTH Aachen investigated the battery cell manufacturing process."},
-        {"source": "Battery Cell Manufacturing Process", "target": "Lithium-Ion Battery Cell", "keywords": "artifact production, manufacturing output", "description": "The battery cell manufacturing process produces lithium-ion battery cells."},
-        {"source": "Electrode Drying Process", "target": "Battery Cell Manufacturing Process", "keywords": "manufacturing stage, process chain", "description": "The electrode drying process is a stage within the battery cell manufacturing process."},
-        {"source": "Laser-Based Drying", "target": "Electrode Drying Process", "keywords": "process alternative, drying technology", "description": "Laser-based drying was compared with conventional electrode drying settings."},
-        {"source": "Machine Learning-Based Production Optimization", "target": "Laser-Based Drying", "keywords": "parameter optimization, process improvement", "description": "Machine learning-based production optimization was used to reduce drying time while preserving electrode quality."}
+        {"source": "PEM RWTH Aachen", "target": "Battery Cell Manufacturing Process", "keywords": "research focus, production engineering", "description": "PEM RWTH Aachen investigated the battery cell manufacturing process.", "directionality": "directed", "relation_type": "studies", "relation_importance": 0.78, "chain_role": "organization_context"},
+        {"source": "Battery Cell Manufacturing Process", "target": "Lithium-Ion Battery Cell", "keywords": "artifact production, manufacturing output", "description": "The battery cell manufacturing process produces lithium-ion battery cells.", "directionality": "directed", "relation_type": "produces", "relation_importance": 0.92, "chain_role": "process_output"},
+        {"source": "Battery Cell Manufacturing Process", "target": "Electrode Drying Process", "keywords": "manufacturing stage, process chain", "description": "The electrode drying process is a stage within the battery cell manufacturing process.", "directionality": "directed", "relation_type": "contains", "relation_importance": 0.86, "chain_role": "process_step"},
+        {"source": "Laser-Based Drying", "target": "Electrode Drying Process", "keywords": "process alternative, drying technology", "description": "Laser-based drying is an alternative method for electrode drying.", "directionality": "directed", "relation_type": "supports", "relation_importance": 0.72, "chain_role": "process_improvement"},
+        {"source": "Machine Learning-Based Production Optimization", "target": "Laser-Based Drying", "keywords": "parameter optimization, process improvement", "description": "Machine learning-based production optimization was used to reduce drying time while preserving electrode quality.", "directionality": "directed", "relation_type": "optimizes", "relation_importance": 0.9, "chain_role": "process_improvement"}
       ]
     }
   - |
@@ -186,11 +196,11 @@ entity_extraction_json_examples:
         {"name": "Battery Aging Analysis", "type": "Method", "description": "Battery Aging Analysis is a method used to explain degradation mechanisms during fast charging."}
       ],
       "relationships": [
-        {"source": "Journal Article", "target": "Lithium-Ion Battery Technology", "keywords": "publication topic, research output", "description": "The journal article focuses on lithium-ion battery technology."},
-        {"source": "Lithium Plating", "target": "Lithium-Ion Battery Technology", "keywords": "degradation mechanism, fast charging", "description": "Lithium plating is a degradation mechanism in lithium-ion battery technology during fast charging."},
-        {"source": "Intercalation Processes", "target": "Graphite Electrode Material", "keywords": "material behavior, electrode mechanism", "description": "Intercalation processes occur in graphite electrode material."},
-        {"source": "Electrochemical Characterization", "target": "Lithium Plating", "keywords": "characterization method, degradation analysis", "description": "Electrochemical characterization was used to analyze lithium plating."},
-        {"source": "Battery Aging Analysis", "target": "Lithium Plating", "keywords": "testing support, degradation explanation", "description": "Battery aging analysis helped explain lithium plating and related degradation mechanisms."}
+        {"source": "Journal Article", "target": "Lithium-Ion Battery Technology", "keywords": "publication topic, research output", "description": "The journal article focuses on lithium-ion battery technology.", "directionality": "directed", "relation_type": "studies", "relation_importance": 0.68, "chain_role": "publication_metadata"},
+        {"source": "Lithium Plating", "target": "Lithium-Ion Battery Technology", "keywords": "degradation mechanism, fast charging", "description": "Lithium plating is a degradation mechanism in lithium-ion battery technology during fast charging.", "directionality": "directed", "relation_type": "degrades", "relation_importance": 0.88, "chain_role": "root_cause"},
+        {"source": "Intercalation Processes", "target": "Graphite Electrode Material", "keywords": "material behavior, electrode mechanism", "description": "Intercalation processes occur in graphite electrode material.", "directionality": "directed", "relation_type": "occurs_in", "relation_importance": 0.74, "chain_role": "material_dependency"},
+        {"source": "Electrochemical Characterization", "target": "Lithium Plating", "keywords": "characterization method, degradation analysis", "description": "Electrochemical characterization was used to analyze lithium plating.", "directionality": "directed", "relation_type": "measures", "relation_importance": 0.82, "chain_role": "measurement"},
+        {"source": "Battery Aging Analysis", "target": "Lithium Plating", "keywords": "testing support, degradation explanation", "description": "Battery aging analysis helped explain lithium plating and related degradation mechanisms.", "directionality": "directed", "relation_type": "supports", "relation_importance": 0.8, "chain_role": "evidence"}
       ]
     }
   - |
@@ -223,11 +233,12 @@ entity_extraction_json_examples:
         {"name": "Fuel Cell Membrane", "type": "Material", "description": "Fuel Cell Membrane is a material component relevant to fuel cell applications."}
       ],
       "relationships": [
-        {"source": "VDMA", "target": "Technical Report", "keywords": "publication output, industrial guidance", "description": "VDMA contributed to the technical report."},
-        {"source": "Fraunhofer FFB", "target": "Technical Report", "keywords": "publication output, research collaboration", "description": "Fraunhofer FFB contributed to the technical report."},
-        {"source": "Technical Report", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "industrial guidance, scale-up topic", "description": "The technical report discussed industrial scaling of battery manufacturing."},
-        {"source": "Factory Planning For Battery Gigafactories", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "factory planning, industrial scale-up", "description": "Factory planning for battery gigafactories supports industrial scaling of battery manufacturing."},
-        {"source": "PEM Electrolyzer", "target": "PEM Electrolysis", "keywords": "artifact-process relation, electrolysis system", "description": "A PEM electrolyzer is an engineered device used for PEM electrolysis."},
-        {"source": "Fuel Cell Membrane", "target": "PEM Electrolysis", "keywords": "energy systems comparison, membrane technology", "description": "The technical report compared PEM electrolysis with fuel cell applications involving fuel cell membranes."}
+        {"source": "Technical Report", "target": "VDMA", "keywords": "publication output, industrial guidance", "description": "The technical report is associated with VDMA as a contributing organization.", "directionality": "directed", "relation_type": "published_by", "relation_importance": 0.74, "chain_role": "publication_metadata"},
+        {"source": "Technical Report", "target": "Fraunhofer FFB", "keywords": "publication output, research collaboration", "description": "The technical report is associated with Fraunhofer FFB as a contributing organization.", "directionality": "directed", "relation_type": "published_by", "relation_importance": 0.72, "chain_role": "publication_metadata"},
+        {"source": "Technical Report", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "industrial guidance, scale-up topic", "description": "The technical report discussed industrial scaling of battery manufacturing.", "directionality": "directed", "relation_type": "studies", "relation_importance": 0.76, "chain_role": "evidence"},
+        {"source": "Factory Planning For Battery Gigafactories", "target": "Industrial Scaling Of Battery Manufacturing", "keywords": "factory planning, industrial scale-up", "description": "Factory planning for battery gigafactories supports industrial scaling of battery manufacturing.", "directionality": "directed", "relation_type": "supports", "relation_importance": 0.86, "chain_role": "process_step"},
+        {"source": "PEM Electrolyzer", "target": "PEM Electrolysis", "keywords": "artifact-process relation, electrolysis system", "description": "A PEM electrolyzer is an engineered device used for PEM electrolysis.", "directionality": "directed", "relation_type": "used_for", "relation_importance": 0.84, "chain_role": "process_input"},
+        {"source": "Fuel Cell Membrane", "target": "PEM Electrolyzer", "keywords": "component relation, membrane technology", "description": "A fuel cell membrane is a material component used in PEM electrolyzer and fuel cell applications.", "directionality": "directed", "relation_type": "part_of", "relation_importance": 0.78, "chain_role": "material_dependency"},
+        {"source": "VDMA", "target": "Fraunhofer FFB", "keywords": "research collaboration, industrial guidance", "description": "VDMA and Fraunhofer FFB are both associated with the technical report on battery manufacturing scale-up.", "directionality": "undirected", "relation_type": "collaborates_with", "relation_importance": 0.58, "chain_role": "organization_context"}
       ]
     }

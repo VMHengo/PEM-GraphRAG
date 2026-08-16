@@ -4,6 +4,40 @@
 
 Extend PEM GraphRAG with direction-aware multi-hop retrieval so the system can answer questions about causal chains, production chains, material-process-artifact dependencies, and organizational/document provenance paths.
 
+## Product Requirement From PEM
+
+The immediate product goal is not just "show more graph edges". The graph should contain fewer but more meaningful relationships that can be followed as understandable chains.
+
+Representative target scenario:
+
+```text
+Electrode stacking influences electrode thickness.
+Insufficient electrode thickness leads to defect X.
+
+If defect X is found, the system should not only explain what defect X can cause downstream,
+but also trace upstream where defect X may come from.
+```
+
+This means the project needs two complementary chain directions:
+
+```text
+Forward / downstream:
+  process parameter -> intermediate property -> defect -> consequence
+
+Backward / upstream:
+  defect -> affected property -> process parameter / root cause
+```
+
+The graph should therefore prioritize relationships that are useful for causal reasoning, production-chain reasoning, root-cause analysis, and process troubleshooting. Generic co-occurrence edges are actively harmful because they make the graph harder to understand.
+
+Practical interpretation:
+
+- Directed edges should become the default for meaningful technical relationships.
+- Undirected edges should be rare and reserved for truly symmetric relationships such as `compared_with`, `similar_to`, or `collaborates_with`.
+- `unknown` direction is allowed for backward compatibility, but should not be the target state for newly extracted technical relations.
+- Extraction should prefer fewer high-value relations over many weak relations.
+- Multi-hop retrieval should support both "what can this cause?" and "where can this come from?".
+
 The implementation must stay backward compatible:
 
 - Existing queries keep working with `edge_direction="both"`.
@@ -118,7 +152,7 @@ For PEM GraphRAG, direction matters most for these relationship families:
 - `studies` / `characterizes`: method/organization/publication -> object/phenomenon.
 - `depends_on`: process/model/system -> prerequisite/input.
 
-Direction matters less for symmetric or associative relationships:
+Undirected relationships should be limited to symmetric or associative relationships:
 
 - `collaborates_with`
 - `similar_to`
@@ -126,7 +160,7 @@ Direction matters less for symmetric or associative relationships:
 - `compared_with`
 - `co-occurs_with`
 
-These should remain `directionality="undirected"` or `directionality="unknown"`.
+These should not dominate the graph. In Phase 1, `related_to` and `co-occurs_with` should be avoided unless the text explicitly makes the relation central to the document. They should also be excluded or heavily down-weighted in directed chain retrieval.
 
 ## Data Model
 
@@ -140,7 +174,9 @@ Add direction metadata to every relationship:
   "description": "Laser-based drying optimizes the electrode drying process.",
   "directionality": "directed",
   "relation_type": "optimizes",
-  "direction_confidence": 0.86
+  "direction_confidence": 0.86,
+  "relation_importance": 0.9,
+  "chain_role": "process_improvement"
 }
 ```
 
@@ -148,17 +184,20 @@ Required fields:
 
 - `directionality`: `directed | undirected | unknown`
 - `relation_type`: short canonical predicate such as `causes`, `uses`, `produces`, `optimizes`, `supports`
+- `relation_importance`: float between `0.0` and `1.0`, estimating whether the relation is worth keeping as a graph edge
 
 Recommended fields:
 
 - `direction_confidence`: float between `0.0` and `1.0`
 - `direction_rationale`: short phrase explaining why source and target were ordered this way
+- `chain_role`: `root_cause | process_step | process_parameter | material_dependency | measurement | defect | consequence | evidence | publication_metadata | other`
 
 Default migration behavior:
 
 - Existing edges without `directionality` should be treated as `unknown`.
 - `unknown` behaves like `both` in retrieval.
 - Do not reinterpret old edges as directed unless the documents are re-extracted with the new prompt.
+- Directed chain retrieval should down-rank `unknown` edges until documents are re-extracted.
 
 ## Canonical Direction Rules
 
@@ -194,10 +233,18 @@ Tasks:
 - Include at least these classes:
   - 10 production-chain questions.
   - 10 causal/degradation-chain questions.
+  - 10 root-cause questions that start from a defect or failure and ask where it may come from.
   - 10 material-process-artifact questions.
   - 5 organization/publication provenance questions.
-  - 5 symmetric relation questions.
+  - 5 symmetric relation questions used as negative controls.
 - For each query, store expected entities, expected relation predicates, expected sources, and whether direction matters.
+- Include at least one synthetic fixture based on the target scenario:
+  - `Electrode Stacking -> Electrode Thickness -> Defect X`
+  - downstream query: "What can insufficient electrode thickness lead to?"
+  - upstream query: "Where can defect X come from?"
+- Include expected behavior for bad graph edges:
+  - generic `related_to` should not be counted as a successful chain edge.
+  - symmetric `compared_with` should not be interpreted as a cause.
 - Run current `mix`, `local`, and `global` retrieval and save outputs.
 
 Files:
@@ -214,21 +261,37 @@ Acceptance criteria:
 
 - Baseline queries run reproducibly.
 - We can compare directed changes against current `both` behavior.
+- The baseline documents where LightRAG currently fails to explain upstream causes are documented explicitly.
 
-## Phase 1: Direction-Aware Extraction
+## Phase 1: Meaningful Direction-Aware Extraction
 
-Purpose: extract relationship direction before touching retrieval.
+Purpose: extract fewer, more meaningful relationships with direction and relation type before touching retrieval.
 
 Tasks:
 
-- Extend JSON extraction prompt to require `directionality`, `relation_type`, and optionally `direction_confidence`.
+- Extend JSON extraction prompt to require `directionality`, `relation_type`, `relation_importance`, and optionally `direction_confidence`.
 - Extend delimiter extraction only if still needed. JSON mode should be primary.
 - Update PEM prompt examples with directed and undirected examples.
+- Add a "meaningful relation gate" to the prompt:
+  - extract direct causal, process, dependency, measurement, material, defect, provenance, or evidence relations.
+  - avoid weak co-occurrence and generic topic associations.
+  - prefer no relationship over a vague `related_to` relationship.
+  - keep relations useful for upstream root-cause and downstream consequence tracing.
+- Add domain examples:
+  - `Electrode Stacking -> influences -> Electrode Thickness`
+  - `Insufficient Electrode Thickness -> causes -> Defect X`
+  - `Defect X -> results_in -> Quality Loss`
+  - `Defect X <- caused_by <- Insufficient Electrode Thickness` should not be stored as a second edge; it should be query-time reverse traversal of the same edge.
 - Parse the new fields in extraction and preserve them in relationship data.
 - Default missing values to:
   - `directionality="unknown"`
   - `relation_type` from `keywords` fallback
+  - `relation_importance=0.5`
   - no confidence if absent
+- Add a configurable extraction filter:
+  - keep all relations by default during initial evaluation.
+  - optionally filter out relations with `relation_importance < RELATION_IMPORTANCE_THRESHOLD`.
+  - recommended initial threshold for experiments: `0.45`.
 
 Files:
 
@@ -253,6 +316,8 @@ Acceptance criteria:
 - New documents store relation metadata with `directionality`.
 - Old documents still process when the model omits direction metadata.
 - Unit tests cover directed, undirected, and unknown relationship extraction.
+- Prompt examples produce causal/process relations rather than generic co-occurrence edges.
+- A synthetic test document can produce the chain `Electrode Stacking -> Electrode Thickness -> Defect X`.
 
 ## Phase 2: Central Relation Identity Helpers Later
 

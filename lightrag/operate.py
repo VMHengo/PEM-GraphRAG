@@ -500,12 +500,14 @@ def _handle_single_relationship_extraction(
     timestamp: int,
     file_path: str = "unknown_source",
 ):
+    expected_relationship_field_counts = (5, 9)
     if (
-        len(record_attributes) != 5 or "relation" not in record_attributes[0]
+        len(record_attributes) not in expected_relationship_field_counts
+        or "relation" not in record_attributes[0]
     ):  # treat "relationship" and "relation" interchangeable
         if len(record_attributes) > 1 and "relation" in record_attributes[0]:
             logger.warning(
-                f"{chunk_key}: LLM output format error; found {len(record_attributes)}/5 fields on RELATION `{record_attributes[1]}`~`{record_attributes[2] if len(record_attributes) > 2 else 'N/A'}`"
+                f"{chunk_key}: LLM output format error; found {len(record_attributes)}/5 or 9 fields on RELATION `{record_attributes[1]}`~`{record_attributes[2] if len(record_attributes) > 2 else 'N/A'}`"
             )
             logger.debug(record_attributes)
         return None
@@ -551,10 +553,27 @@ def _handle_single_relationship_extraction(
             )
             return None
 
+        relationship_metadata = _build_relationship_metadata(
+            directionality=record_attributes[5] if len(record_attributes) > 5 else None,
+            relation_type=record_attributes[6] if len(record_attributes) > 6 else None,
+            relation_importance=(
+                record_attributes[7] if len(record_attributes) > 7 else None
+            ),
+            chain_role=record_attributes[8] if len(record_attributes) > 8 else None,
+            keywords=edge_keywords,
+            source=source,
+            target=target,
+        )
+        if not _relationship_importance_allowed(
+            relationship_metadata["relation_importance"]
+        ):
+            return None
+
         edge_source_id = chunk_key
         weight = (
             float(record_attributes[-1].strip('"').strip("'"))
-            if is_float_regex(record_attributes[-1].strip('"').strip("'"))
+            if len(record_attributes) == 5
+            and is_float_regex(record_attributes[-1].strip('"').strip("'"))
             else 1.0
         )
 
@@ -567,6 +586,7 @@ def _handle_single_relationship_extraction(
             source_id=edge_source_id,
             file_path=file_path,
             timestamp=timestamp,
+            **relationship_metadata,
         )
 
     except ValueError as e:
@@ -586,7 +606,7 @@ def _normalize_text_extraction_record_attributes(
 ) -> list[str]:
     """Recover the known text-mode failure where relation rows use the entity prefix."""
 
-    if len(record_attributes) != 5:
+    if len(record_attributes) not in (5, 9):
         return record_attributes
 
     prefix = record_attributes[0].strip().lower()
@@ -601,6 +621,168 @@ def _normalize_text_extraction_record_attributes(
     normalized = list(record_attributes)
     normalized[0] = "relation"
     return normalized
+
+
+def _slugify_relationship_value(value: object, default: str) -> str:
+    text = sanitize_and_normalize_extracted_text(str(value or ""))
+    text = text.strip().lower().replace("-", "_")
+    text = re.sub(r"[^a-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text or default
+
+
+def _normalize_relationship_directionality(value: object) -> str:
+    directionality = _slugify_relationship_value(value, "unknown")
+    if directionality in {"directed", "outgoing", "forward"}:
+        return "directed"
+    if directionality in {
+        "undirected",
+        "bidirectional",
+        "symmetric",
+        "mutual",
+        "both",
+    }:
+        return "undirected"
+    return "unknown"
+
+
+def _fallback_relation_type_from_keywords(keywords: str) -> str:
+    for keyword in keywords.split(","):
+        relation_type = _slugify_relationship_value(keyword, "")
+        if relation_type:
+            return relation_type
+    return "related_to"
+
+
+def _normalize_relationship_importance(value: object) -> float:
+    if value is None or value == "":
+        return 0.5
+
+    value_str = str(value).strip().strip('"').strip("'")
+    if not is_float_regex(value_str):
+        return 0.5
+
+    return max(0.0, min(1.0, float(value_str)))
+
+
+def _normalize_optional_relationship_confidence(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+
+    value_str = str(value).strip().strip('"').strip("'")
+    if not is_float_regex(value_str):
+        return None
+
+    return max(0.0, min(1.0, float(value_str)))
+
+
+def _normalize_chain_role(value: object) -> str:
+    chain_role = _slugify_relationship_value(value, "other")
+    valid_roles = {
+        "root_cause",
+        "process_step",
+        "process_parameter",
+        "material_dependency",
+        "measurement",
+        "defect",
+        "consequence",
+        "evidence",
+        "publication_metadata",
+        "process_improvement",
+        "process_input",
+        "process_output",
+        "quality_outcome",
+        "organization_context",
+        "other",
+    }
+    return chain_role if chain_role in valid_roles else "other"
+
+
+def _relationship_importance_allowed(relation_importance: float) -> bool:
+    threshold = get_env_value("RELATION_IMPORTANCE_THRESHOLD", 0.0, float)
+    threshold = max(0.0, min(1.0, threshold))
+    return relation_importance >= threshold
+
+
+def _build_relationship_metadata(
+    *,
+    directionality: object = None,
+    relation_type: object = None,
+    relation_importance: object = None,
+    chain_role: object = None,
+    direction_confidence: object = None,
+    direction_rationale: object = None,
+    keywords: str = "",
+    source: str = "",
+    target: str = "",
+) -> dict:
+    normalized_relation_type = _slugify_relationship_value(
+        relation_type, _fallback_relation_type_from_keywords(keywords)
+    )
+    metadata = {
+        "directionality": _normalize_relationship_directionality(directionality),
+        "relation_type": normalized_relation_type,
+        "relation_importance": _normalize_relationship_importance(
+            relation_importance
+        ),
+        "chain_role": _normalize_chain_role(chain_role),
+        "semantic_src_id": source,
+        "semantic_tgt_id": target,
+    }
+
+    confidence = _normalize_optional_relationship_confidence(direction_confidence)
+    if confidence is not None:
+        metadata["direction_confidence"] = confidence
+
+    rationale = sanitize_and_normalize_extracted_text(str(direction_rationale or ""))
+    if rationale:
+        metadata["direction_rationale"] = rationale
+
+    return metadata
+
+
+def _rank_relationship_metadata_source(edge: dict) -> tuple[float, float]:
+    confidence = edge.get("direction_confidence")
+    if not isinstance(confidence, (int, float)):
+        confidence = 0.0
+    return (
+        _normalize_relationship_importance(edge.get("relation_importance")),
+        max(0.0, min(1.0, float(confidence))),
+    )
+
+
+def _merge_relationship_metadata(
+    existing_edge: dict | None,
+    edges_data: list[dict],
+    keywords: str,
+    src_id: str,
+    tgt_id: str,
+) -> dict:
+    candidates = []
+    if existing_edge:
+        candidates.append(dict(existing_edge))
+    candidates.extend(dict(edge) for edge in edges_data)
+
+    if not candidates:
+        return _build_relationship_metadata(
+            keywords=keywords,
+            source=src_id,
+            target=tgt_id,
+        )
+
+    best_edge = max(candidates, key=_rank_relationship_metadata_source)
+    metadata = _build_relationship_metadata(
+        directionality=best_edge.get("directionality"),
+        relation_type=best_edge.get("relation_type"),
+        relation_importance=best_edge.get("relation_importance"),
+        chain_role=best_edge.get("chain_role"),
+        direction_confidence=best_edge.get("direction_confidence"),
+        direction_rationale=best_edge.get("direction_rationale"),
+        keywords=keywords or best_edge.get("keywords", ""),
+        source=best_edge.get("semantic_src_id") or best_edge.get("src_id") or src_id,
+        target=best_edge.get("semantic_tgt_id") or best_edge.get("tgt_id") or tgt_id,
+    )
+    return metadata
 
 
 def _looks_like_json_extraction_result(result: str) -> bool:
@@ -785,6 +967,22 @@ async def _process_json_extraction_result(
                 "Relation entity",
             )
 
+            relationship_metadata = _build_relationship_metadata(
+                directionality=rel_data.get("directionality"),
+                relation_type=rel_data.get("relation_type"),
+                relation_importance=rel_data.get("relation_importance"),
+                chain_role=rel_data.get("chain_role"),
+                direction_confidence=rel_data.get("direction_confidence"),
+                direction_rationale=rel_data.get("direction_rationale"),
+                keywords=edge_keywords,
+                source=truncated_source,
+                target=truncated_target,
+            )
+            if not _relationship_importance_allowed(
+                relationship_metadata["relation_importance"]
+            ):
+                continue
+
             edge_data = dict(
                 src_id=truncated_source,
                 tgt_id=truncated_target,
@@ -794,6 +992,7 @@ async def _process_json_extraction_result(
                 source_id=chunk_key,
                 file_path=file_path,
                 timestamp=timestamp,
+                **relationship_metadata,
             )
             maybe_edges[(truncated_source, truncated_target)].append(edge_data)
 
@@ -2437,6 +2636,13 @@ async def _merge_edges_then_upsert(
             global_config,
             llm_response_cache,
         )
+        relationship_metadata = _merge_relationship_metadata(
+            already_edge,
+            edges_data,
+            keywords,
+            src_id,
+            tgt_id,
+        )
 
         # 9. Build file_path within MAX_FILE_PATHS limit
         file_paths_list = []
@@ -2735,6 +2941,7 @@ async def _merge_edges_then_upsert(
                 file_path=file_path,
                 created_at=edge_created_at,
                 truncate=truncation_info,
+                **relationship_metadata,
             ),
         )
         edge_upsert_elapsed = time.perf_counter() - edge_upsert_started
@@ -2755,6 +2962,7 @@ async def _merge_edges_then_upsert(
             created_at=edge_created_at,
             truncate=truncation_info,
             weight=weight,
+            **relationship_metadata,
         )
 
         # Sort src_id and tgt_id to ensure consistent ordering (smaller string first)
@@ -2771,7 +2979,7 @@ async def _merge_edges_then_upsert(
                     f"Could not delete old relationship vector records {rel_vdb_id}, {rel_vdb_id_reverse}: {e}"
                 )
             rel_content = _truncate_vdb_content(
-                f"{keywords}\t{src_id}\n{tgt_id}\n{description}",
+                f"{relationship_metadata['relation_type']}\t{keywords}\t{src_id}\n{tgt_id}\n{description}",
                 global_config,
                 f"relationship:{src_id}-{tgt_id}",
             )
@@ -2785,6 +2993,7 @@ async def _merge_edges_then_upsert(
                     "description": description,
                     "weight": weight,
                     "file_path": file_path,
+                    **relationship_metadata,
                 }
             }
             relation_status_message = f"Upserting relation VDB: `{relation_key}`"

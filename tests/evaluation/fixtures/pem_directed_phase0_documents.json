@@ -1,0 +1,38 @@
+[
+  {
+    "id": "pem-production-chain-electrode-stacking",
+    "title": "Electrode Stacking Production Chain",
+    "category": "production_chain",
+    "content": "Electrode stacking is a process step in battery cell assembly. Electrode stacking influences electrode thickness. Electrode thickness affects cell compression. Cell compression influences battery cell quality."
+  },
+  {
+    "id": "pem-causal-chain-coating-defect",
+    "title": "Coating Defect Causal Chain",
+    "category": "causal_chain",
+    "content": "Insufficient electrode drying causes residual solvent. Residual solvent causes coating defect formation. Coating defects lead to capacity fade in lithium-ion battery cells."
+  },
+  {
+    "id": "pem-root-cause-lithium-plating",
+    "title": "Lithium Plating Root Cause Chain",
+    "category": "root_cause",
+    "content": "High charging current increases lithium plating risk. Lithium plating degrades graphite electrode material. Degraded graphite electrode material contributes to battery aging."
+  },
+  {
+    "id": "pem-production-chain-pack-integration",
+    "title": "Battery Pack Integration Chain",
+    "category": "production_chain",
+    "content": "Cell finalization produces validated lithium-ion battery cells. Battery pack integration uses validated lithium-ion battery cells. Battery pack integration produces battery packs for electromobility systems."
+  },
+  {
+    "id": "pem-causal-chain-thermal-runaway",
+    "title": "Thermal Runaway Propagation Chain",
+    "category": "causal_chain",
+    "content": "Internal short circuit causes local heat generation. Local heat generation causes thermal runaway. Thermal runaway can trigger thermal propagation in neighboring cells."
+  },
+  {
+    "id": "pem-root-cause-electrolyzer-crossover",
+    "title": "PEM Electrolysis Crossover Root Cause",
+    "category": "root_cause",
+    "content": "Fuel cell membrane degradation increases crossover phenomena in PEM electrolysis. Crossover phenomena reduce PEM electrolyzer efficiency. Electrochemical characterization measures crossover phenomena."
+  }
+]

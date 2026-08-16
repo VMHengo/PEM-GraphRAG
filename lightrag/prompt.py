@@ -75,7 +75,7 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
   - Output fewer rows if fewer high-value items are present. Do not try to fill the limit.
   - Only output relationship rows whose source and target entities are both included in the selected entity rows for this response.
   - If the limit is reached, stop adding new rows immediately and output `{completion_delimiter}`.
-  - Treat all relationships as **undirected** unless explicitly stated otherwise. Swapping the source and target entities for an undirected relationship does not constitute a new relationship.
+  - Preserve source-to-target order when the text supports a meaningful causal, production-chain, dependency, material-flow, optimization, measurement, evidence, or provenance direction. Treat relationships as undirected only when the relationship is symmetric, such as collaboration, comparison, similarity, or mutual association.
   - Avoid outputting duplicate relationships.
   - Within the list of relationships, output the relationships that are **most significant** to the core meaning of the input text first.
 
@@ -255,9 +255,14 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
     - `target`: The name of the target entity. Ensure **consistent naming** with entity extraction. Capitalize the first letter of each significant word (title case) if the name is case-insensitive.
     - `keywords`: One or more high-level keywords summarizing the overarching nature, concepts, or themes of the relationship, separated by commas.
     - `description`: A concise explanation of the nature of the relationship between the source and target entities, providing a clear rationale for their connection.
+    - `directionality`: Use `directed`, `undirected`, or `unknown`. Prefer `directed` for causal, production-chain, dependency, material-flow, optimization, measurement, evidence, and provenance relationships when source-to-target order is supported by the text.
+    - `relation_type`: A short canonical predicate such as `causes`, `influences`, `affects`, `increases`, `leads_to`, `results_in`, `degrades`, `produces`, `uses`, `used_for`, `contains`, `part_of`, `occurs_in`, `optimizes`, `supports`, `studies`, `measures`, `published_by`, `collaborates_with`, or `compared_with`.
+    - `relation_importance`: A number between `0.0` and `1.0` estimating whether the relationship is meaningful enough to keep as a graph edge.
+    - `chain_role`: One of `root_cause`, `process_step`, `process_parameter`, `material_dependency`, `measurement`, `defect`, `consequence`, `evidence`, `publication_metadata`, `process_improvement`, `process_input`, `process_output`, `quality_outcome`, `organization_context`, or `other`.
 
 3. **Relationship Direction & Duplication:**
-  - Treat all relationships as **undirected** unless explicitly stated otherwise. Swapping the source and target entities for an undirected relationship does not constitute a new relationship.
+  - Treat a relationship as `directed` when the text supports a meaningful source-to-target order. Treat a relationship as `undirected` only when the relationship is symmetric, such as collaboration, comparison, similarity, or mutual association. Use `unknown` when direction cannot be inferred.
+  - For directed relationships, store only the forward canonical edge. Do not output the reverse edge as a second duplicate relationship.
   - Avoid outputting duplicate relationships.
 
 4. **Output Limits & Prioritization:**

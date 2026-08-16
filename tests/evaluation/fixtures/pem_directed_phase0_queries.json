@@ -1,0 +1,198 @@
+[
+  {
+    "id": "production-electrode-stacking-downstream",
+    "category": "production_chain",
+    "query": "Which downstream production properties are influenced by electrode stacking?",
+    "requires_multihop": true,
+    "expected_entities": [
+      "Electrode Stacking",
+      "Electrode Thickness",
+      "Cell Compression",
+      "Battery Cell Quality"
+    ],
+    "expected_relations": [
+      {
+        "source": "Electrode Stacking",
+        "target": "Electrode Thickness",
+        "relation_type": "influences",
+        "directionality": "directed",
+        "chain_role": "process_parameter"
+      },
+      {
+        "source": "Electrode Thickness",
+        "target": "Cell Compression",
+        "relation_type": "affects",
+        "directionality": "directed",
+        "chain_role": "measurement"
+      }
+    ]
+  },
+  {
+    "id": "production-pack-integration-output",
+    "category": "production_chain",
+    "query": "What does battery pack integration use and what does it produce?",
+    "requires_multihop": false,
+    "expected_entities": [
+      "Battery Pack Integration",
+      "Validated Lithium-Ion Battery Cells",
+      "Battery Packs"
+    ],
+    "expected_relations": [
+      {
+        "source": "Battery Pack Integration",
+        "target": "Validated Lithium-Ion Battery Cells",
+        "relation_type": "uses",
+        "directionality": "directed",
+        "chain_role": "process_input"
+      },
+      {
+        "source": "Battery Pack Integration",
+        "target": "Battery Packs",
+        "relation_type": "produces",
+        "directionality": "directed",
+        "chain_role": "process_output"
+      }
+    ]
+  },
+  {
+    "id": "causal-coating-defect-downstream",
+    "category": "causal_chain",
+    "query": "What can residual solvent cause downstream in lithium-ion battery cells?",
+    "requires_multihop": true,
+    "expected_entities": [
+      "Residual Solvent",
+      "Coating Defect Formation",
+      "Capacity Fade",
+      "Lithium-Ion Battery Cells"
+    ],
+    "expected_relations": [
+      {
+        "source": "Residual Solvent",
+        "target": "Coating Defect Formation",
+        "relation_type": "causes",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      },
+      {
+        "source": "Coating Defect Formation",
+        "target": "Capacity Fade",
+        "relation_type": "leads_to",
+        "directionality": "directed",
+        "chain_role": "consequence"
+      }
+    ]
+  },
+  {
+    "id": "causal-thermal-runaway-chain",
+    "category": "causal_chain",
+    "query": "Trace the causal chain from internal short circuit to thermal propagation.",
+    "requires_multihop": true,
+    "expected_entities": [
+      "Internal Short Circuit",
+      "Local Heat Generation",
+      "Thermal Runaway",
+      "Thermal Propagation"
+    ],
+    "expected_relations": [
+      {
+        "source": "Internal Short Circuit",
+        "target": "Local Heat Generation",
+        "relation_type": "causes",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      },
+      {
+        "source": "Thermal Runaway",
+        "target": "Thermal Propagation",
+        "relation_type": "causes",
+        "directionality": "directed",
+        "chain_role": "consequence"
+      }
+    ]
+  },
+  {
+    "id": "root-cause-coating-defect-upstream",
+    "category": "root_cause",
+    "query": "If coating defects are found, what upstream process issue could be responsible?",
+    "requires_multihop": true,
+    "expected_entities": [
+      "Insufficient Electrode Drying",
+      "Residual Solvent",
+      "Coating Defect Formation"
+    ],
+    "expected_relations": [
+      {
+        "source": "Insufficient Electrode Drying",
+        "target": "Residual Solvent",
+        "relation_type": "causes",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      },
+      {
+        "source": "Residual Solvent",
+        "target": "Coating Defect Formation",
+        "relation_type": "causes",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      }
+    ]
+  },
+  {
+    "id": "root-cause-lithium-plating-upstream",
+    "category": "root_cause",
+    "query": "If lithium plating is detected, what upstream charging condition may contribute to it?",
+    "requires_multihop": false,
+    "expected_entities": [
+      "High Charging Current",
+      "Lithium Plating"
+    ],
+    "expected_relations": [
+      {
+        "source": "High Charging Current",
+        "target": "Lithium Plating",
+        "relation_type": "increases",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      }
+    ]
+  },
+  {
+    "id": "root-cause-crossover-upstream",
+    "category": "root_cause",
+    "query": "What upstream material degradation can explain crossover phenomena in PEM electrolysis?",
+    "requires_multihop": false,
+    "expected_entities": [
+      "Fuel Cell Membrane Degradation",
+      "Crossover Phenomena",
+      "PEM Electrolysis"
+    ],
+    "expected_relations": [
+      {
+        "source": "Fuel Cell Membrane Degradation",
+        "target": "Crossover Phenomena",
+        "relation_type": "increases",
+        "directionality": "directed",
+        "chain_role": "root_cause"
+      }
+    ]
+  },
+  {
+    "id": "measurement-crossover-evidence",
+    "category": "root_cause",
+    "query": "Which method measures crossover phenomena in PEM electrolysis?",
+    "requires_multihop": false,
+    "expected_entities": [
+      "Electrochemical Characterization",
+      "Crossover Phenomena"
+    ],
+    "expected_relations": [
+      {
+        "source": "Electrochemical Characterization",
+        "target": "Crossover Phenomena",
+        "relation_type": "measures",
+        "directionality": "directed",
+        "chain_role": "measurement"
+      }
+    ]
+  }
+]
