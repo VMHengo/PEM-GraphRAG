@@ -442,6 +442,50 @@ Data
 Other
 ```
 
+### Direction-Aware Relationship Metadata
+
+The PEM extraction profile now asks JSON extraction to include relationship
+metadata that is useful for causal chains, production chains, and root-cause
+questions:
+
+```json
+{
+  "source": "Electrode Stacking",
+  "target": "Electrode Thickness",
+  "keywords": "process parameter, thickness influence",
+  "description": "Electrode stacking influences electrode thickness.",
+  "directionality": "directed",
+  "relation_type": "influences",
+  "relation_importance": 0.93,
+  "chain_role": "process_parameter"
+}
+```
+
+Stored relationship metadata fields:
+
+| Field | Meaning |
+| --- | --- |
+| `directionality` | `directed`, `undirected`, or `unknown` |
+| `relation_type` | Canonical predicate such as `causes`, `influences`, `produces`, `uses`, `part_of`, `optimizes`, `measures`, or `published_by` |
+| `relation_importance` | Float from `0.0` to `1.0`; higher means the edge is more useful for graph reasoning |
+| `chain_role` | Role in a chain, such as `root_cause`, `process_step`, `process_parameter`, `measurement`, `defect`, `consequence`, or `publication_metadata` |
+| `semantic_src_id` / `semantic_tgt_id` | Preserves the extracted semantic direction even while the current LightRAG merge key remains undirected |
+
+Backward compatibility is preserved:
+
+- Old JSON extraction results without these fields still parse.
+- Old delimiter extraction rows with five fields still parse.
+- New delimiter extraction rows with nine fields are accepted.
+- Missing metadata defaults to `directionality="unknown"`, `relation_importance=0.5`, `chain_role="other"`, and `relation_type` derived from the first keyword.
+
+Optional filtering:
+
+```env
+RELATION_IMPORTANCE_THRESHOLD=0.45
+```
+
+The default is `0.0`, which keeps all relationships during evaluation.
+
 ### Current Extraction LLM Configuration
 
 Extraction can be configured separately from normal query answering:
@@ -549,6 +593,13 @@ relationships, creates or updates graph nodes/edges, and writes related vectors.
 Neo4j stores the knowledge graph structure. It does not store all document
 chunks or all embeddings in the default setup.
 
+Current limitation: the LightRAG storage abstraction still treats relation
+identity mostly as undirected. Phase 1 therefore stores semantic direction as
+edge properties (`directionality`, `semantic_src_id`, `semantic_tgt_id`) without
+yet rewriting all graph-storage keys and vector IDs. Directed multi-hop retrieval
+should use these properties until the full direction-aware storage migration is
+implemented.
+
 ### Current Neo4j Configuration
 
 ```env
@@ -582,6 +633,22 @@ docker compose \
   -f deploy/mcp/docker-compose.staging.yml \
   exec -T neo4j cypher-shell -u neo4j -p "$PASS" \
   "MATCH (n) RETURN labels(n), count(n) ORDER BY count(n) DESC;"
+```
+
+To inspect the new directed relationship metadata:
+
+```bash
+PASS=$(grep '^NEO4J_PASSWORD=' .env.staging | cut -d= -f2-)
+
+docker compose \
+  --project-name pem-staging \
+  --env-file .env.staging \
+  -f deploy/mcp/docker-compose.staging.yml \
+  exec -T neo4j cypher-shell -u neo4j -p "$PASS" \
+  "MATCH (a)-[r]->(b)
+   WHERE r.relation_type IS NOT NULL
+   RETURN a.entity_id, r.relation_type, r.directionality, r.relation_importance, r.chain_role, b.entity_id
+   LIMIT 25;"
 ```
 
 ## 10. Community Detection And Global Retrieval
@@ -733,6 +800,7 @@ OAUTH2_PROXY_ISSUER_URL=https://...
 | Change extraction model | `.env`, compose env, `lightrag/api/lightrag_server.py` |
 | Change entity types/prompt | `prompts/entity_type/*.yml`, `lightrag/prompt.py` |
 | Change extraction parsing | `lightrag/operate.py` |
+| Change directed relationship metadata | `prompts/entity_type/*.yml`, `lightrag/prompt.py`, `lightrag/operate.py`, `docs/directed_multihop_retrieval_plan.md` |
 | Change Azure Batch behavior | `lightrag/api/azure_batch.py`, `DocumentManager.tsx` |
 | Change Neo4j behavior | `lightrag/kg/neo4j_impl.py` |
 | Change retrieval behavior | `lightrag/operate.py`, `query_routes.py` |
@@ -819,4 +887,3 @@ When future developers want to improve quality, the best order is usually:
 3. Improve embedding model or retrieval parameters.
 4. Improve entity prompt and extraction model.
 5. Improve graph merge/retrieval logic.
-
