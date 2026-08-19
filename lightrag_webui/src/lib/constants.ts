@@ -10,6 +10,10 @@ export const controlButtonVariant: ButtonVariantType = 'ghost'
 export const labelColorDarkTheme = '#FFFFFF'
 export const LabelColorHighlightedDarkTheme = '#000000'
 export const labelColorLightTheme = '#000'
+export const graphLabelFont = 'Inter, Arial, sans-serif'
+export const graphNodeLabelSize = 14
+export const graphEdgeLabelSize = 14
+export const graphNodeLabelRenderedSizeThreshold = 8
 
 export const nodeColorDisabled = '#E2E2E2'
 export const nodeBorderColor = '#EEEEEE'
@@ -19,6 +23,8 @@ export const edgeColorDarkTheme = '#888888'
 export const edgeColorSelected = '#F57F17'
 export const edgeColorHighlightedDarkTheme = '#F57F17'
 export const edgeColorHighlightedLightTheme = '#F57F17'
+export const edgeLabelColorDarkTheme = '#FFD166'
+export const edgeLabelColorLightTheme = '#7A3E00'
 
 export const searchResultLimit = 50
 export const labelListLimit = 100

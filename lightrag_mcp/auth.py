@@ -58,8 +58,16 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             else None
         )
 
+    @staticmethod
+    def _is_public_path(path: str) -> bool:
+        return (
+            path == "/healthz"
+            or path.startswith("/.well-known/")
+            or path.startswith("/mcp/.well-known/")
+        )
+
     async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path == "/healthz" or not self.config.auth_required:
+        if self._is_public_path(request.url.path) or not self.config.auth_required:
             return await call_next(request)
 
         auth_header = request.headers.get("authorization", "")
@@ -82,4 +90,3 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
         request.state.auth_claims = claims
         return await call_next(request)
-

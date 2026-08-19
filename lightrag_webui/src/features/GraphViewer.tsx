@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 // import { MiniMap } from '@react-sigma/minimap'
 import { SigmaContainer, useRegisterEvents, useSigma } from '@react-sigma/core'
 import { Settings as SigmaSettings } from 'sigma/settings'
-import { GraphSearchOption, OptionItem } from '@react-sigma/graph-search'
+import { GraphSearchOption } from '@react-sigma/graph-search'
 import { EdgeArrowProgram, NodePointProgram, NodeCircleProgram } from 'sigma/rendering'
 import { NodeBorderProgram } from '@sigma/node-border'
 import { EdgeCurvedArrowProgram, createEdgeCurveProgram } from '@sigma/edge-curve'
@@ -14,7 +14,7 @@ import GraphControl from '@/components/graph/GraphControl'
 import ZoomControl from '@/components/graph/ZoomControl'
 import FullScreenControl from '@/components/graph/FullScreenControl'
 import Settings from '@/components/graph/Settings'
-import GraphSearch from '@/components/graph/GraphSearch'
+import GraphSearch, { OptionItem } from '@/components/graph/GraphSearch'
 import GraphLabels from '@/components/graph/GraphLabels'
 import PropertiesView from '@/components/graph/PropertiesView'
 import SettingsDisplay from '@/components/graph/SettingsDisplay'
@@ -23,7 +23,16 @@ import LegendButton from '@/components/graph/LegendButton'
 
 import { useSettingsStore } from '@/stores/settings'
 import { useGraphStore } from '@/stores/graph'
-import { labelColorDarkTheme, labelColorLightTheme } from '@/lib/constants'
+import {
+  edgeLabelColorDarkTheme,
+  edgeLabelColorLightTheme,
+  graphEdgeLabelSize,
+  graphLabelFont,
+  graphNodeLabelRenderedSizeThreshold,
+  graphNodeLabelSize,
+  labelColorDarkTheme,
+  labelColorLightTheme
+} from '@/lib/constants'
 
 import '@react-sigma/core/lib/style.css'
 import '@react-sigma/graph-search/lib/style.css'
@@ -45,20 +54,20 @@ const createSigmaSettings = (isDarkTheme: boolean): Partial<SigmaSettings> => ({
     point: NodePointProgram
   },
   labelGridCellSize: 60,
-  labelRenderedSizeThreshold: 12,
+  labelRenderedSizeThreshold: graphNodeLabelRenderedSizeThreshold,
   enableEdgeEvents: true,
   labelColor: {
     color: isDarkTheme ? labelColorDarkTheme : labelColorLightTheme,
     attribute: 'labelColor'
   },
   edgeLabelColor: {
-    color: isDarkTheme ? labelColorDarkTheme : labelColorLightTheme,
+    color: isDarkTheme ? edgeLabelColorDarkTheme : edgeLabelColorLightTheme,
     attribute: 'labelColor'
   },
-  edgeLabelSize: 8,
-  labelSize: 12
+  edgeLabelSize: graphEdgeLabelSize,
+  labelSize: graphNodeLabelSize,
+  labelFont: graphLabelFont
   // minEdgeThickness: 2
-  // labelFont: 'Lato, sans-serif'
 })
 
 const GraphEvents = () => {
@@ -113,6 +122,7 @@ const GraphViewer = () => {
 
   const selectedNode = useGraphStore.use.selectedNode()
   const focusedNode = useGraphStore.use.focusedNode()
+  const selectedEdge = useGraphStore.use.selectedEdge()
   const moveToSelectedNode = useGraphStore.use.moveToSelectedNode()
   const isFetching = useGraphStore.use.isFetching()
 
@@ -178,22 +188,39 @@ const GraphViewer = () => {
   // in GraphControl was sufficient. This code was removed to simplify implementation
 
   const onSearchFocus = useCallback((value: GraphSearchOption | null) => {
-    if (value === null) useGraphStore.getState().setFocusedNode(null)
-    else if (value.type === 'nodes') useGraphStore.getState().setFocusedNode(value.id)
+    if (value === null) {
+      useGraphStore.getState().setFocusedNode(null)
+      useGraphStore.getState().setFocusedEdge(null)
+    } else if (value.type === 'nodes') {
+      useGraphStore.getState().setFocusedNode(value.id)
+      useGraphStore.getState().setFocusedEdge(null)
+    } else if (value.type === 'edges') {
+      useGraphStore.getState().setFocusedEdge(value.id)
+      useGraphStore.getState().setFocusedNode(null)
+    }
   }, [])
 
   const onSearchSelect = useCallback((value: GraphSearchOption | null) => {
     if (value === null) {
       useGraphStore.getState().setSelectedNode(null)
+      useGraphStore.getState().setSelectedEdge(null)
     } else if (value.type === 'nodes') {
       useGraphStore.getState().setSelectedNode(value.id, true)
+      useGraphStore.getState().setSelectedEdge(null)
+    } else if (value.type === 'edges') {
+      useGraphStore.getState().setSelectedEdge(value.id)
+      useGraphStore.getState().setSelectedNode(null)
     }
   }, [])
 
   const autoFocusedNode = useMemo(() => focusedNode ?? selectedNode, [focusedNode, selectedNode])
   const searchInitSelectedNode = useMemo(
-    (): OptionItem | null => (selectedNode ? { type: 'nodes', id: selectedNode } : null),
-    [selectedNode]
+    (): OptionItem | null => {
+      if (selectedNode) return { type: 'nodes', id: selectedNode }
+      if (selectedEdge) return { type: 'edges', id: selectedEdge }
+      return null
+    },
+    [selectedNode, selectedEdge]
   )
 
   // Always render SigmaContainer but control its visibility with CSS

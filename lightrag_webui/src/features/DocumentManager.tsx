@@ -33,8 +33,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   scanNewDocuments,
   confirmDocumentExtraction,
+  getBatchExtractionOverview,
   getDocumentBatchExtractionStatus,
+  importCompletedBatchExtractions,
   importDocumentBatchExtraction,
+  startAllBatchExtractions,
   startDocumentBatchExtraction,
   updateDocumentMetadata,
   getDocumentsPaginatedWithTimeout,
@@ -43,7 +46,9 @@ import {
   DocStatusResponse,
   DocumentsRequest,
   PaginationInfo,
-  type BatchExtractionResponse
+  type BatchExtractionResponse,
+  type BatchExtractionBulkResponse,
+  type BatchExtractionOverviewResponse
 } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -140,6 +145,34 @@ const estimateExtraction = (doc: DocStatusResponse): ExtractionEstimate => {
 
   return {
     estimatedTextLength: doc.content_length ?? 0,
+    estimatedChunks,
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedCostUsd,
+    estimatedMinutesLow: Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_LOW) / 60),
+    estimatedMinutesHigh: Math.ceil((estimatedChunks * ESTIMATE_SECONDS_PER_CHUNK_HIGH) / 60),
+    warnings
+  }
+}
+
+const estimateExtractionForChunks = (chunks: number): ExtractionEstimate => {
+  const estimatedChunks = Math.max(0, chunks)
+  const estimatedInputTokens = estimatedChunks * ESTIMATE_INPUT_TOKENS_PER_CHUNK
+  const estimatedOutputTokens = estimatedChunks * ESTIMATE_OUTPUT_TOKENS_PER_CHUNK
+  const estimatedCostUsd =
+    (estimatedInputTokens / 1_000_000) * GPT_4_1_INPUT_USD_PER_1M +
+    (estimatedOutputTokens / 1_000_000) * GPT_4_1_OUTPUT_USD_PER_1M
+  const warnings = []
+
+  if (estimatedChunks >= WARN_CHUNKS) {
+    warnings.push(`Large extraction: ${formatNumber(estimatedChunks)} chunks.`)
+  }
+  if (estimatedCostUsd >= WARN_COST_USD) {
+    warnings.push(`Estimated LLM extraction cost exceeds ${formatCost(WARN_COST_USD)}.`)
+  }
+
+  return {
+    estimatedTextLength: 0,
     estimatedChunks,
     estimatedInputTokens,
     estimatedOutputTokens,
@@ -538,6 +571,11 @@ export default function DocumentManager() {
   const [extractionEstimate, setExtractionEstimate] = useState<ExtractionEstimate | null>(null)
   const [confirmingExtractionDocId, setConfirmingExtractionDocId] = useState<string | null>(null)
   const [batchActionDocId, setBatchActionDocId] = useState<string | null>(null)
+  const [advanceAllOpen, setAdvanceAllOpen] = useState(false)
+  const [advanceAllOverview, setAdvanceAllOverview] = useState<BatchExtractionOverviewResponse | null>(null)
+  const [advanceAllResult, setAdvanceAllResult] = useState<BatchExtractionBulkResponse | null>(null)
+  const [advanceAllLoading, setAdvanceAllLoading] = useState(false)
+  const [advanceAllAction, setAdvanceAllAction] = useState<'overview' | 'start' | 'import' | null>(null)
   const [sourceUrlDoc, setSourceUrlDoc] = useState<DocStatusResponse | null>(null)
   const [sourceUrlValue, setSourceUrlValue] = useState('')
   const [savingSourceUrlDocId, setSavingSourceUrlDocId] = useState<string | null>(null)
@@ -839,6 +877,10 @@ export default function DocumentManager() {
     0;
   const pendingCount = getCountValue(statusCounts, 'PENDING', 'pending') || documentCounts.pending || 0;
   const failedCount = getCountValue(statusCounts, 'FAILED', 'failed') || documentCounts.failed || 0;
+  const advanceAllEstimate = useMemo(
+    () => estimateExtractionForChunks(advanceAllOverview?.ready_chunks ?? 0),
+    [advanceAllOverview?.ready_chunks]
+  )
 
   // Store previous status counts
   const prevStatusCounts = useRef({
@@ -1378,6 +1420,60 @@ export default function DocumentManager() {
     }
   }, [extractionDoc, mergeBatchResponseIntoDoc, refreshDocumentsThrottled])
 
+  const loadAdvanceAllOverview = useCallback(async () => {
+    setAdvanceAllAction('overview')
+    try {
+      const overview = await getBatchExtractionOverview()
+      setAdvanceAllOverview(overview)
+      return overview
+    } catch (err) {
+      toast.error(`Failed to load Azure Batch overview: ${errorMessage(err)}`)
+      return null
+    } finally {
+      setAdvanceAllAction(null)
+    }
+  }, [])
+
+  const openAdvanceAllDialog = useCallback(async () => {
+    setAdvanceAllOpen(true)
+    setAdvanceAllResult(null)
+    await loadAdvanceAllOverview()
+  }, [loadAdvanceAllOverview])
+
+  const handleStartAllBatchExtractions = useCallback(async () => {
+    setAdvanceAllLoading(true)
+    setAdvanceAllAction('start')
+    try {
+      const result = await startAllBatchExtractions()
+      setAdvanceAllResult(result)
+      toast.success(result.message)
+      await loadAdvanceAllOverview()
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to start Azure Batch jobs: ${errorMessage(err)}`)
+    } finally {
+      setAdvanceAllAction(null)
+      setAdvanceAllLoading(false)
+    }
+  }, [loadAdvanceAllOverview, refreshDocumentsThrottled])
+
+  const handleImportCompletedBatchExtractions = useCallback(async () => {
+    setAdvanceAllLoading(true)
+    setAdvanceAllAction('import')
+    try {
+      const result = await importCompletedBatchExtractions()
+      setAdvanceAllResult(result)
+      toast.success(result.message)
+      await loadAdvanceAllOverview()
+      refreshDocumentsThrottled()
+    } catch (err) {
+      toast.error(`Failed to import completed Azure Batch jobs: ${errorMessage(err)}`)
+    } finally {
+      setAdvanceAllAction(null)
+      setAdvanceAllLoading(false)
+    }
+  }, [loadAdvanceAllOverview, refreshDocumentsThrottled])
+
   // New paginated data fetching function
   const fetchPaginatedDocuments = useCallback(async (
     page: number,
@@ -1770,7 +1866,20 @@ export default function DocumentManager() {
                 );
               })()
             ) : !isSelectionMode ? (
-              <ClearDocumentsDialog onDocumentsCleared={handleDocumentsCleared} />
+              <>
+                <Button
+                  variant="outline"
+                  onClick={openAdvanceAllDialog}
+                  side="bottom"
+                  tooltip="Start all ready Azure Batch extractions or import completed batches"
+                  size="sm"
+                  disabled={advanceAllLoading}
+                >
+                  {advanceAllLoading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+                  Advance All
+                </Button>
+                <ClearDocumentsDialog onDocumentsCleared={handleDocumentsCleared} />
+              </>
             ) : null}
             <UploadDocumentsDialog
               onUploadBatchAccepted={() => startActivityProbe('upload')}
@@ -2100,6 +2209,138 @@ export default function DocumentManager() {
           </CardContent>
         </Card>
       </CardContent>
+      <Dialog open={advanceAllOpen} onOpenChange={setAdvanceAllOpen}>
+        <DialogContent className="sm:max-w-2xl" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Advance all documents</DialogTitle>
+            <DialogDescription>
+              Start Azure Batch extraction for all chunked documents or import completed batch results.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-3 rounded-md border p-3 md:grid-cols-4">
+              <div>
+                <div className="text-muted-foreground">Ready</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.ready_for_batch ?? 0)} docs</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Chunks</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.ready_chunks ?? 0)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Running</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.running_batches ?? 0)} batches</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Ready import</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.completed_not_imported ?? 0)} batches</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Failed</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.failed_batches ?? 0)} batches</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Imported</div>
+                <div className="font-medium">{formatNumber(advanceAllOverview?.imported_batches ?? 0)} batches</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Est. time</div>
+                <div className="font-medium">
+                  {advanceAllEstimate.estimatedMinutesLow}-{advanceAllEstimate.estimatedMinutesHigh} min
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Est. cost</div>
+                <div className="font-medium">{formatCost(advanceAllEstimate.estimatedCostUsd)}</div>
+              </div>
+            </div>
+
+            {!advanceAllOverview?.enabled && (
+              <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
+                Azure Batch is disabled on this server.
+              </div>
+            )}
+
+            {advanceAllEstimate.warnings.length > 0 && (
+              <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-300">
+                <div className="font-medium">Warnings</div>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {advanceAllEstimate.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {advanceAllResult && (
+              <div className="rounded-md border p-3">
+                <div className="font-medium">Last action</div>
+                <div className="mt-1 text-muted-foreground">{advanceAllResult.message}</div>
+                <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
+                  <div>Started: {formatNumber(advanceAllResult.started)}</div>
+                  <div>Imported: {formatNumber(advanceAllResult.imported)}</div>
+                  <div>Skipped: {formatNumber(advanceAllResult.skipped)}</div>
+                  <div>Failed: {formatNumber(advanceAllResult.failed)}</div>
+                </div>
+                {advanceAllResult.results.length > 0 && (
+                  <div className="mt-3 max-h-40 overflow-auto rounded border">
+                    {advanceAllResult.results.slice(0, 20).map((item) => (
+                      <div key={`${item.doc_id}-${item.status}`} className="border-b px-2 py-1 last:border-b-0">
+                        <div className="flex justify-between gap-2">
+                          <span className="truncate font-mono text-xs">{item.doc_id}</span>
+                          <span className="shrink-0 text-muted-foreground">{item.status}</span>
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {item.error || item.message}
+                        </div>
+                      </div>
+                    ))}
+                    {advanceAllResult.results.length > 20 && (
+                      <div className="px-2 py-1 text-xs text-muted-foreground">
+                        Showing 20 of {formatNumber(advanceAllResult.results.length)} results.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAdvanceAllOpen(false)}
+              disabled={advanceAllLoading}
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              onClick={loadAdvanceAllOverview}
+              disabled={advanceAllLoading || advanceAllAction === 'overview'}
+            >
+              {advanceAllAction === 'overview' ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleImportCompletedBatchExtractions}
+              disabled={advanceAllLoading || !advanceAllOverview?.enabled || !advanceAllOverview.completed_not_imported}
+            >
+              {advanceAllAction === 'import' ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+              Import completed
+            </Button>
+            <Button
+              onClick={handleStartAllBatchExtractions}
+              disabled={advanceAllLoading || !advanceAllOverview?.enabled || !advanceAllOverview.ready_for_batch}
+            >
+              {advanceAllAction === 'start' ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
+              Start batch extraction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={sourceUrlDoc !== null} onOpenChange={(open) => {
         if (!open) closeSourceUrlDialog()
       }}>

@@ -794,6 +794,35 @@ class BatchExtractionResponse(BaseModel):
     message: str
 
 
+class BatchExtractionBulkItem(BaseModel):
+    doc_id: str
+    status: str
+    message: str
+    batch: Optional[BatchExtractionResponse] = None
+    error: Optional[str] = None
+
+
+class BatchExtractionOverviewResponse(BaseModel):
+    enabled: bool = True
+    ready_for_batch: int = 0
+    ready_chunks: int = 0
+    running_batches: int = 0
+    completed_not_imported: int = 0
+    failed_batches: int = 0
+    imported_batches: int = 0
+    total_batch_jobs: int = 0
+
+
+class BatchExtractionBulkResponse(BaseModel):
+    enabled: bool = True
+    started: int = 0
+    imported: int = 0
+    skipped: int = 0
+    failed: int = 0
+    results: list[BatchExtractionBulkItem] = Field(default_factory=list)
+    message: str
+
+
 class DocsStatusesResponse(BaseModel):
     """Response model for document statuses
 
@@ -4726,6 +4755,215 @@ def create_document_routes(
             imported_at=(job or {}).get("imported_at"),
             message=message,
         )
+
+    async def _all_doc_status_payloads() -> dict[str, dict[str, Any]]:
+        if hasattr(rag.doc_status, "get_docs_by_statuses"):
+            docs = await rag.doc_status.get_docs_by_statuses(list(DocStatus))
+        else:
+            docs: dict[str, Any] = {}
+            for status in DocStatus:
+                docs.update(await rag.doc_status.get_docs_by_status(status))
+
+        def status_doc_to_dict(doc: Any) -> dict[str, Any]:
+            if is_dataclass(doc):
+                return asdict(doc)
+            if isinstance(doc, dict):
+                return dict(doc)
+            return dict(getattr(doc, "__dict__", {}))
+
+        return {doc_id: status_doc_to_dict(doc) for doc_id, doc in docs.items()}
+
+    async def _batch_overview_from_docs(
+        docs: dict[str, dict[str, Any]],
+    ) -> BatchExtractionOverviewResponse:
+        overview = BatchExtractionOverviewResponse(enabled=azure_batch_enabled())
+        active_statuses = {"validating", "in_progress", "finalizing"}
+        failed_statuses = {"failed", "cancelled", "expired"}
+
+        for doc_id, doc in docs.items():
+            metadata = dict(doc.get("metadata") or {})
+            job = await load_batch_job(rag, doc_id)
+            batch_status = (job or {}).get("status") or metadata.get("batch_status")
+            imported_at = (job or {}).get("imported_at") or metadata.get(
+                "batch_imported_at"
+            )
+
+            if batch_status:
+                overview.total_batch_jobs += 1
+            if batch_status in active_statuses:
+                overview.running_batches += 1
+            elif batch_status == "completed" and not imported_at:
+                overview.completed_not_imported += 1
+            elif batch_status in failed_statuses:
+                overview.failed_batches += 1
+            elif batch_status == "imported" or imported_at:
+                overview.imported_batches += 1
+
+            if metadata.get("skip_kg") and not batch_status:
+                overview.ready_for_batch += 1
+                overview.ready_chunks += int(doc.get("chunks_count") or 0)
+
+        return overview
+
+    @router.get(
+        "/batch_extraction/overview",
+        response_model=BatchExtractionOverviewResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_batch_extraction_overview():
+        """Return aggregate Azure Batch extraction readiness and import status."""
+        try:
+            docs = await _all_doc_status_payloads()
+            return await _batch_overview_from_docs(docs)
+        except Exception as e:
+            logger.error(f"Error building Azure Batch overview: {e}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post(
+        "/batch_extraction/start_all",
+        response_model=BatchExtractionBulkResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def start_all_batch_extractions():
+        """Start Azure Batch extraction for every chunked document without a job."""
+        if not azure_batch_enabled():
+            raise HTTPException(
+                status_code=400, detail="Azure Batch extraction is disabled"
+            )
+
+        docs = await _all_doc_status_payloads()
+        response = BatchExtractionBulkResponse(
+            enabled=True, message="Azure Batch start-all completed."
+        )
+
+        for doc_id, doc in docs.items():
+            metadata = dict(doc.get("metadata") or {})
+            batch_status = metadata.get("batch_status")
+            if not metadata.get("skip_kg"):
+                response.skipped += 1
+                continue
+            if batch_status:
+                response.skipped += 1
+                response.results.append(
+                    BatchExtractionBulkItem(
+                        doc_id=doc_id,
+                        status="skipped",
+                        message=f"Document already has batch status: {batch_status}.",
+                    )
+                )
+                continue
+
+            try:
+                job = await start_azure_batch_extraction(rag, doc_id)
+                response.started += 1
+                response.results.append(
+                    BatchExtractionBulkItem(
+                        doc_id=doc_id,
+                        status="started",
+                        message="Azure Batch extraction started.",
+                        batch=_batch_response(
+                            doc_id, job, "Azure Batch extraction started."
+                        ),
+                    )
+                )
+            except Exception as e:
+                response.failed += 1
+                response.results.append(
+                    BatchExtractionBulkItem(
+                        doc_id=doc_id,
+                        status="failed",
+                        message="Failed to start Azure Batch extraction.",
+                        error=str(e),
+                    )
+                )
+
+        response.message = (
+            f"Started {response.started}, skipped {response.skipped}, "
+            f"failed {response.failed}."
+        )
+        return response
+
+    @router.post(
+        "/batch_extraction/import_completed",
+        response_model=BatchExtractionBulkResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def import_completed_batch_extractions():
+        """Refresh and import every completed Azure Batch extraction job."""
+        if not azure_batch_enabled():
+            raise HTTPException(
+                status_code=400, detail="Azure Batch extraction is disabled"
+            )
+
+        docs = await _all_doc_status_payloads()
+        response = BatchExtractionBulkResponse(
+            enabled=True, message="Azure Batch import-completed finished."
+        )
+
+        for doc_id in docs:
+            job = await load_batch_job(rag, doc_id)
+            if not job:
+                response.skipped += 1
+                continue
+
+            try:
+                refreshed_job = await refresh_azure_batch_status(rag, doc_id)
+                if refreshed_job.get("imported_at"):
+                    response.skipped += 1
+                    response.results.append(
+                        BatchExtractionBulkItem(
+                            doc_id=doc_id,
+                            status="skipped",
+                            message="Azure Batch result is already imported.",
+                            batch=_batch_response(
+                                doc_id, refreshed_job, "Batch already imported."
+                            ),
+                        )
+                    )
+                    continue
+                if refreshed_job.get("status") != "completed":
+                    response.skipped += 1
+                    response.results.append(
+                        BatchExtractionBulkItem(
+                            doc_id=doc_id,
+                            status="skipped",
+                            message=f"Batch is not completed yet: {refreshed_job.get('status')}.",
+                            batch=_batch_response(
+                                doc_id, refreshed_job, "Batch is not completed yet."
+                            ),
+                        )
+                    )
+                    continue
+
+                imported_job = await import_azure_batch_extraction(rag, doc_id)
+                response.imported += 1
+                response.results.append(
+                    BatchExtractionBulkItem(
+                        doc_id=doc_id,
+                        status="imported",
+                        message="Azure Batch extraction imported.",
+                        batch=_batch_response(
+                            doc_id, imported_job, "Azure Batch extraction imported."
+                        ),
+                    )
+                )
+            except Exception as e:
+                response.failed += 1
+                response.results.append(
+                    BatchExtractionBulkItem(
+                        doc_id=doc_id,
+                        status="failed",
+                        message="Failed to import Azure Batch extraction.",
+                        error=str(e),
+                    )
+                )
+
+        response.message = (
+            f"Imported {response.imported}, skipped {response.skipped}, "
+            f"failed {response.failed}."
+        )
+        return response
 
     @router.post(
         "/{doc_id}/batch_extraction/start",

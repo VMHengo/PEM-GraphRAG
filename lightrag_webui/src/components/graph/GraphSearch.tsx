@@ -1,6 +1,5 @@
 import { FC, useCallback, useEffect } from 'react'
 import {
-  EdgeById,
   GraphSearchInputProps,
   GraphSearchContextProviderProps
 } from '@react-sigma/graph-search'
@@ -9,6 +8,7 @@ import { searchResultLimit } from '@/lib/constants'
 import { useGraphStore } from '@/stores/graph'
 import MiniSearch from 'minisearch'
 import { useTranslation } from 'react-i18next'
+import { GitBranch } from 'lucide-react'
 
 // Message item identifier for search results
 export const messageId = '__message_item'
@@ -18,6 +18,19 @@ export interface OptionItem {
   id: string
   type: 'nodes' | 'edges' | 'message'
   message?: string
+}
+
+const optionValue = (item: OptionItem) => `${item.type}:${item.id}`
+
+const parseOptionValue = (value: string | null): OptionItem | null => {
+  if (!value) return null
+  const separator = value.indexOf(':')
+  if (separator === -1) return { id: value, type: 'nodes' }
+
+  const type = value.slice(0, separator)
+  const id = value.slice(separator + 1)
+  if (type === 'nodes' || type === 'edges') return { id, type }
+  return null
 }
 
 const NodeOption = ({ id }: { id: string }) => {
@@ -49,11 +62,34 @@ const NodeOption = ({ id }: { id: string }) => {
   )
 }
 
+const EdgeOption = ({ id }: { id: string }) => {
+  const graph = useGraphStore.use.sigmaGraph()
+
+  if (!graph?.hasEdge(id)) {
+    return null
+  }
+
+  const label = graph.getEdgeAttribute(id, 'label') || id
+  const [source, target] = graph.extremities(id)
+  const sourceLabel = graph.hasNode(source) ? graph.getNodeAttribute(source, 'label') || source : source
+  const targetLabel = graph.hasNode(target) ? graph.getNodeAttribute(target, 'label') || target : target
+
+  return (
+    <div className="flex items-center gap-2 p-2 text-sm">
+      <GitBranch className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />
+      <div className="min-w-0">
+        <div className="truncate font-medium">{label}</div>
+        <div className="truncate text-xs text-muted-foreground">{sourceLabel} - {targetLabel}</div>
+      </div>
+    </div>
+  )
+}
+
 function OptionComponent(item: OptionItem) {
   return (
     <div>
       {item.type === 'nodes' && <NodeOption id={item.id} />}
-      {item.type === 'edges' && <EdgeById id={item.id} />}
+      {item.type === 'edges' && <EdgeOption id={item.id} />}
       {item.type === 'message' && <div>{item.message}</div>}
     </div>
   )
@@ -93,23 +129,45 @@ export const GraphSearchInput = ({
     // Create new search engine
     const newSearchEngine = new MiniSearch({
       idField: 'id',
-      fields: ['label'],
+      fields: ['label', 'sourceLabel', 'targetLabel'],
       searchOptions: {
         prefix: true,
         fuzzy: 0.2,
         boost: {
-          label: 2
+          label: 2,
+          sourceLabel: 1,
+          targetLabel: 1
         }
       }
     })
 
-    // Add nodes to search engine with safety checks
-    const documents = graph.nodes()
+    const nodeDocuments = graph.nodes()
       .filter(id => graph.hasNode(id)) // Ensure node exists before accessing attributes
       .map((id: string) => ({
-        id: id,
+        id: `nodes:${id}`,
+        type: 'nodes',
+        graphId: id,
         label: graph.getNodeAttribute(id, 'label')
       }))
+
+    const edgeDocuments = graph.edges()
+      .filter(id => graph.hasEdge(id))
+      .map((id: string) => {
+        const [source, target] = graph.extremities(id)
+        const sourceLabel = graph.hasNode(source) ? graph.getNodeAttribute(source, 'label') || source : source
+        const targetLabel = graph.hasNode(target) ? graph.getNodeAttribute(target, 'label') || target : target
+
+        return {
+          id: `edges:${id}`,
+          type: 'edges',
+          graphId: id,
+          label: graph.getEdgeAttribute(id, 'label') || id,
+          sourceLabel,
+          targetLabel
+        }
+      })
+
+    const documents = [...nodeDocuments, ...edgeDocuments]
 
     if (documents.length > 0) {
       newSearchEngine.addAll(documents)
@@ -147,25 +205,24 @@ export const GraphSearchInput = ({
         }))
       }
 
-      // If has query, search nodes and verify they still exist
+      // If has query, search nodes and relationships and verify they still exist
       let result: OptionItem[] = searchEngine.search(query)
-        .filter((r: { id: string }) => graph.hasNode(r.id))
-        .map((r: { id: string }) => ({
-          id: r.id,
-          type: 'nodes'
-        }))
+        .map((r: { id: string }) => parseOptionValue(r.id))
+        .filter((item): item is OptionItem => {
+          if (!item) return false
+          return item.type === 'nodes' ? graph.hasNode(item.id) : graph.hasEdge(item.id)
+        })
 
       // Add middle-content matching if results are few
       // This enables matching content in the middle of text, not just from the beginning
       if (result.length < 5) {
         // Get already matched IDs to avoid duplicates
-        const matchedIds = new Set(result.map(item => item.id))
+        const matchedIds = new Set(result.map(optionValue))
 
-        // Perform middle-content matching on all nodes with safety checks
-        const middleMatchResults = graph.nodes()
+        const middleNodeMatches = graph.nodes()
           .filter(id => {
             // Skip already matched nodes
-            if (matchedIds.has(id)) return false
+            if (matchedIds.has(`nodes:${id}`)) return false
 
             // Ensure node exists before accessing attributes
             if (!graph.hasNode(id)) return false
@@ -183,8 +240,28 @@ export const GraphSearchInput = ({
             type: 'nodes' as const
           }))
 
+        const middleEdgeMatches = graph.edges()
+          .filter(id => {
+            if (matchedIds.has(`edges:${id}`)) return false
+            if (!graph.hasEdge(id)) return false
+
+            const label = String(graph.getEdgeAttribute(id, 'label') || '').toLowerCase()
+            const [source, target] = graph.extremities(id)
+            const sourceLabel = graph.hasNode(source) ? String(graph.getNodeAttribute(source, 'label') || source).toLowerCase() : source.toLowerCase()
+            const targetLabel = graph.hasNode(target) ? String(graph.getNodeAttribute(target, 'label') || target).toLowerCase() : target.toLowerCase()
+            const loweredQuery = query.toLowerCase()
+
+            return [label, sourceLabel, targetLabel].some((text) =>
+              text.includes(loweredQuery) && !text.startsWith(loweredQuery)
+            )
+          })
+          .map(id => ({
+            id,
+            type: 'edges' as const
+          }))
+
         // Merge results
-        result = [...result, ...middleMatchResults]
+        result = [...result, ...middleNodeMatches, ...middleEdgeMatches]
       }
 
       // prettier-ignore
@@ -207,13 +284,13 @@ export const GraphSearchInput = ({
       className="bg-background/60 w-24 rounded-xl border-1 opacity-60 backdrop-blur-lg transition-all hover:w-fit hover:opacity-100 w-full"
       fetcher={loadOptions}
       renderOption={OptionComponent}
-      getOptionValue={(item) => item.id}
-      value={value && value.type !== 'message' ? value.id : null}
+      getOptionValue={optionValue}
+      value={value && value.type !== 'message' ? optionValue(value as OptionItem) : null}
       onChange={(id) => {
-        if (id !== messageId) onChange(id ? { id, type: 'nodes' } : null)
+        if (id !== messageId) onChange(parseOptionValue(id) as any)
       }}
       onFocus={(id) => {
-        if (id !== messageId && onFocus) onFocus(id ? { id, type: 'nodes' } : null)
+        if (id !== messageId && onFocus) onFocus(parseOptionValue(id) as any)
       }}
       ariaLabel={t('graphPanel.search.placeholder')}
       placeholder={t('graphPanel.search.placeholder')}
