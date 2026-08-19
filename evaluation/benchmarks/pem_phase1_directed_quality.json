@@ -1,0 +1,124 @@
+{
+  "id": "pem_phase1_directed_quality",
+  "name": "PEM Phase 1 Directed Relationship Quality",
+  "description": "Checks whether PEM GraphRAG extracts meaningful directed production, causal, and root-cause relationships with useful metadata.",
+  "default_mode": "mix",
+  "cases": [
+    {
+      "id": "electrode_root_cause_chain",
+      "question": "What can cause coating defects in electrode production?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": [
+        "battery electrode production",
+        "root cause analysis",
+        "coating defects"
+      ],
+      "ll_keywords": [
+        "electrode stacking",
+        "electrode thickness",
+        "coating defect"
+      ],
+      "expected_entities": [
+        "Electrode Stacking",
+        "Electrode Thickness",
+        "Coating Defect"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrode Stacking",
+          "relation_type": "influences",
+          "target": "Electrode Thickness",
+          "directionality": "directed"
+        },
+        {
+          "source": "Insufficient Electrode Thickness",
+          "relation_type": "causes",
+          "target": "Coating Defect",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "electrode thickness",
+        "coating defect"
+      ],
+      "expected_documents": []
+    },
+    {
+      "id": "battery_cell_production_chain",
+      "question": "Which process steps are part of battery cell manufacturing?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": [
+        "battery cell manufacturing",
+        "production chain"
+      ],
+      "ll_keywords": [
+        "electrode drying",
+        "cell assembly",
+        "cell finalization",
+        "battery pack integration"
+      ],
+      "expected_entities": [
+        "Battery Cell Manufacturing",
+        "Electrode Drying",
+        "Cell Assembly",
+        "Cell Finalization",
+        "Battery Pack Integration"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrode Drying",
+          "relation_type": "part_of",
+          "target": "Battery Cell Manufacturing",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cell Assembly",
+          "relation_type": "part_of",
+          "target": "Battery Cell Manufacturing",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "electrode drying",
+        "cell assembly"
+      ],
+      "expected_documents": []
+    },
+    {
+      "id": "laser_drying_optimization",
+      "question": "How does laser-based drying affect electrode drying?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": [
+        "electrode drying process",
+        "production optimization"
+      ],
+      "ll_keywords": [
+        "laser-based drying",
+        "electrode drying"
+      ],
+      "expected_entities": [
+        "Laser-Based Drying",
+        "Electrode Drying"
+      ],
+      "expected_relations": [
+        {
+          "source": "Laser-Based Drying",
+          "relation_type": "optimizes",
+          "target": "Electrode Drying",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "laser-based drying",
+        "electrode drying"
+      ],
+      "expected_documents": []
+    }
+  ]
+}

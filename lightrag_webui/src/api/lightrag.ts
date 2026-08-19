@@ -215,6 +215,67 @@ export type QueryResponse = {
   response: string
 }
 
+export type EvaluationBenchmarkListItem = {
+  id: string
+  name: string
+  description: string
+  case_count: number
+}
+
+export type EvaluationBenchmarkListResponse = {
+  benchmarks: EvaluationBenchmarkListItem[]
+}
+
+export type EvaluationRunMode = 'graph' | 'retrieval' | 'full'
+
+export type EvaluationRunRequest = {
+  mode: EvaluationRunMode
+  save_result?: boolean
+}
+
+export type EvaluationRunResult = {
+  benchmark: {
+    id: string
+    name?: string
+    description?: string
+    path?: string
+    case_count: number
+  }
+  run: {
+    mode: EvaluationRunMode
+    generated_at: string
+    query_generation_enabled: boolean
+    query_checks_enabled: boolean
+    saved_to?: string
+  }
+  scores: {
+    overall: number | null
+    graph: number | null
+    metadata: number | null
+    retrieval: number | null
+  }
+  summary: {
+    nodes: number
+    edges: number
+    graph: {
+      entity_score: number | null
+      relation_score: number | null
+      metadata_coverage: Record<string, number>
+    }
+    query: {
+      queries: number
+      successful_queries: number
+      content_score: number | null
+      reference_score: number | null
+    }
+  }
+  cases: {
+    graph: Array<Record<string, any>>
+    query: Array<Record<string, any>>
+  }
+  failed_checks: string[]
+}
+
 export type EntityUpdateResponse = {
   status: string
   message: string
@@ -589,6 +650,22 @@ export const getDocumentsScanProgress = async (): Promise<LightragDocumentsScanP
 
 export const queryText = async (request: QueryRequest): Promise<QueryResponse> => {
   const response = await axiosInstance.post('/query', request)
+  return response.data
+}
+
+export const getEvaluationBenchmarks = async (): Promise<EvaluationBenchmarkListResponse> => {
+  const response = await axiosInstance.get('/evaluation/benchmarks')
+  return response.data
+}
+
+export const runEvaluationBenchmark = async (
+  benchmarkId: string,
+  request: EvaluationRunRequest
+): Promise<EvaluationRunResult> => {
+  const response = await axiosInstance.post(
+    `/evaluation/benchmarks/${encodeURIComponent(benchmarkId)}/run`,
+    request
+  )
   return response.data
 }
 
