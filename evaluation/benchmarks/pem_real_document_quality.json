@@ -1,0 +1,466 @@
+﻿{
+    "id":  "pem_real_document_quality",
+    "name":  "PEM Real Document Quality Benchmark",
+    "description":  "Benchmark based on uploaded PEM documents for graph extraction and retrieval quality.",
+    "default_mode":  "mix",
+    "cases":  [
+                  {
+                      "id":  "continuous_hairpin_stator_chain",
+                      "question":  "What is the process chain for producing a continuous hairpin stator and what is a specific limitation for the lamination stack?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Continuous Hairpin Stator",
+                                          "Process Chain"
+                                      ],
+                      "ll_keywords":  [
+                                          "radially open stator slot",
+                                          "winding wire width",
+                                          "slot insulation",
+                                          "impregnating the stator"
+                                      ],
+                      "expected_entities":  [
+                                                "Continuous Hairpin Stator",
+                                                "Process Chain",
+                                                "radially open stator slot",
+                                                "Winding and forming of the wire mat"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Process Chain",
+                                                     "relation_type":  "part_of",
+                                                     "target":  "Continuous Hairpin Stator",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Continuous Hairpin Stator",
+                                                     "relation_type":  "uses",
+                                                     "target":  "radially open stator slot",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "radially open stator slot",
+                                           "winding wire width",
+                                           "0.4 millimeters",
+                                           "Insulating the stator slots"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Process+of+a+Continuous+Hairpin+Stator+(2024).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "moisture_electrolyte_causal",
+                      "question":  "How does moisture contamination affect the electrolyte and what are the resulting chemical consequences?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Electrolyte Contamination",
+                                          "Moisture"
+                                      ],
+                      "ll_keywords":  [
+                                          "LiPF6",
+                                          "decomposition reaction",
+                                          "water",
+                                          "Lithium hexafluorophosphate"
+                                      ],
+                      "expected_entities":  [
+                                                "Water",
+                                                "LiPF6",
+                                                "Decomposition reaction",
+                                                "Electrolyte"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Water",
+                                                     "relation_type":  "causes",
+                                                     "target":  "Decomposition reaction",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Decomposition reaction",
+                                                     "relation_type":  "influences",
+                                                     "target":  "LiPF6",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "decomposition reaction",
+                                           "LiPF6",
+                                           "water",
+                                           "contamination"
+                                       ],
+                      "expected_documents":  [
+                                                 "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "lfp_impurity_transport_degradation",
+                      "question":  "In LFP cathode production, how do impurities in the starting materials affect battery performance?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "LFP cathode",
+                                          "Impurities"
+                                      ],
+                      "ll_keywords":  [
+                                          "electrochemically inert phases",
+                                          "lithium ion transport",
+                                          "starting materials",
+                                          "reversible capacity"
+                                      ],
+                      "expected_entities":  [
+                                                "Impurities",
+                                                "Electrochemically inert phases",
+                                                "Lithium ion transport",
+                                                "Reversible capacity"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Impurities",
+                                                     "relation_type":  "causes",
+                                                     "target":  "Electrochemically inert phases",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Electrochemically inert phases",
+                                                     "relation_type":  "degrades",
+                                                     "target":  "Lithium ion transport",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "electrochemically inert phases",
+                                           "lithium ion transport",
+                                           "reversible capacity"
+                                       ],
+                      "expected_documents":  [
+                                                 "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "separator_extraction_optimization",
+                      "question":  "What is the purpose of the extraction step in the separator wet process and how is it made economical?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Separator Production",
+                                          "Extraction"
+                                      ],
+                      "ll_keywords":  [
+                                          "mineral oil",
+                                          "DCM",
+                                          "dichloromethane",
+                                          "recycling"
+                                      ],
+                      "expected_entities":  [
+                                                "Extraction",
+                                                "Mineral oil",
+                                                "DCM",
+                                                "Recycling"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Extraction",
+                                                     "relation_type":  "uses",
+                                                     "target":  "DCM",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Recycling",
+                                                     "relation_type":  "enables",
+                                                     "target":  "Economical production",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "mineral oil",
+                                           "microporous structure",
+                                           "dichloromethane",
+                                           "recycling"
+                                       ],
+                      "expected_documents":  [
+                                                 "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "rotor_cage_material_improvement",
+                      "question":  "In the context of Induction Machine (IM) rotors, how does the choice of casting material impact motor performance?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Induction Machine",
+                                          "Rotor Cage"
+                                      ],
+                      "ll_keywords":  [
+                                          "pure copper",
+                                          "aluminum",
+                                          "efficiency",
+                                          "die casting"
+                                      ],
+                      "expected_entities":  [
+                                                "Rotor Cage",
+                                                "Pure copper",
+                                                "Efficiency",
+                                                "Pure aluminum"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Pure copper",
+                                                     "relation_type":  "improves",
+                                                     "target":  "Efficiency",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Die Casting",
+                                                     "relation_type":  "produces",
+                                                     "target":  "Rotor Cage",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "copper",
+                                           "aluminum",
+                                           "efficiency",
+                                           "die casting"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Processes+of+Rotors+(2024).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "formation_sei_causal_parameters",
+                      "question":  "What occurs during the battery cell formation process and which parameters influence the resulting SEI layer?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Cell Formation",
+                                          "SEI Layer"
+                                      ],
+                      "ll_keywords":  [
+                                          "Solid electrolyte interface",
+                                          "current and voltage profiles",
+                                          "graphite",
+                                          "lithium ions"
+                                      ],
+                      "expected_entities":  [
+                                                "Formation",
+                                                "Solid electrolyte interface",
+                                                "Current and voltage profiles",
+                                                "Graphite"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Formation",
+                                                     "relation_type":  "produces",
+                                                     "target":  "Solid electrolyte interface",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Current and voltage profiles",
+                                                     "relation_type":  "influences",
+                                                     "target":  "Solid electrolyte interface",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "current and voltage profiles",
+                                           "boundary layer",
+                                           "SEI",
+                                           "deposited in the crystal structure"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Process+of+a+Lithium-Ion+Battery+Cell+(2026-03).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "shredding_recycling_quality",
+                      "question":  "What is the role of shredding in the recycling process and how does it influence product quality?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Shredding",
+                                          "Recycling Process"
+                                      ],
+                      "ll_keywords":  [
+                                          "active material",
+                                          "recycling efficiency",
+                                          "impurities",
+                                          "bulk material"
+                                      ],
+                      "expected_entities":  [
+                                                "Shredding",
+                                                "Active material",
+                                                "Recycling efficiency",
+                                                "Impurities"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Shredding",
+                                                     "relation_type":  "enables",
+                                                     "target":  "Release of active material",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Shredding",
+                                                     "relation_type":  "influences",
+                                                     "target":  "Recycling efficiency",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "release and separate",
+                                           "bulk material",
+                                           "recycling efficiency",
+                                           "impurities"
+                                       ],
+                      "expected_documents":  [
+                                                 "Recycling+von+Lithium-Ionen-Batterien+2023+(ENG).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "slurry_production_process",
+                      "question":  "What are the key steps in slurry production and what is a critical quality parameter for the final mixture?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Slurry Production",
+                                          "Electrode Manufacturing"
+                                      ],
+                      "ll_keywords":  [
+                                          "distributive mixing",
+                                          "dispersive mixing",
+                                          "homogeneity",
+                                          "agglomerate size"
+                                      ],
+                      "expected_entities":  [
+                                                "Slurry",
+                                                "Distributive mixing",
+                                                "Dispersive mixing",
+                                                "Homogeneity"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Distributive mixing",
+                                                     "relation_type":  "results_in",
+                                                     "target":  "Dispersive mixing",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Slurry",
+                                                     "relation_type":  "measures",
+                                                     "target":  "Viscosity",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "distributive mixing",
+                                           "dispersive mixing",
+                                           "solvent",
+                                           "homogeneity",
+                                           "agglomerate size"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Process+of+a+Lithium-Ion+Battery+Cell+(2026-03).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "pem_vdma_collaboration_metadata",
+                      "question":  "Which organizations collaborate on the PEM guides and what is the ISBN for the 5th edition of the Lithium-Ion Battery Cell guide?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "PEM",
+                                          "VDMA"
+                                      ],
+                      "ll_keywords":  [
+                                          "978-3-947920-71-6",
+                                          "RWTH Aachen University",
+                                          "Lithium-Ion Battery Cell"
+                                      ],
+                      "expected_entities":  [
+                                                "PEM of RWTH Aachen University",
+                                                "VDMA",
+                                                "Production Process of a Lithium-Ion Battery Cell"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "PEM of RWTH Aachen University",
+                                                     "relation_type":  "published_by",
+                                                     "target":  "Production Process of a Lithium-Ion Battery Cell",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "VDMA",
+                                                     "relation_type":  "published_by",
+                                                     "target":  "Production Process of a Lithium-Ion Battery Cell",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "PEM of RWTH Aachen University",
+                                           "VDMA",
+                                           "978-3-947920-71-6"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Process+of+a+Lithium-Ion+Battery+Cell+(2026-03).pdf"
+                                             ]
+                  },
+                  {
+                      "id":  "rotor_shaft_process_chain",
+                      "question":  "What are the main production steps for a rotor shaft and how is the bearing seat property improved?",
+                      "mode":  "mix",
+                      "top_k":  40,
+                      "chunk_top_k":  20,
+                      "hl_keywords":  [
+                                          "Rotor Shaft",
+                                          "Production Steps"
+                                      ],
+                      "ll_keywords":  [
+                                          "Turning",
+                                          "Hardening",
+                                          "Induction hardening",
+                                          "Bearing seats"
+                                      ],
+                      "expected_entities":  [
+                                                "Rotor shaft",
+                                                "Turning",
+                                                "Induction hardening",
+                                                "Bearing seats"
+                                            ],
+                      "expected_relations":  [
+                                                 {
+                                                     "source":  "Turning",
+                                                     "relation_type":  "produces",
+                                                     "target":  "Rotor shaft",
+                                                     "directionality":  "directed"
+                                                 },
+                                                 {
+                                                     "source":  "Induction hardening",
+                                                     "relation_type":  "improves",
+                                                     "target":  "Bearing seats",
+                                                     "directionality":  "directed"
+                                                 }
+                                             ],
+                      "must_include":  [
+                                           "Turning",
+                                           "Hardening",
+                                           "Cleaning",
+                                           "Induction hardening",
+                                           "bearing seats"
+                                       ],
+                      "expected_documents":  [
+                                                 "Production+Processes+of+Rotors+(2024).pdf"
+                                             ]
+                  }
+              ]
+}
