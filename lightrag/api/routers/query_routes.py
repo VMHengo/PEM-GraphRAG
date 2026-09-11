@@ -103,6 +103,44 @@ class QueryRequest(BaseModel):
         description="If True, includes actual chunk text content in references. Only applies when include_references=True. Useful for evaluation and debugging.",
     )
 
+    retrieval_strategy: Literal["normal", "directed", "combined", "auto"] = Field(
+        default="normal",
+        description="Selects normal LightRAG retrieval, directed paths, both, or adaptive routing.",
+    )
+
+    edge_direction: Literal["both", "in", "out"] = Field(
+        default="both",
+        description="Direction used when traversing directed relationship paths.",
+    )
+
+    hop_depth: int = Field(
+        default=2,
+        ge=1,
+        le=3,
+        description="Maximum number of relationship hops for directed retrieval.",
+    )
+
+    chain_top_k: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of directed paths retained for context.",
+    )
+
+    chain_fanout: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+        description="Maximum number of candidate edges expanded per path node.",
+    )
+
+    min_relation_importance: float = Field(
+        default=0.45,
+        ge=0.0,
+        le=1.0,
+        description="Minimum relationship importance considered by directed retrieval.",
+    )
+
     stream: Optional[bool] = Field(
         default=True,
         description="If True, enables streaming output for real-time responses. Only affects /query/stream endpoint.",

@@ -156,6 +156,67 @@ class QueryParam:
     containing citation information for the retrieved content.
     """
 
+    retrieval_strategy: Literal["normal", "directed", "combined", "auto"] = "normal"
+    """Retrieval strategy for directed retrieval. Default is "normal" for non-directed retrieval.
+
+    - "normal": Use current LightRAG retrieval only.
+    - "directed": Use directed path retrieval only. Useful for debugging and evaluation.
+    - "combined": Use normal LightRAG context plus directed path context.
+    - "auto": Adaptive hybrid retrieval router.
+    """
+
+    edge_direction: Literal["both", "in", "out"] = "both"
+    """Direction for directed path retrieval. Default is "both" for both in and out edges.
+
+    - "both": Use both in and out edges.
+    - "in": Use only in edges.
+    - "out": Use only out edges.
+    """
+
+    hop_depth: int = 2
+    """Maximum traversal depth for directed path retrieval. Default is 2."""
+
+    chain_top_k: int = 20
+    """Number of top items to retrieve for chain questions. Default is 20."""
+
+    chain_fanout: int = 20
+    """Number of top items to retrieve for chain questions. Default is 20."""
+
+    chain_top_k_per_prompt: int = 2
+    """Number of top items to retrieve per prompt for chain questions. Default is 2."""
+
+    min_relation_importance: float = 0.45
+    """Minimum importance of a relationship to be considered for retrieval."""
+
+    def __post_init__(self) -> None:
+        """Validate directed-retrieval controls used by direct Python callers."""
+        if self.retrieval_strategy not in {"normal", "directed", "combined", "auto"}:
+            raise ValueError(
+                "retrieval_strategy must be one of: normal, directed, combined, auto"
+            )
+        if self.edge_direction not in {"both", "in", "out"}:
+            raise ValueError("edge_direction must be one of: both, in, out")
+
+        bounded_integer_fields = {
+            "hop_depth": (self.hop_depth, 1, 3),
+            "chain_top_k": (self.chain_top_k, 1, 100),
+            "chain_fanout": (self.chain_fanout, 1, 50),
+        }
+        for field_name, (value, minimum, maximum) in bounded_integer_fields.items():
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{field_name} must be an integer")
+            if not minimum <= value <= maximum:
+                raise ValueError(
+                    f"{field_name} must be between {minimum} and {maximum}"
+                )
+
+        if isinstance(self.min_relation_importance, bool) or not isinstance(
+            self.min_relation_importance, (int, float)
+        ):
+            raise ValueError("min_relation_importance must be a number")
+        if not 0.0 <= self.min_relation_importance <= 1.0:
+            raise ValueError("min_relation_importance must be between 0.0 and 1.0")
+
 
 @dataclass
 class StorageNameSpace(ABC):

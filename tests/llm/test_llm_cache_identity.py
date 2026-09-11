@@ -87,3 +87,47 @@ async def test_naive_query_partitions_query_cache_by_llm_identity():
     assert second.content == "answer-2"
     assert calls == 2
     assert len(cache._store) == 2
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "multihop_override",
+    [
+        {"retrieval_strategy": "combined"},
+        {"edge_direction": "in"},
+        {"hop_depth": 3},
+        {"chain_top_k": 21},
+        {"chain_fanout": 21},
+        {"min_relation_importance": 0.46},
+    ],
+)
+async def test_naive_query_partitions_cache_by_each_multihop_parameter(
+    multihop_override,
+):
+    cache = _FakeKVStorage()
+    chunks_vdb = _FakeChunksVDB()
+    calls = 0
+
+    async def query_model(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return f"answer-{calls}"
+
+    default_param = QueryParam(mode="naive", enable_rerank=False)
+    changed_param = QueryParam(
+        mode="naive", enable_rerank=False, **multihop_override
+    )
+    config = _query_global_config("model-a", query_model)
+
+    first = await naive_query(
+        "same query", chunks_vdb, default_param, config, hashing_kv=cache
+    )
+    second = await naive_query(
+        "same query", chunks_vdb, changed_param, config, hashing_kv=cache
+    )
+
+    assert first.content == "answer-1"
+    assert second.content == "answer-2"
+    assert calls == 2
+    assert len(cache._store) == 2

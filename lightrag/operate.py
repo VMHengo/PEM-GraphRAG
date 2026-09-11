@@ -3990,6 +3990,13 @@ async def kg_query(
         ll_keywords_str,
         query_param.user_prompt or "",
         query_param.enable_rerank,
+        "\n<directed_retrieval>\n",
+        query_param.retrieval_strategy,
+        query_param.edge_direction,
+        query_param.hop_depth,
+        query_param.chain_top_k,
+        query_param.chain_fanout,
+        query_param.min_relation_importance,
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),
     )
@@ -4026,6 +4033,12 @@ async def kg_query(
                 "ll_keywords": ll_keywords_str,
                 "user_prompt": query_param.user_prompt or "",
                 "enable_rerank": query_param.enable_rerank,
+                "retrieval_strategy": query_param.retrieval_strategy,
+                "edge_direction": query_param.edge_direction,
+                "hop_depth": query_param.hop_depth,
+                "chain_top_k": query_param.chain_top_k,
+                "chain_fanout": query_param.chain_fanout,
+                "min_relation_importance": query_param.min_relation_importance,
             }
             await save_to_cache(
                 hashing_kv,
@@ -5934,6 +5947,13 @@ async def naive_query(
         query_param.max_total_tokens,
         query_param.user_prompt or "",
         query_param.enable_rerank,
+        "\n<directed_retrieval>\n",
+        query_param.retrieval_strategy,
+        query_param.edge_direction,
+        query_param.hop_depth,
+        query_param.chain_top_k,
+        query_param.chain_fanout,
+        query_param.min_relation_importance,
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),
     )
@@ -5966,6 +5986,12 @@ async def naive_query(
                 "max_total_tokens": query_param.max_total_tokens,
                 "user_prompt": query_param.user_prompt or "",
                 "enable_rerank": query_param.enable_rerank,
+                "retrieval_strategy": query_param.retrieval_strategy,
+                "edge_direction": query_param.edge_direction,
+                "hop_depth": query_param.hop_depth,
+                "chain_top_k": query_param.chain_top_k,
+                "chain_fanout": query_param.chain_fanout,
+                "min_relation_importance": query_param.min_relation_importance,
             }
             await save_to_cache(
                 hashing_kv,
