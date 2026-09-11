@@ -208,7 +208,8 @@ For the directed multi-hop work, keep these responsibilities separate:
 | Concern | File |
 | --- | --- |
 | Query classification | [`lightrag/adaptive_retrieval.py`](../lightrag/adaptive_retrieval.py) |
-| Actual directed path traversal | planned `lightrag/directed_retrieval.py` |
+| Directed edge normalization, filtering, and ranking | [`lightrag/directed_retrieval.py`](../lightrag/directed_retrieval.py) |
+| Actual directed path traversal | planned extension of `lightrag/directed_retrieval.py` |
 | Normal/context merge | [`lightrag/operate.py`](../lightrag/operate.py) |
 | Neo4j storage and Cypher | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
 
@@ -216,6 +217,12 @@ The current graph merge still uses an undirected Neo4j `MERGE` form. For the
 first directed-retrieval MVP, use `semantic_src_id` and `semantic_tgt_id` as
 the source of semantic direction rather than trusting the physical Neo4j arrow
 alone.
+
+`lightrag/directed_retrieval.py` is intentionally storage-independent. Its
+`normalize_relation_type()` aliases, generic-edge exclusion, importance filter,
+and ranking are the narrowest controls for improving future chain quality.
+Legacy edges without metadata remain `unknown`; they can be traversed in either
+direction but score below explicitly directed edges.
 
 ## Evaluation And Safe Change Workflow
 
