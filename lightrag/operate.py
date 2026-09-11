@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import asdict
 from functools import partial
 from pathlib import Path
 
@@ -54,6 +55,7 @@ from lightrag.base import (
     QueryResult,
     QueryContextResult,
 )
+from lightrag.adaptive_retrieval import route_retrieval_query
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
 from lightrag.prompt import PROMPTS, resolve_entity_extraction_prompt_profile
 from lightrag.constants import (
@@ -5152,6 +5154,11 @@ async def _build_query_context(
         "high_level": hl_keywords_list,
         "low_level": ll_keywords_list,
     }
+    # Diagnostic only for now: the route is exposed to API/WebUI callers but does
+    # not influence the existing search, truncation, or context-building stages.
+    raw_data["metadata"]["retrieval_route"] = asdict(
+        route_retrieval_query(query, query_param)
+    )
     raw_data["metadata"]["processing_info"] = {
         "total_entities_found": len(search_result.get("final_entities", [])),
         "total_relations_found": len(search_result.get("final_relations", [])),
