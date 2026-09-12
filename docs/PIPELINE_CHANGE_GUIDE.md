@@ -208,8 +208,8 @@ For the directed multi-hop work, keep these responsibilities separate:
 | Concern | File |
 | --- | --- |
 | Query classification | [`lightrag/adaptive_retrieval.py`](../lightrag/adaptive_retrieval.py) |
-| Directed edge normalization, filtering, and ranking | [`lightrag/directed_retrieval.py`](../lightrag/directed_retrieval.py) |
-| Actual directed path traversal | planned extension of `lightrag/directed_retrieval.py` |
+| Directed edge normalization, filtering, ranking, and bounded path expansion | [`lightrag/directed_retrieval.py`](../lightrag/directed_retrieval.py) |
+| Actual directed Neo4j path provider | planned extension of [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
 | Normal/context merge | [`lightrag/operate.py`](../lightrag/operate.py) |
 | Neo4j storage and Cypher | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
 
@@ -223,6 +223,11 @@ alone.
 and ranking are the narrowest controls for improving future chain quality.
 Legacy edges without metadata remain `unknown`; they can be traversed in either
 direction but score below explicitly directed edges.
+
+`find_directed_paths()` runs a bounded, beam-pruned breadth-first traversal via
+an injected batched neighbor provider. It is not connected to query execution
+yet: `normal` retrieval therefore remains untouched until the future Neo4j
+provider and context-merge work is explicitly integrated.
 
 ## Evaluation And Safe Change Workflow
 
