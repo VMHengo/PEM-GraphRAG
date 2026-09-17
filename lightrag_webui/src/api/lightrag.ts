@@ -167,6 +167,48 @@ export type LightragDocumentsScanProgress = {
  * - "bypass": Bypasses knowledge retrieval and directly uses the LLM.
  */
 export type QueryMode = 'naive' | 'local' | 'global' | 'hybrid' | 'mix' | 'bypass'
+export type RetrievalStrategy = 'normal' | 'directed' | 'combined' | 'auto'
+export type EdgeDirection = 'both' | 'in' | 'out'
+
+export type DirectedPathDiagnostic = {
+  path_id: string
+  nodes: string[]
+  score: number
+  edges: Array<{
+    source: string
+    target: string
+    relation_type: string
+    directionality: string
+    relation_importance: number
+    chain_role: string
+    description?: string
+  }>
+  source_ids: string[]
+  file_paths: string[]
+  reference_ids?: string[]
+  unresolved_source_ids?: string[]
+}
+
+export type RetrievalRouteDiagnostic = {
+  query_type: string
+  effective_strategy: RetrievalStrategy
+  use_normal_retrieval: boolean
+  use_directed_paths: boolean
+  edge_direction: EdgeDirection
+  target_relation_types: string[]
+  matched_rule: string
+}
+
+export type RetrievalMetadata = {
+  retrieval_route?: RetrievalRouteDiagnostic
+  directed_paths?: {
+    status: string
+    reason: string
+    anchor_entities: string[]
+    path_count: number
+    paths: DirectedPathDiagnostic[]
+  }
+}
 
 export type Message = {
   role: 'user' | 'assistant' | 'system'
@@ -209,10 +251,28 @@ export type QueryRequest = {
   user_prompt?: string
   /** Enable reranking for retrieved text chunks. If True but no rerank model is configured, a warning will be issued. Default is True. */
   enable_rerank?: boolean
+  /** Selects standard LightRAG retrieval, directed paths, both, or automatic routing. */
+  retrieval_strategy?: RetrievalStrategy
+  /** Traversal direction for directed paths. */
+  edge_direction?: EdgeDirection
+  /** Maximum directed traversal depth. */
+  hop_depth?: number
+  /** Maximum retained directed paths. */
+  chain_top_k?: number
+  /** Maximum candidate edges expanded per path node. */
+  chain_fanout?: number
+  /** Maximum evidence paths added to the answer context. */
+  chain_top_k_per_prompt?: number
+  /** Minimum extraction importance for traversed relationships. */
+  min_relation_importance?: number
+  /** Returns route and path diagnostics without changing default API responses. */
+  include_retrieval_metadata?: boolean
 }
 
 export type QueryResponse = {
   response: string
+  references?: Array<Record<string, unknown>>
+  metadata?: RetrievalMetadata
 }
 
 export type EvaluationBenchmarkListItem = {
@@ -246,6 +306,7 @@ export type EvaluationRunResult = {
     generated_at: string
     query_generation_enabled: boolean
     query_checks_enabled: boolean
+    directed_path_checks_enabled?: boolean
     saved_to?: string
   }
   scores: {
@@ -253,6 +314,7 @@ export type EvaluationRunResult = {
     graph: number | null
     metadata: number | null
     retrieval: number | null
+    directed?: number | null
   }
   summary: {
     nodes: number
@@ -268,10 +330,23 @@ export type EvaluationRunResult = {
       content_score: number | null
       reference_score: number | null
     }
+    directed?: {
+      cases: number
+      score: number | null
+      strategies: Record<
+        string,
+        {
+          runs: number
+          successful_runs: number
+          path_score: number | null
+        }
+      >
+    }
   }
   cases: {
     graph: Array<Record<string, any>>
     query: Array<Record<string, any>>
+    directed?: Array<Record<string, any>>
   }
   failed_checks: string[]
 }
@@ -672,7 +747,8 @@ export const runEvaluationBenchmark = async (
 export const queryTextStream = async (
   request: QueryRequest,
   onChunk: (chunk: string) => void,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  onMetadata?: (metadata: RetrievalMetadata) => void
 ) => {
   const apiKey = useSettingsStore.getState().apiKey;
   const token = localStorage.getItem('LIGHTRAG-API-TOKEN');
@@ -743,6 +819,9 @@ export const queryTextStream = async (
                 if (line.trim()) {
                   try {
                     const parsed = JSON.parse(line);
+                    if (parsed.metadata) {
+                      onMetadata?.(parsed.metadata as RetrievalMetadata);
+                    }
                     if (parsed.response) {
                       onChunk(parsed.response);
                     } else if (parsed.error) {
@@ -760,6 +839,9 @@ export const queryTextStream = async (
             if (buffer.trim()) {
               try {
                 const parsed = JSON.parse(buffer);
+                if (parsed.metadata) {
+                  onMetadata?.(parsed.metadata as RetrievalMetadata);
+                }
                 if (parsed.response) {
                   onChunk(parsed.response);
                 } else if (parsed.error) {
@@ -826,6 +908,9 @@ export const queryTextStream = async (
         if (line.trim()) {
           try {
             const parsed = JSON.parse(line);
+            if (parsed.metadata) {
+              onMetadata?.(parsed.metadata as RetrievalMetadata);
+            }
             if (parsed.response) {
               onChunk(parsed.response);
             } else if (parsed.error && onError) {
@@ -843,6 +928,9 @@ export const queryTextStream = async (
     if (buffer.trim()) {
       try {
         const parsed = JSON.parse(buffer);
+        if (parsed.metadata) {
+          onMetadata?.(parsed.metadata as RetrievalMetadata);
+        }
         if (parsed.response) {
           onChunk(parsed.response);
         } else if (parsed.error && onError) {

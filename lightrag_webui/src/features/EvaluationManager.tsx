@@ -132,6 +132,57 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
   )
 }
 
+function DirectedRetrievalQuality({ result }: { result: EvaluationRunResult }) {
+  const summary = result.summary.directed
+  const cases = result.cases.directed || []
+  if (!summary || cases.length === 0) return null
+
+  return (
+    <Card className="rounded-md">
+      <CardHeader>
+        <CardTitle>Directed Retrieval Quality</CardTitle>
+        <CardDescription>{summary.cases} chain cases across normal, directed, combined, and auto.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {Object.entries(summary.strategies).map(([strategy, strategySummary]) => (
+            <div key={strategy} className="rounded-md border bg-background p-3">
+              <div className="text-muted-foreground text-xs font-medium uppercase">{strategy}</div>
+              <div className={`mt-1 text-xl font-semibold ${scoreTone(strategySummary.path_score)}`}>
+                {formatScore(strategySummary.path_score)}
+              </div>
+              <div className="text-muted-foreground mt-1 text-xs">
+                {strategySummary.successful_runs}/{strategySummary.runs} successful
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {cases.map((benchmarkCase) => (
+            <div key={benchmarkCase.id} className="rounded-md border bg-background p-3">
+              <div className="font-medium">{benchmarkCase.id}</div>
+              <div className="text-muted-foreground mt-1 text-sm">{benchmarkCase.question}</div>
+              <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                {(benchmarkCase.strategies || []).map((strategy: any) => (
+                  <div key={strategy.strategy} className="rounded border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium capitalize">{strategy.strategy}</span>
+                      <span className={scoreTone(strategy.score)}>{formatScore(strategy.score)}</span>
+                    </div>
+                    <div className="text-muted-foreground mt-1 text-xs">
+                      {strategy.path_status || '-'}; {strategy.path_count || 0} paths
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function EvaluationManager() {
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
@@ -245,11 +296,12 @@ export default function EvaluationManager() {
 
       {result && (
         <>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-5">
             <ScoreTile label="Overall" score={result.scores.overall} detail={result.run.mode} />
             <ScoreTile label="Graph" score={result.scores.graph} />
             <ScoreTile label="Metadata" score={result.scores.metadata} />
             <ScoreTile label="Retrieval" score={result.scores.retrieval} />
+            <ScoreTile label="Directed" score={result.scores.directed} />
           </div>
 
           <Card className="rounded-md">
@@ -263,6 +315,8 @@ export default function EvaluationManager() {
               <MetadataCoverage result={result} />
             </CardContent>
           </Card>
+
+          <DirectedRetrievalQuality result={result} />
 
           <Card className="rounded-md">
             <CardHeader>

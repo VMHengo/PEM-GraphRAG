@@ -133,7 +133,14 @@ const useSettingsStoreBase = create<SettingsState>()(
         stream: true,
         history_turns: 0,
         user_prompt: '',
-        enable_rerank: true
+        enable_rerank: true,
+        retrieval_strategy: 'normal',
+        edge_direction: 'both',
+        hop_depth: 2,
+        chain_top_k: 20,
+        chain_fanout: 20,
+        chain_top_k_per_prompt: 2,
+        min_relation_importance: 0.45
       },
 
       setTheme: (theme: Theme) => set({ theme }),

@@ -1965,6 +1965,13 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             conversation_history=param.conversation_history,
             user_prompt=param.user_prompt,
             enable_rerank=param.enable_rerank,
+            retrieval_strategy=param.retrieval_strategy,
+            edge_direction=param.edge_direction,
+            hop_depth=param.hop_depth,
+            chain_top_k=param.chain_top_k,
+            chain_fanout=param.chain_fanout,
+            chain_top_k_per_prompt=param.chain_top_k_per_prompt,
+            min_relation_importance=param.min_relation_importance,
         )
 
         query_result = None

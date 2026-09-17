@@ -3,7 +3,7 @@ import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { throttle } from '@/lib/utils'
-import { queryText, queryTextStream } from '@/api/lightrag'
+import { queryText, queryTextStream, type RetrievalMetadata } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settings'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -101,6 +101,39 @@ const parseCOTContent = (content: string) => {
   }
 }
 
+function DirectedRetrievalDiagnostics({ metadata }: { metadata: RetrievalMetadata | null }) {
+  const route = metadata?.retrieval_route
+  const paths = metadata?.directed_paths
+
+  if (!route || !paths) return null
+
+  return (
+    <section className="shrink-0 border border-border bg-muted/30 px-3 py-2 text-xs" aria-label="Retrieval diagnostics">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span><span className="text-muted-foreground">Route:</span> {route.query_type} / {route.effective_strategy}</span>
+        <span><span className="text-muted-foreground">Direction:</span> {route.edge_direction}</span>
+        <span><span className="text-muted-foreground">Rule:</span> {route.matched_rule}</span>
+        <span><span className="text-muted-foreground">Paths:</span> {paths.path_count} ({paths.status})</span>
+      </div>
+      {paths.anchor_entities.length > 0 && (
+        <div className="mt-1 text-muted-foreground">Anchors: {paths.anchor_entities.join(', ')}</div>
+      )}
+      {paths.paths.slice(0, 3).map((path) => (
+        <div key={path.path_id} className="mt-1 break-words font-mono text-[11px]">
+          {path.edges.map((edge, index) => (
+            <span key={`${path.path_id}-${index}`}>
+              {index === 0 ? edge.source : ''} --[{edge.relation_type}]--&gt; {edge.target}{' '}
+            </span>
+          ))}
+          {path.reference_ids && path.reference_ids.length > 0 && (
+            <span className="text-muted-foreground">[{path.reference_ids.join(', ')}]</span>
+          )}
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export default function RetrievalTesting() {
   const { t } = useTranslation()
   // Get current tab to determine if this tab is active (for performance optimization)
@@ -140,6 +173,7 @@ export default function RetrievalTesting() {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [inputError, setInputError] = useState('') // Error message for input
+  const [retrievalMetadata, setRetrievalMetadata] = useState<RetrievalMetadata | null>(null)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
 
   // Smart switching logic: use Input for single line, Textarea for multi-line
@@ -206,6 +240,7 @@ export default function RetrievalTesting() {
 
       // Clear error message
       setInputError('')
+      setRetrievalMetadata(null)
 
       // Reset thinking timer state for new query to prevent confusion
       thinkingStartTime.current = null
@@ -364,6 +399,7 @@ export default function RetrievalTesting() {
             .slice(-effectiveHistoryTurns * 2)
             .map((m) => ({ role: m.role, content: m.content }))
           : [],
+        include_retrieval_metadata: true,
         ...(modeOverride ? { mode: modeOverride } : {})
       }
 
@@ -371,9 +407,14 @@ export default function RetrievalTesting() {
         // Run query
         if (state.querySettings.stream) {
           let errorMessage = ''
-          await queryTextStream(queryParams, updateAssistantMessage, (error) => {
-            errorMessage += error
-          })
+          await queryTextStream(
+            queryParams,
+            updateAssistantMessage,
+            (error) => {
+              errorMessage += error
+            },
+            setRetrievalMetadata
+          )
           if (errorMessage) {
             if (assistantMessage.content) {
               errorMessage = assistantMessage.content + '\n' + errorMessage
@@ -382,6 +423,7 @@ export default function RetrievalTesting() {
           }
         } else {
           const response = await queryText(queryParams)
+          setRetrievalMetadata(response.metadata || null)
           updateAssistantMessage(response.response)
         }
       } catch (err) {
@@ -738,6 +780,7 @@ export default function RetrievalTesting() {
             </div>
           </div>
         </div>
+        <DirectedRetrievalDiagnostics metadata={retrievalMetadata} />
 
         <form
           onSubmit={handleSubmit}

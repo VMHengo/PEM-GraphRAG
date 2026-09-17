@@ -84,6 +84,47 @@ Example:
 - `Overall`: weighted average of available graph, metadata, and retrieval
   scores.
 
+## Directed Retrieval Gate
+
+The packaged `pem_directed_retrieval_quality` benchmark additionally runs every
+configured chain case four times, with `normal`, `directed`, `combined`, and
+`auto`.
+It uses `only_need_context=true`, so the comparison does not generate three
+LLM answers. The normal run is a regression guard: it must report no directed
+provider call. Directed, combined, and auto runs are scored from structured
+path diagnostics, not from free-form answer text. For chain cases, `auto` must
+resolve to `combined` unless the case declares another
+`expected_auto_strategy`.
+
+Add `expected_directed_paths` to a normal case to opt in:
+
+```json
+{
+  "id": "root_cause",
+  "question": "What causes lithium ion transport degradation?",
+  "expected_edge_direction": "in",
+  "expected_directed_paths": [
+    {
+      "traversal_nodes": [
+        "Lithium ion transport",
+        "Electrochemically inert phases",
+        "Impurities"
+      ],
+      "relation_types": ["degrades", "causes"],
+      "source_documents": ["battery-guide.pdf"],
+      "require_citations": true
+    }
+  ]
+}
+```
+
+Use `nodes` for an outgoing semantic path and `traversal_nodes` for an incoming
+root-cause path, which is naturally traversed from effect back to cause. The
+WebUI shows a `Directed` score plus per-strategy scores and individual path
+status. A missing or mismatched expected path is included in Failed Checks.
+Set `require_citations` for important acceptance cases: the benchmark then
+requires at least one real reference ID resolved from a stored source chunk.
+
 The benchmark deliberately avoids exact-answer matching. Expected entities,
 relations, must-include terms, and expected source documents are more robust
 across model and prompt changes.

@@ -48,9 +48,84 @@ async def query_pem_graphrag(
             mode=mode,
             api_key=config.lightrag_api_key,
             timeout=config.lightrag_timeout,
+            retrieval_strategy=config.retrieval_strategy,
+            edge_direction=config.directed_edge_direction,
+            directed_hop_depth=config.directed_hop_depth,
+            directed_chain_top_k=config.directed_chain_top_k,
+            directed_min_importance=config.directed_min_importance,
         )
     except (LightRAGQueryError, ValueError) as exc:
         return {"error": str(exc), "mode": mode}
+
+
+@mcp.tool()
+async def trace_pem_graphrag_chain(
+    question: Annotated[
+        str,
+        Field(
+            min_length=3,
+            max_length=500,
+            description=(
+                "Root-cause, consequence, dependency, or production-chain "
+                "question for PEM GraphRAG."
+            ),
+        ),
+    ],
+    direction: Annotated[
+        Literal["both", "in", "out"],
+        Field(
+            description=(
+                "Use in for upstream/root-cause tracing, out for downstream "
+                "consequences or production flow, or both when uncertain."
+            )
+        ),
+    ] = "both",
+    hop_depth: Annotated[
+        int,
+        Field(
+            ge=1,
+            le=3,
+            description="Maximum evidence-chain length. Two hops is the recommended default.",
+        ),
+    ] = 2,
+    strategy: Annotated[
+        Literal["auto", "combined", "directed"],
+        Field(
+            description=(
+                "combined keeps standard retrieval as a fallback; directed is "
+                "primarily for developer diagnostics."
+            )
+        ),
+    ] = "combined",
+    mode: Literal["mix", "local", "global", "hybrid", "naive"] = "mix",
+) -> dict:
+    """Trace a bounded PEM cause, effect, dependency, or production chain.
+
+    This is read-only. Results contain regular document citations plus route and
+    path diagnostics, so ChatGPT can explain the chain without inventing hops.
+    """
+
+    try:
+        return await query_lightrag(
+            base_url=config.lightrag_base_url,
+            question=question,
+            mode=mode,
+            api_key=config.lightrag_api_key,
+            timeout=config.lightrag_timeout,
+            retrieval_strategy=strategy,
+            edge_direction=direction,
+            directed_hop_depth=hop_depth,
+            directed_chain_top_k=config.directed_chain_top_k,
+            directed_min_importance=config.directed_min_importance,
+        )
+    except (LightRAGQueryError, ValueError) as exc:
+        return {
+            "error": str(exc),
+            "mode": mode,
+            "strategy": strategy,
+            "edge_direction": direction,
+            "hop_depth": hop_depth,
+        }
 
 
 @mcp.tool()

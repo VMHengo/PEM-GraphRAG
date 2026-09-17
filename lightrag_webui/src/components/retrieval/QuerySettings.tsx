@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { QueryMode, QueryRequest } from '@/api/lightrag'
+import { EdgeDirection, QueryMode, QueryRequest, RetrievalStrategy } from '@/api/lightrag'
 // Removed unused import for Text component
 import Checkbox from '@/components/ui/Checkbox'
 import Input from '@/components/ui/Input'
@@ -64,7 +64,14 @@ export default function QuerySettings() {
     chunk_top_k: 20,
     max_entity_tokens: 6000,
     max_relation_tokens: 8000,
-    max_total_tokens: 30000
+    max_total_tokens: 30000,
+    retrieval_strategy: 'normal' as RetrievalStrategy,
+    edge_direction: 'both' as EdgeDirection,
+    hop_depth: 2,
+    chain_top_k: 20,
+    chain_fanout: 20,
+    chain_top_k_per_prompt: 2,
+    min_relation_importance: 0.45
   }), [])
 
   const handleReset = useCallback((key: keyof typeof defaultValues) => {
@@ -150,6 +157,131 @@ export default function QuerySettings() {
                 />
               </div>
             </>
+
+            {/* Top K */}
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label htmlFor="retrieval_strategy" className="ml-1 cursor-help">
+                      Retrieval strategy
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    <p>Normal preserves existing retrieval; Auto detects chain questions.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <div className="flex items-center gap-1">
+                <Select
+                  value={querySettings.retrieval_strategy || 'normal'}
+                  onValueChange={(value) => handleChange('retrieval_strategy', value as RetrievalStrategy)}
+                >
+                  <SelectTrigger id="retrieval_strategy" className="h-9 flex-1 text-left">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="combined">Combined</SelectItem>
+                      <SelectItem value="directed">Directed</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <ResetButton onClick={() => handleReset('retrieval_strategy')} title="Reset to normal" />
+              </div>
+            </>
+
+            {querySettings.retrieval_strategy !== 'normal' && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="edge_direction" className="ml-1 cursor-help text-xs">Direction</label>
+                    <Select
+                      value={querySettings.edge_direction || 'both'}
+                      onValueChange={(value) => handleChange('edge_direction', value as EdgeDirection)}
+                    >
+                      <SelectTrigger id="edge_direction" className="mt-1 h-9 text-left">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="both">Both</SelectItem>
+                          <SelectItem value="in">Incoming</SelectItem>
+                          <SelectItem value="out">Outgoing</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label htmlFor="hop_depth" className="ml-1 cursor-help text-xs">Hop depth</label>
+                    <Input
+                      id="hop_depth"
+                      type="number"
+                      min={1}
+                      max={3}
+                      className="mt-1 h-9"
+                      value={querySettings.hop_depth ?? 2}
+                      onChange={(event) => handleChange('hop_depth', Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="min_relation_importance" className="ml-1 cursor-help text-xs">Min. importance</label>
+                    <Input
+                      id="min_relation_importance"
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      className="mt-1 h-9"
+                      value={querySettings.min_relation_importance ?? 0.45}
+                      onChange={(event) => handleChange('min_relation_importance', Number(event.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="chain_top_k_per_prompt" className="ml-1 cursor-help text-xs">Paths in prompt</label>
+                    <Input
+                      id="chain_top_k_per_prompt"
+                      type="number"
+                      min={1}
+                      max={10}
+                      className="mt-1 h-9"
+                      value={querySettings.chain_top_k_per_prompt ?? 2}
+                      onChange={(event) => handleChange('chain_top_k_per_prompt', Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="chain_top_k" className="ml-1 cursor-help text-xs">Path limit</label>
+                    <Input
+                      id="chain_top_k"
+                      type="number"
+                      min={1}
+                      max={100}
+                      className="mt-1 h-9"
+                      value={querySettings.chain_top_k ?? 20}
+                      onChange={(event) => handleChange('chain_top_k', Number(event.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="chain_fanout" className="ml-1 cursor-help text-xs">Fanout</label>
+                    <Input
+                      id="chain_fanout"
+                      type="number"
+                      min={1}
+                      max={50}
+                      className="mt-1 h-9"
+                      value={querySettings.chain_fanout ?? 20}
+                      onChange={(event) => handleChange('chain_fanout', Number(event.target.value))}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Top K */}
             <>

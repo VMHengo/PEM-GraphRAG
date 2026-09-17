@@ -1,0 +1,101 @@
+{
+  "id": "pem_directed_retrieval_quality",
+  "name": "PEM Directed Retrieval Quality",
+  "description": "Compares normal, directed, and combined retrieval against known PEM production and causal chains.",
+  "default_mode": "mix",
+  "cases": [
+    {
+      "id": "continuous_hairpin_process_chain",
+      "question": "What is the process chain for producing a continuous hairpin stator?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": ["Continuous Hairpin Stator", "Process Chain"],
+      "ll_keywords": ["radially open stator slot", "winding wire width"],
+      "expected_entities": ["Process Chain", "Continuous Hairpin Stator"],
+      "expected_relations": [
+        {
+          "source": "Process Chain",
+          "relation_type": "part_of",
+          "target": "Continuous Hairpin Stator",
+          "directionality": "directed"
+        }
+      ],
+      "expected_edge_direction": "out",
+      "expected_directed_paths": [
+        {
+          "nodes": ["Process Chain", "Continuous Hairpin Stator"],
+          "relation_types": ["part_of"],
+          "require_citations": true
+        }
+      ],
+      "expected_documents": ["Production+Process+of+a+Continuous+Hairpin+Stator+(2024).pdf"]
+    },
+    {
+      "id": "moisture_electrolyte_causal_chain",
+      "question": "What does water cause in electrolyte contamination?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": ["Electrolyte Contamination", "Moisture"],
+      "ll_keywords": ["Water", "LiPF6", "decomposition reaction"],
+      "expected_entities": ["Water", "Decomposition reaction", "LiPF6"],
+      "expected_relations": [
+        {
+          "source": "Water",
+          "relation_type": "causes",
+          "target": "Decomposition reaction",
+          "directionality": "directed"
+        },
+        {
+          "source": "Decomposition reaction",
+          "relation_type": "influences",
+          "target": "LiPF6",
+          "directionality": "directed"
+        }
+      ],
+      "expected_edge_direction": "out",
+      "expected_directed_paths": [
+        {
+          "nodes": ["Water", "Decomposition reaction", "LiPF6"],
+          "relation_types": ["causes", "influences"],
+          "require_citations": true
+        }
+      ],
+      "expected_documents": ["Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"]
+    },
+    {
+      "id": "lfp_transport_root_cause_chain",
+      "question": "What causes lithium ion transport degradation in LFP cathode production?",
+      "mode": "mix",
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hl_keywords": ["LFP cathode", "Lithium ion transport"],
+      "ll_keywords": ["Impurities", "Electrochemically inert phases", "Lithium ion transport"],
+      "expected_entities": ["Impurities", "Electrochemically inert phases", "Lithium ion transport"],
+      "expected_relations": [
+        {
+          "source": "Impurities",
+          "relation_type": "causes",
+          "target": "Electrochemically inert phases",
+          "directionality": "directed"
+        },
+        {
+          "source": "Electrochemically inert phases",
+          "relation_type": "degrades",
+          "target": "Lithium ion transport",
+          "directionality": "directed"
+        }
+      ],
+      "expected_edge_direction": "in",
+      "expected_directed_paths": [
+        {
+          "traversal_nodes": ["Lithium ion transport", "Electrochemically inert phases", "Impurities"],
+          "relation_types": ["degrades", "causes"],
+          "require_citations": true
+        }
+      ],
+      "expected_documents": ["Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"]
+    }
+  ]
+}

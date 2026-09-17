@@ -103,6 +103,14 @@ class QueryRequest(BaseModel):
         description="If True, includes actual chunk text content in references. Only applies when include_references=True. Useful for evaluation and debugging.",
     )
 
+    include_retrieval_metadata: bool = Field(
+        default=False,
+        description=(
+            "If True, returns the retrieval route and directed-path diagnostics. "
+            "Disabled by default to preserve the established response shape."
+        ),
+    )
+
     retrieval_strategy: Literal["normal", "directed", "combined", "auto"] = Field(
         default="normal",
         description="Selects normal LightRAG retrieval, directed paths, both, or adaptive routing.",
@@ -132,6 +140,13 @@ class QueryRequest(BaseModel):
         ge=1,
         le=50,
         description="Maximum number of candidate edges expanded per path node.",
+    )
+
+    chain_top_k_per_prompt: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Maximum number of directed evidence paths added to the LLM context.",
     )
 
     min_relation_importance: float = Field(
@@ -170,7 +185,8 @@ class QueryRequest(BaseModel):
         # Use Pydantic's `.model_dump(exclude_none=True)` to remove None values automatically
         # Exclude API-level parameters that don't belong in QueryParam
         request_data = self.model_dump(
-            exclude_none=True, exclude={"query", "include_chunk_content"}
+            exclude_none=True,
+            exclude={"query", "include_chunk_content", "include_retrieval_metadata"},
         )
 
         # Ensure `mode` and `stream` are set explicitly
@@ -206,6 +222,10 @@ class QueryResponse(BaseModel):
         default=None,
         description="Reference list (Disabled when include_references=False, /query/data always includes references.)",
     )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional retrieval route and directed-path diagnostics.",
+    )
 
 
 class QueryDataResponse(BaseModel):
@@ -225,6 +245,10 @@ class StreamChunkResponse(BaseModel):
     references: Optional[List[Dict[str, str]]] = Field(
         default=None,
         description="Reference list (only in first chunk when include_references=True)",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional retrieval diagnostics (only in the first chunk).",
     )
     response: Optional[str] = Field(
         default=None, description="Response content chunk or complete response"
@@ -561,10 +585,18 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                 references = enriched_references
 
             # Return response with or without references based on request
+            metadata = data.get("metadata") if request.include_retrieval_metadata else None
             if request.include_references:
-                return QueryResponse(response=response_content, references=references)
-            else:
-                return QueryResponse(response=response_content, references=None)
+                return QueryResponse(
+                    response=response_content,
+                    references=references,
+                    metadata=metadata,
+                )
+            return QueryResponse(
+                response=response_content,
+                references=None,
+                metadata=metadata,
+            )
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
@@ -792,6 +824,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     rag, references
                 )
                 llm_response = result.get("llm_response", {})
+                metadata = (
+                    result.get("data", {}).get("metadata", {})
+                    if request.include_retrieval_metadata
+                    else None
+                )
 
                 # Enrich references with chunk content if requested
                 if request.include_references and request.include_chunk_content:
@@ -819,8 +856,13 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
 
                 if llm_response.get("is_streaming"):
                     # Streaming mode: send references first, then stream response chunks
+                    initial_message = {}
                     if request.include_references:
-                        yield f"{json.dumps({'references': references})}\n"
+                        initial_message["references"] = references
+                    if metadata is not None:
+                        initial_message["metadata"] = metadata
+                    if initial_message:
+                        yield f"{json.dumps(initial_message)}\n"
 
                     response_stream = llm_response.get("response_iterator")
                     if response_stream:
@@ -841,6 +883,8 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     complete_response = {"response": response_content}
                     if request.include_references:
                         complete_response["references"] = references
+                    if metadata is not None:
+                        complete_response["metadata"] = metadata
 
                     yield f"{json.dumps(complete_response)}\n"
 

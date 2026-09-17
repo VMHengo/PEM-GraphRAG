@@ -17,6 +17,7 @@ import unicodedata
 
 from lightrag.adaptive_retrieval import RetrievalRoute
 from lightrag.base import QueryParam
+from lightrag.constants import GRAPH_FIELD_SEP
 
 RelationDirectionality = Literal["directed", "undirected", "unknown"]
 EdgeTraversalDirection = Literal["both", "in", "out"]
@@ -121,7 +122,11 @@ def _text_values(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, str):
-        return (value,) if value else ()
+        return tuple(
+            part.strip()
+            for part in value.split(GRAPH_FIELD_SEP)
+            if part.strip()
+        )
     if isinstance(value, Iterable):
         return tuple(str(item) for item in value if str(item).strip())
     return (str(value),)

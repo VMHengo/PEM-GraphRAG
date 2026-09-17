@@ -201,6 +201,7 @@ class QueryParam:
             "hop_depth": (self.hop_depth, 1, 3),
             "chain_top_k": (self.chain_top_k, 1, 100),
             "chain_fanout": (self.chain_fanout, 1, 50),
+            "chain_top_k_per_prompt": (self.chain_top_k_per_prompt, 1, 10),
         }
         for field_name, (value, minimum, maximum) in bounded_integer_fields.items():
             if isinstance(value, bool) or not isinstance(value, int):

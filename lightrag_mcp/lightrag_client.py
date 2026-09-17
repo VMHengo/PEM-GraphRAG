@@ -6,6 +6,8 @@ from typing import Any, Literal
 import httpx
 
 QueryMode = Literal["mix", "local", "global", "hybrid", "naive"]
+RetrievalStrategy = Literal["normal", "directed", "combined", "auto"]
+EdgeDirection = Literal["both", "in", "out"]
 ALLOWED_QUERY_MODES: set[str] = {"mix", "local", "global", "hybrid", "naive"}
 DEFAULT_TOP_K = 80
 DEFAULT_CHUNK_TOP_K = 20
@@ -30,8 +32,83 @@ def normalize_mode(mode: str | None) -> QueryMode:
     return normalized  # type: ignore[return-value]
 
 
+def normalize_retrieval_strategy(strategy: str | None) -> RetrievalStrategy:
+    normalized = (strategy or "normal").strip().lower()
+    if normalized not in {"normal", "directed", "combined", "auto"}:
+        raise ValueError(
+            "retrieval_strategy must be one of: auto, combined, directed, normal"
+        )
+    return normalized  # type: ignore[return-value]
+
+
+def normalize_edge_direction(direction: str | None) -> EdgeDirection:
+    normalized = (direction or "both").strip().lower()
+    if normalized not in {"both", "in", "out"}:
+        raise ValueError("edge_direction must be one of: both, in, out")
+    return normalized  # type: ignore[return-value]
+
+
+def _validate_directed_query_options(
+    *,
+    hop_depth: int,
+    chain_top_k: int,
+    min_relation_importance: float,
+) -> None:
+    if isinstance(hop_depth, bool) or not isinstance(hop_depth, int):
+        raise ValueError("hop_depth must be an integer between 1 and 3")
+    if not 1 <= hop_depth <= 3:
+        raise ValueError("hop_depth must be between 1 and 3")
+    if isinstance(chain_top_k, bool) or not isinstance(chain_top_k, int):
+        raise ValueError("chain_top_k must be an integer between 1 and 100")
+    if not 1 <= chain_top_k <= 100:
+        raise ValueError("chain_top_k must be between 1 and 100")
+    if not isinstance(min_relation_importance, (int, float)):
+        raise ValueError("min_relation_importance must be between 0.0 and 1.0")
+    if not 0.0 <= float(min_relation_importance) <= 1.0:
+        raise ValueError("min_relation_importance must be between 0.0 and 1.0")
+
+
+def _build_query_payload(
+    *,
+    question: str,
+    mode: QueryMode,
+    retrieval_strategy: str | None,
+    edge_direction: str | None,
+    directed_hop_depth: int,
+    directed_chain_top_k: int,
+    directed_min_importance: float,
+) -> tuple[dict[str, Any], RetrievalStrategy, EdgeDirection]:
+    strategy = normalize_retrieval_strategy(retrieval_strategy)
+    direction = normalize_edge_direction(edge_direction)
+    _validate_directed_query_options(
+        hop_depth=directed_hop_depth,
+        chain_top_k=directed_chain_top_k,
+        min_relation_importance=directed_min_importance,
+    )
+    return (
+        {
+            "query": question,
+            "mode": mode,
+            "top_k": DEFAULT_TOP_K,
+            "chunk_top_k": DEFAULT_CHUNK_TOP_K,
+            "include_references": True,
+            "include_chunk_content": True,
+            "stream": False,
+            "response_type": "Multiple Paragraphs",
+            "retrieval_strategy": strategy,
+            "edge_direction": direction,
+            "hop_depth": directed_hop_depth,
+            "chain_top_k": directed_chain_top_k,
+            "min_relation_importance": directed_min_importance,
+            "include_retrieval_metadata": strategy != "normal",
+        },
+        strategy,
+        direction,
+    )
+
+
 def map_lightrag_response(payload: dict[str, Any], mode: QueryMode) -> dict[str, Any]:
-    return {
+    response = {
         "answer": payload.get("response", ""),
         "references": payload.get("references") or [],
         "citations": build_citations(payload.get("references") or []),
@@ -42,6 +119,14 @@ def map_lightrag_response(payload: dict[str, Any], mode: QueryMode) -> dict[str,
             "include_chunk_content": True,
         },
     }
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        response["retrieval_diagnostics"] = {
+            key: metadata[key]
+            for key in ("retrieval_route", "directed_paths")
+            if key in metadata
+        }
+    return response
 
 
 def _headers(api_key: str | None) -> dict[str, str]:
@@ -278,18 +363,22 @@ async def query_lightrag(
     mode: str | None,
     api_key: str | None = None,
     timeout: float = 120,
+    retrieval_strategy: str | None = "normal",
+    edge_direction: str | None = "both",
+    directed_hop_depth: int = 2,
+    directed_chain_top_k: int = 20,
+    directed_min_importance: float = 0.45,
 ) -> dict[str, Any]:
     query_mode = normalize_mode(mode)
-    payload = {
-        "query": question,
-        "mode": query_mode,
-        "top_k": DEFAULT_TOP_K,
-        "chunk_top_k": DEFAULT_CHUNK_TOP_K,
-        "include_references": True,
-        "include_chunk_content": True,
-        "stream": False,
-        "response_type": "Multiple Paragraphs",
-    }
+    payload, strategy, direction = _build_query_payload(
+        question=question,
+        mode=query_mode,
+        retrieval_strategy=retrieval_strategy,
+        edge_direction=edge_direction,
+        directed_hop_depth=directed_hop_depth,
+        directed_chain_top_k=directed_chain_top_k,
+        directed_min_importance=directed_min_importance,
+    )
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -305,7 +394,17 @@ async def query_lightrag(
     except httpx.RequestError as exc:
         raise LightRAGQueryError("LightRAG query service is unavailable") from exc
 
-    return map_lightrag_response(response.json(), query_mode)
+    mapped_response = map_lightrag_response(response.json(), query_mode)
+    mapped_response["retrieval"].update(
+        {
+            "strategy": strategy,
+            "edge_direction": direction,
+            "hop_depth": directed_hop_depth,
+            "chain_top_k": directed_chain_top_k,
+            "min_relation_importance": directed_min_importance,
+        }
+    )
+    return mapped_response
 
 
 async def search_documents(

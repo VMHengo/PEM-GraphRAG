@@ -96,6 +96,7 @@ _ROOT_CAUSE_RULE = _RoutingRule(
         r"\bwelche\s+ursachen?\b",
         r"\bwodurch\b.*\bverursacht\b",
         r"\bwoher\s+kommt\b",
+        r"\bzur(?:\u00fcck|ueck)zuf(?:\u00fchren|uehren)(?:\s+auf)?\b",
         r"\bzur[üu]ckzuf[üu]hren\s+auf\b",
     ),
 )
@@ -109,6 +110,7 @@ _CAUSAL_CHAIN_RULE = _RoutingRule(
         r"\bwhat\s+can\b.*\blead\s+to\b",
         r"\b(?:results?\s+in|leads?\s+to|effects?\s+of|consequences?\s+of)\b",
         r"\bf(?:\u00fchrt|uhrt)\s+zu\b",
+        r"\b(?:wozu|zu\s+welchen\s+(?:folgen|auswirkungen|fehlern))\s+f(?:\u00fchrt|uehrt)\b",
         r"\b(?:wozu|zu\s+welchen\s+(?:folgen|auswirkungen|fehlern))\s+f[üu]hrt\b",
         r"\b(?:welche\s+folgen|welche\s+auswirkungen)\b",
     ),
@@ -133,6 +135,9 @@ _DEPENDENCY_RULE = _RoutingRule(
     relation_types=DEPENDENCY_RELATIONS,
     patterns=_compile_patterns(
         r"\b(?:depends?\s+on|requires?|input\s+materials?)\b",
+        r"\bwovon\s+h(?:\u00e4ngt|aengt)\b",
+        r"\babh(?:\u00e4ngig|aengig)\s+von\b",
+        r"\b(?:ben(?:\u00f6tigt|oetigt)|voraussetzung(?:en)?)\b",
         r"\bwovon\s+h[aä]ngt\b",
         r"\babh[aä]ngig\s+von\b",
         r"\b(?:ben[öo]tigt|voraussetzung(?:en)?)\b",
@@ -145,6 +150,7 @@ _PROVENANCE_RULE = _RoutingRule(
     relation_types=PROVENANCE_RELATIONS,
     patterns=_compile_patterns(
         r"\b(?:published\s+by|authored\s+by|document\s+source)\b",
+        r"\b(?:ver(?:\u00f6ffentlicht|oeffentlicht)\s+von|autor(?:in)?(?:en)?|dokumentquelle)\b",
         r"\b(?:ver[öo]ffentlicht\s+von|autor(?:in)?(?:en)?|dokumentquelle)\b",
         r"\bvon\s+wem\b.*\bver[öo]ffentlicht\b",
         r"\bwhich\s+documents?\b.*\b(?:source|author|publisher)\b",

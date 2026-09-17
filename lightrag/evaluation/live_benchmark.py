@@ -22,6 +22,14 @@ from lightrag.utils import logger
 
 
 BenchmarkMode = Literal["graph", "retrieval", "full"]
+DirectedStrategy = Literal["normal", "directed", "combined", "auto"]
+
+_DIRECTED_STRATEGIES: tuple[DirectedStrategy, ...] = (
+    "normal",
+    "directed",
+    "combined",
+    "auto",
+)
 
 
 @dataclass(frozen=True)
@@ -133,7 +141,10 @@ def list_benchmarks(working_dir: str | None = None) -> list[BenchmarkRef]:
                     name=str(benchmark.get("name") or benchmark_id),
                     description=str(benchmark.get("description") or ""),
                     path=path,
-                    case_count=len(_as_list(benchmark.get("cases"))),
+                    case_count=(
+                        len(_as_list(benchmark.get("cases")))
+                        + len(_as_list(benchmark.get("directed_cases")))
+                    ),
                 ),
             )
     return sorted(refs.values(), key=lambda item: item.id)
@@ -493,6 +504,317 @@ async def score_query_cases(
     return results, summary
 
 
+def _directed_cases(benchmark: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read dedicated cases first, then allow opt-in fields on normal cases."""
+
+    dedicated_cases = _as_list(benchmark.get("directed_cases"))
+    if dedicated_cases:
+        return [case for case in dedicated_cases if isinstance(case, dict)]
+    return [
+        case
+        for case in _as_list(benchmark.get("cases"))
+        if isinstance(case, dict) and _as_list(case.get("expected_directed_paths"))
+    ]
+
+
+def _directed_query_param(
+    case: dict[str, Any],
+    benchmark: dict[str, Any],
+    strategy: DirectedStrategy,
+) -> QueryParam:
+    """Create a fixed, context-only request for one strategy comparison."""
+
+    mode = str(case.get("mode") or benchmark.get("default_mode") or "mix")
+    if mode not in {"local", "global", "hybrid", "naive", "mix", "bypass"}:
+        mode = "mix"
+
+    param = QueryParam(
+        mode=mode,  # type: ignore[arg-type]
+        stream=False,
+        include_references=True,
+        only_need_context=True,
+        response_type=str(case.get("response_type") or "Multiple Paragraphs"),
+        retrieval_strategy=strategy,
+    )
+    integer_fields = (
+        "top_k",
+        "chunk_top_k",
+        "hop_depth",
+        "chain_top_k",
+        "chain_fanout",
+        "chain_top_k_per_prompt",
+    )
+    for field_name in integer_fields:
+        if case.get(field_name) is not None:
+            setattr(param, field_name, int(case[field_name]))
+    if case.get("min_relation_importance") is not None:
+        param.min_relation_importance = float(case["min_relation_importance"])
+    if case.get("edge_direction") in {"both", "in", "out"}:
+        param.edge_direction = case["edge_direction"]
+    if isinstance(case.get("hl_keywords"), list):
+        param.hl_keywords = [str(item) for item in case["hl_keywords"]]
+    if isinstance(case.get("ll_keywords"), list):
+        param.ll_keywords = [str(item) for item in case["ll_keywords"]]
+    return param
+
+
+def _sequence_matches(expected: list[Any], actual: list[Any]) -> bool:
+    """Allow an expected chain to occur within a longer bounded path."""
+
+    if not expected:
+        return True
+    next_expected = 0
+    for actual_value in actual:
+        if term_matches(expected[next_expected], actual_value):
+            next_expected += 1
+            if next_expected == len(expected):
+                return True
+    return False
+
+
+def _directed_path_matches(
+    expected: dict[str, Any], actual: dict[str, Any]
+) -> tuple[bool, list[dict[str, Any]]]:
+    """Score a path by order, predicate sequence, and optional provenance."""
+
+    checks: list[dict[str, Any]] = []
+    expected_nodes = _as_list(
+        expected.get("traversal_nodes") or expected.get("nodes")
+    )
+    actual_nodes = _as_list(actual.get("nodes"))
+    checks.append(
+        {
+            "kind": "nodes",
+            "expected": expected_nodes,
+            "actual": actual_nodes,
+            "passed": _sequence_matches(expected_nodes, actual_nodes),
+        }
+    )
+
+    expected_relation_types = _as_list(expected.get("relation_types"))
+    actual_relation_types = [
+        edge.get("relation_type")
+        for edge in _as_list(actual.get("edges"))
+        if isinstance(edge, dict)
+    ]
+    checks.append(
+        {
+            "kind": "relation_types",
+            "expected": expected_relation_types,
+            "actual": actual_relation_types,
+            "passed": _sequence_matches(expected_relation_types, actual_relation_types),
+        }
+    )
+
+    expected_documents = _as_list(expected.get("source_documents"))
+    actual_documents = _as_list(actual.get("file_paths"))
+    if expected_documents:
+        checks.append(
+            {
+                "kind": "source_documents",
+                "expected": expected_documents,
+                "actual": actual_documents,
+                "passed": all(
+                    any(term_matches(document, path) for path in actual_documents)
+                    for document in expected_documents
+                ),
+            }
+        )
+
+    if expected.get("require_citations"):
+        reference_ids = [
+            str(reference_id)
+            for reference_id in _as_list(actual.get("reference_ids"))
+            if str(reference_id).strip()
+        ]
+        checks.append(
+            {
+                "kind": "source_citations",
+                "expected": "at least one resolved source reference",
+                "actual": reference_ids,
+                "passed": bool(reference_ids),
+            }
+        )
+
+    return all(check["passed"] for check in checks), checks
+
+
+async def score_directed_retrieval_cases(
+    rag: Any,
+    benchmark: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Compare normal, directed, combined, and auto retrieval without answers.
+
+    Normal is a regression guard: it must skip directed traversal. Directed,
+    combined, and auto are scored from deterministic path diagnostics rather
+    than free-form LLM output, which keeps this gate reproducible and cheap.
+    """
+
+    cases = _directed_cases(benchmark)
+    results: list[dict[str, Any]] = []
+    strategy_checks: dict[DirectedStrategy, list[bool]] = {
+        strategy: [] for strategy in _DIRECTED_STRATEGIES
+    }
+    strategy_successes: dict[DirectedStrategy, int] = {
+        strategy: 0 for strategy in _DIRECTED_STRATEGIES
+    }
+
+    for case in cases:
+        question = str(case.get("question") or "").strip()
+        expected_paths = [
+            path
+            for path in _as_list(case.get("expected_directed_paths"))
+            if isinstance(path, dict)
+        ]
+        if not question or not expected_paths:
+            continue
+
+        strategy_results: list[dict[str, Any]] = []
+        for strategy in _DIRECTED_STRATEGIES:
+            param = _directed_query_param(case, benchmark, strategy)
+            query_result = await rag.aquery_llm(question, param=param)
+            status = str(query_result.get("status", "success"))
+            metadata = query_result.get("metadata") or {}
+            route = metadata.get("retrieval_route") or {}
+            diagnostics = metadata.get("directed_paths") or {}
+            paths = [
+                path
+                for path in _as_list(diagnostics.get("paths"))
+                if isinstance(path, dict)
+            ]
+            checks: list[dict[str, Any]] = [
+                {
+                    "kind": "query_status",
+                    "expected": "success",
+                    "actual": status,
+                    "passed": status == "success",
+                }
+            ]
+
+            if strategy == "normal":
+                checks.append(
+                    {
+                        "kind": "normal_strategy_skips_paths",
+                        "expected": "skipped with zero paths",
+                        "actual": {
+                            "status": diagnostics.get("status"),
+                            "path_count": diagnostics.get("path_count"),
+                        },
+                        "passed": (
+                            diagnostics.get("status") == "skipped"
+                            and diagnostics.get("path_count", 0) == 0
+                        ),
+                    }
+                )
+            else:
+                if strategy == "auto":
+                    expected_auto_strategy = str(
+                        case.get("expected_auto_strategy") or "combined"
+                    )
+                    checks.append(
+                        {
+                            "kind": "auto_effective_strategy",
+                            "expected": expected_auto_strategy,
+                            "actual": route.get("effective_strategy"),
+                            "passed": (
+                                route.get("effective_strategy")
+                                == expected_auto_strategy
+                            ),
+                        }
+                    )
+                expected_direction = case.get("expected_edge_direction")
+                if expected_direction:
+                    checks.append(
+                        {
+                            "kind": "edge_direction",
+                            "expected": expected_direction,
+                            "actual": route.get("edge_direction"),
+                            "passed": route.get("edge_direction") == expected_direction,
+                        }
+                    )
+                checks.append(
+                    {
+                        "kind": "path_provider_status",
+                        "expected": "completed",
+                        "actual": diagnostics.get("status"),
+                        "passed": diagnostics.get("status") == "completed",
+                    }
+                )
+                for expected_path in expected_paths:
+                    matched_path = None
+                    path_checks: list[dict[str, Any]] = []
+                    for actual_path in paths:
+                        passed, candidate_checks = _directed_path_matches(
+                            expected_path, actual_path
+                        )
+                        if passed:
+                            matched_path = actual_path
+                            path_checks = candidate_checks
+                            break
+                    checks.append(
+                        {
+                            "kind": "expected_path",
+                            "expected": expected_path,
+                            "actual": matched_path,
+                            "passed": matched_path is not None,
+                            "path_checks": path_checks,
+                        }
+                    )
+
+            passed = all(check["passed"] for check in checks)
+            strategy_checks[strategy].append(passed)
+            if status == "success":
+                strategy_successes[strategy] += 1
+            strategy_results.append(
+                {
+                    "strategy": strategy,
+                    "status": status,
+                    "route": route,
+                    "path_status": diagnostics.get("status"),
+                    "path_count": diagnostics.get("path_count", len(paths)),
+                    "paths": paths,
+                    "checks": checks,
+                    "score": _format_percent(
+                        sum(1 for check in checks if check["passed"]) / len(checks)
+                    )
+                    if checks
+                    else None,
+                }
+            )
+
+        results.append(
+            {
+                "id": str(case.get("id") or question),
+                "question": question,
+                "strategies": strategy_results,
+            }
+        )
+
+    strategy_summary: dict[str, dict[str, Any]] = {}
+    for strategy in _DIRECTED_STRATEGIES:
+        checks = strategy_checks[strategy]
+        score = sum(checks) / len(checks) if checks else None
+        strategy_summary[strategy] = {
+            "runs": len(checks),
+            "successful_runs": strategy_successes[strategy],
+            "path_score": _format_percent(score) if score is not None else None,
+        }
+
+    directed_scores = [
+        _safe_float(strategy_summary[strategy]["path_score"]) / 100
+        for strategy in ("directed", "combined", "auto")
+        if strategy_summary[strategy]["path_score"] is not None
+    ]
+    summary = {
+        "cases": len(results),
+        "strategies": strategy_summary,
+        "score": _format_percent(sum(directed_scores) / len(directed_scores))
+        if directed_scores
+        else None,
+    }
+    return results, summary
+
+
 def _average_available(scores: list[tuple[float | None, float]]) -> float | None:
     weighted_sum = 0.0
     total_weight = 0.0
@@ -509,6 +831,7 @@ def _average_available(scores: list[tuple[float | None, float]]) -> float | None
 def _failed_checks(
     graph_results: list[dict[str, Any]],
     query_results: list[dict[str, Any]],
+    directed_results: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     failures: list[str] = []
     for case in graph_results:
@@ -537,6 +860,14 @@ def _failed_checks(
                 failures.append(
                     f"{case['id']}: missing source '{check.get('expected')}'"
                 )
+    for case in directed_results or []:
+        for strategy in case.get("strategies", []):
+            for check in strategy.get("checks", []):
+                if not check.get("passed"):
+                    failures.append(
+                        f"{case['id']} ({strategy['strategy']}): "
+                        f"directed check failed: {check.get('kind')}"
+                    )
     return failures
 
 
@@ -569,9 +900,18 @@ async def run_live_benchmark(
         "content_score": None,
         "reference_score": None,
     }
+    directed_results: list[dict[str, Any]] = []
+    directed_summary: dict[str, Any] = {
+        "cases": 0,
+        "strategies": {},
+        "score": None,
+    }
     if run_queries:
         query_results, query_summary = await score_query_cases(
             rag, benchmark, generate_answers=generate_answers
+        )
+        directed_results, directed_summary = await score_directed_retrieval_cases(
+            rag, benchmark
         )
 
     metadata = graph_summary["metadata_coverage"]
@@ -617,14 +957,26 @@ async def run_live_benchmark(
             ),
         ]
     )
-
-    overall = _average_available(
-        [
-            (graph_score, 45),
-            (metadata_score, 25),
-            (retrieval_score, 30 if run_queries else 0),
-        ]
+    directed_score = (
+        _safe_float(directed_summary["score"]) / 100
+        if directed_summary.get("score") is not None
+        else None
     )
+
+    overall_components: list[tuple[float | None, float]] = [
+        (graph_score, 45),
+        (metadata_score, 25),
+        (retrieval_score, 30 if run_queries else 0),
+    ]
+    if directed_score is not None:
+        overall_components = [
+            (graph_score, 35),
+            (metadata_score, 20),
+            (retrieval_score, 20 if run_queries else 0),
+            (directed_score, 25),
+        ]
+
+    overall = _average_available(overall_components)
 
     result = {
         "benchmark": {
@@ -632,13 +984,17 @@ async def run_live_benchmark(
             "name": benchmark.get("name"),
             "description": benchmark.get("description"),
             "path": benchmark.get("path"),
-            "case_count": len(_as_list(benchmark.get("cases"))),
+            "case_count": (
+                len(_as_list(benchmark.get("cases")))
+                + len(_as_list(benchmark.get("directed_cases")))
+            ),
         },
         "run": {
             "mode": mode,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "query_generation_enabled": generate_answers,
             "query_checks_enabled": run_queries,
+            "directed_path_checks_enabled": bool(directed_results),
         },
         "scores": {
             "overall": _format_percent(overall) if overall is not None else None,
@@ -649,18 +1005,27 @@ async def run_live_benchmark(
             "retrieval": _format_percent(retrieval_score)
             if retrieval_score is not None
             else None,
+            "directed": _format_percent(directed_score)
+            if directed_score is not None
+            else None,
         },
         "summary": {
             "nodes": len(nodes),
             "edges": len(edges),
             "graph": graph_summary,
             "query": query_summary,
+            "directed": directed_summary,
         },
         "cases": {
             "graph": graph_results,
             "query": query_results,
+            "directed": directed_results,
         },
-        "failed_checks": _failed_checks(graph_results, query_results),
+        "failed_checks": _failed_checks(
+            graph_results,
+            query_results,
+            directed_results,
+        ),
     }
 
     if save_result:

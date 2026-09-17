@@ -22,7 +22,19 @@ def test_query_request_defaults_preserve_normal_retrieval():
     assert param.hop_depth == 2
     assert param.chain_top_k == 20
     assert param.chain_fanout == 20
+    assert param.chain_top_k_per_prompt == 2
     assert param.min_relation_importance == 0.45
+    assert request.include_retrieval_metadata is False
+
+
+@pytest.mark.offline
+def test_query_request_can_opt_in_to_retrieval_metadata():
+    request = QueryRequest(
+        query="What causes electrode defects?", include_retrieval_metadata=True
+    )
+
+    assert request.include_retrieval_metadata is True
+    assert request.to_query_params(is_stream=False).retrieval_strategy == "normal"
 
 
 @pytest.mark.offline
@@ -34,6 +46,7 @@ def test_query_request_maps_multihop_configuration_to_query_param():
         hop_depth=3,
         chain_top_k=12,
         chain_fanout=8,
+        chain_top_k_per_prompt=4,
         min_relation_importance=0.7,
     )
 
@@ -44,6 +57,7 @@ def test_query_request_maps_multihop_configuration_to_query_param():
     assert param.hop_depth == 3
     assert param.chain_top_k == 12
     assert param.chain_fanout == 8
+    assert param.chain_top_k_per_prompt == 4
     assert param.min_relation_importance == 0.7
 
 
@@ -56,6 +70,7 @@ def test_query_request_maps_multihop_configuration_to_query_param():
         ("hop_depth", 4),
         ("chain_top_k", 0),
         ("chain_fanout", 51),
+        ("chain_top_k_per_prompt", 11),
         ("min_relation_importance", 1.1),
     ],
 )
@@ -75,6 +90,7 @@ def test_query_request_rejects_invalid_multihop_configuration(
         ("hop_depth", 0),
         ("chain_top_k", 101),
         ("chain_fanout", 0),
+        ("chain_top_k_per_prompt", 0),
         ("min_relation_importance", -0.1),
     ],
 )

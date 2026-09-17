@@ -3,11 +3,31 @@ import json
 from pathlib import Path
 
 from lightrag.evaluation.live_benchmark import (
+    _directed_path_matches,
     list_benchmarks,
     load_benchmark,
     run_live_benchmark,
     score_graph_cases,
 )
+
+
+def test_directed_path_match_can_require_resolved_source_citations():
+    expected = {
+        "nodes": ["Cause", "Effect"],
+        "relation_types": ["causes"],
+        "require_citations": True,
+    }
+    actual = {
+        "nodes": ["Cause", "Effect"],
+        "edges": [{"relation_type": "causes"}],
+        "reference_ids": [],
+    }
+
+    matched, checks = _directed_path_matches(expected, actual)
+
+    assert matched is False
+    assert checks[-1]["kind"] == "source_citations"
+    assert checks[-1]["passed"] is False
 
 
 def test_graph_case_scores_directed_relation_metadata():
@@ -124,6 +144,54 @@ class _FakeRag:
         self.chunk_entity_relation_graph = _FakeGraph()
 
 
+class _DirectedFakeRag(_FakeRag):
+    def __init__(self, working_dir: Path):
+        super().__init__(working_dir)
+        self.strategies: list[str] = []
+
+    async def aquery_llm(self, query, param):
+        self.strategies.append(param.retrieval_strategy)
+        effective_strategy = (
+            "combined" if param.retrieval_strategy == "auto" else param.retrieval_strategy
+        )
+        diagnostics = {
+            "status": "skipped",
+            "reason": "strategy_normal",
+            "path_count": 0,
+            "paths": [],
+        }
+        route = {
+            "effective_strategy": effective_strategy,
+            "edge_direction": "in",
+        }
+        if param.retrieval_strategy != "normal":
+            diagnostics = {
+                "status": "completed",
+                "reason": "paths_found",
+                "path_count": 1,
+                "paths": [
+                    {
+                        "nodes": ["Defect X", "Uneven Coating", "Process Instability"],
+                        "edges": [
+                            {"relation_type": "causes"},
+                            {"relation_type": "influences"},
+                        ],
+                        "file_paths": ["defects.pdf", "coating.pdf"],
+                        "reference_ids": ["1", "2"],
+                    }
+                ],
+            }
+        return {
+            "status": "success",
+            "data": {"chunks": [], "references": []},
+            "metadata": {
+                "retrieval_route": route,
+                "directed_paths": diagnostics,
+            },
+            "llm_response": {"content": ""},
+        }
+
+
 def test_run_live_benchmark_graph_mode(tmp_path, monkeypatch):
     benchmark_dir = tmp_path / "evaluation" / "benchmarks"
     benchmark_dir.mkdir(parents=True)
@@ -162,3 +230,54 @@ def test_run_live_benchmark_graph_mode(tmp_path, monkeypatch):
     assert result["scores"]["retrieval"] is None
     assert result["failed_checks"] == []
     assert Path(result["run"]["saved_to"]).exists()
+
+
+def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
+    tmp_path, monkeypatch
+):
+    benchmark_dir = tmp_path / "evaluation" / "benchmarks"
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / "directed.json").write_text(
+        json.dumps(
+            {
+                "id": "directed",
+                "name": "Directed",
+                "cases": [],
+                "directed_cases": [
+                    {
+                        "id": "root-cause",
+                        "question": "What causes defect X?",
+                        "expected_edge_direction": "in",
+                        "expected_directed_paths": [
+                            {
+                                "traversal_nodes": [
+                                    "Defect X",
+                                    "Uneven Coating",
+                                    "Process Instability",
+                                ],
+                                "relation_types": ["causes", "influences"],
+                                "source_documents": ["defects.pdf"],
+                                "require_citations": True,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EVALUATION_BENCHMARK_DIR", str(benchmark_dir))
+    rag = _DirectedFakeRag(tmp_path / "rag_storage")
+
+    result = asyncio.run(
+        run_live_benchmark(rag, "directed", mode="retrieval", save_result=False)
+    )
+
+    assert rag.strategies == ["normal", "directed", "combined", "auto"]
+    assert result["scores"]["directed"] == 100.0
+    assert result["run"]["directed_path_checks_enabled"] is True
+    assert result["summary"]["directed"]["strategies"]["normal"]["path_score"] == 100.0
+    assert result["summary"]["directed"]["strategies"]["directed"]["path_score"] == 100.0
+    assert result["summary"]["directed"]["strategies"]["combined"]["path_score"] == 100.0
+    assert result["summary"]["directed"]["strategies"]["auto"]["path_score"] == 100.0
+    assert result["failed_checks"] == []

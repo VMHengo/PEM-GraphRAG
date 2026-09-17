@@ -56,6 +56,12 @@ from lightrag.base import (
     QueryContextResult,
 )
 from lightrag.adaptive_retrieval import route_retrieval_query
+from lightrag.directed_retrieval import DirectedPath, find_directed_paths
+from lightrag.relation_identity import (
+    legacy_relation_vdb_ids,
+    make_directional_relation_chunk_key,
+    make_directional_relation_vdb_id,
+)
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
 from lightrag.prompt import PROMPTS, resolve_entity_extraction_prompt_profile
 from lightrag.constants import (
@@ -81,6 +87,330 @@ from dotenv import load_dotenv
 # allows to use different .env file for each lightrag instance
 # the OS environment variables take precedence over the .env file
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=False)
+
+
+_DIRECTED_PATH_ANCHOR_LIMIT = 5
+_DIRECTED_PATH_CONTEXT_MAX_TOKENS = 1200
+
+
+def _directed_path_to_diagnostic(path: DirectedPath) -> dict[str, Any]:
+    """Serialize a path without exposing storage-specific relationship rows."""
+
+    return {
+        "path_id": path.path_id,
+        "nodes": list(path.nodes),
+        "score": round(path.score, 4),
+        "edges": [
+            {
+                "source": edge.source,
+                "target": edge.target,
+                "relation_type": edge.relation_type,
+                "directionality": edge.directionality,
+                "relation_importance": edge.relation_importance,
+                "chain_role": edge.chain_role,
+                "description": edge.description,
+            }
+            for edge in path.edges
+        ],
+        "source_ids": list(path.source_ids),
+        "file_paths": list(path.file_paths),
+    }
+
+
+def _directed_path_anchors(final_entities: list[dict[str, Any]]) -> list[str]:
+    """Take a small, deterministic set of entity-search results as path seeds."""
+
+    anchors: list[str] = []
+    seen: set[str] = set()
+    for entity in final_entities:
+        value = entity.get("entity_name") or entity.get("entity_id")
+        if not isinstance(value, str):
+            continue
+        anchor = value.strip()
+        normalized = anchor.casefold()
+        if anchor and normalized not in seen:
+            anchors.append(anchor)
+            seen.add(normalized)
+        if len(anchors) >= _DIRECTED_PATH_ANCHOR_LIMIT:
+            break
+    return anchors
+
+
+def _reference_path_key(path: object) -> str:
+    """Normalize document paths when merging normal and path references."""
+
+    return str(path or "").replace("\\", "/").strip().casefold()
+
+
+def _next_reference_id(references: list[dict[str, Any]]) -> int:
+    """Return the next numeric reference ID without assuming a pristine list."""
+
+    numeric_ids = []
+    for reference in references:
+        try:
+            numeric_ids.append(int(str(reference.get("reference_id", ""))))
+        except (TypeError, ValueError):
+            continue
+    return max(numeric_ids, default=0) + 1
+
+
+async def _attach_directed_path_sources(
+    raw_data: dict[str, Any],
+    paths: list[DirectedPath],
+    diagnostics: dict[str, Any],
+    text_chunks_db: BaseKVStorage,
+) -> dict[str, tuple[str, ...]]:
+    """Resolve path source IDs into normal, citeable query references.
+
+    Directed paths are graph evidence. A path is only citeable when its stored
+    source chunk can still be read from the chunk KV store. Resolved chunks are
+    added to the structured response data, while the textual path context only
+    receives the resulting reference IDs. This keeps the normal context path
+    untouched and avoids inventing citations from file names alone.
+    """
+
+    data = raw_data.setdefault("data", {})
+    references = data.setdefault("references", [])
+    chunks = data.setdefault("chunks", [])
+    if not paths:
+        return {}
+
+    source_ids: list[str] = []
+    seen_source_ids: set[str] = set()
+    for path in paths:
+        for source_id in path.source_ids:
+            if source_id and source_id not in seen_source_ids:
+                source_ids.append(source_id)
+                seen_source_ids.add(source_id)
+
+    if not source_ids:
+        return {}
+
+    try:
+        stored_chunks = await text_chunks_db.get_by_ids(source_ids)
+    except Exception as exc:
+        logger.warning("Failed to resolve directed path source chunks: %s", exc)
+        return {}
+
+    chunk_by_id = {
+        source_id: chunk
+        for source_id, chunk in zip(source_ids, stored_chunks)
+        if isinstance(chunk, dict)
+    }
+    reference_by_path = {
+        _reference_path_key(reference.get("file_path")): str(
+            reference.get("reference_id", "")
+        )
+        for reference in references
+        if reference.get("reference_id") and reference.get("file_path")
+    }
+    existing_chunk_ids = {
+        str(chunk.get("chunk_id") or "") for chunk in chunks if isinstance(chunk, dict)
+    }
+    next_reference_id = _next_reference_id(references)
+    references_by_path_id: dict[str, tuple[str, ...]] = {}
+    diagnostics_by_path_id = {
+        str(item.get("path_id")): item
+        for item in diagnostics.get("paths", [])
+        if isinstance(item, dict) and item.get("path_id")
+    }
+
+    for path in paths:
+        reference_ids: list[str] = []
+        unresolved_source_ids: list[str] = []
+        for source_id in path.source_ids:
+            chunk = chunk_by_id.get(source_id)
+            if chunk is None:
+                unresolved_source_ids.append(source_id)
+                continue
+
+            file_path = str(chunk.get("file_path") or "unknown_source")
+            path_key = _reference_path_key(file_path)
+            reference_id = reference_by_path.get(path_key)
+            if not reference_id:
+                reference_id = str(next_reference_id)
+                next_reference_id += 1
+                reference_by_path[path_key] = reference_id
+                references.append(
+                    {"reference_id": reference_id, "file_path": file_path}
+                )
+
+            if source_id not in existing_chunk_ids:
+                chunks.append(
+                    {
+                        "chunk_id": source_id,
+                        "content": str(chunk.get("content") or ""),
+                        "file_path": file_path,
+                        "reference_id": reference_id,
+                    }
+                )
+                existing_chunk_ids.add(source_id)
+
+            if reference_id not in reference_ids:
+                reference_ids.append(reference_id)
+
+        references_by_path_id[path.path_id] = tuple(reference_ids)
+        diagnostic = diagnostics_by_path_id.get(path.path_id)
+        if diagnostic is not None:
+            diagnostic["reference_ids"] = reference_ids
+            diagnostic["unresolved_source_ids"] = unresolved_source_ids
+
+    return references_by_path_id
+
+
+async def _collect_directed_path_diagnostics(
+    *,
+    query: str,
+    query_param: QueryParam,
+    knowledge_graph_inst: BaseGraphStorage,
+    final_entities: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[DirectedPath]]:
+    """Collect bounded path evidence while preserving normal retrieval on failure.
+
+    The storage capability is deliberately discovered at runtime. This keeps
+    non-Neo4j backends and existing graph storage contracts unchanged during
+    the incremental directed-retrieval rollout.
+    """
+
+    route = route_retrieval_query(query, query_param)
+    diagnostics: dict[str, Any] = {
+        "status": "skipped",
+        "reason": "strategy_normal",
+        "anchor_entities": [],
+        "path_count": 0,
+        "paths": [],
+    }
+    if not route.use_directed_paths:
+        return diagnostics, []
+
+    anchors = _directed_path_anchors(final_entities)
+    diagnostics["anchor_entities"] = anchors
+    if not anchors:
+        diagnostics["reason"] = "no_entity_anchors"
+        return diagnostics, []
+
+    fetch_edges = getattr(knowledge_graph_inst, "get_directed_neighbor_edges_batch", None)
+    if not callable(fetch_edges):
+        diagnostics["status"] = "unsupported"
+        diagnostics["reason"] = "storage_has_no_directed_neighbor_provider"
+        return diagnostics, []
+
+    try:
+        paths = await find_directed_paths(
+            anchors,
+            fetch_edges,
+            route=route,
+            query_param=query_param,
+        )
+    except Exception as exc:
+        logger.warning("Directed path retrieval failed; preserving normal context: %s", exc)
+        diagnostics["status"] = "error"
+        diagnostics["reason"] = "provider_error"
+        return diagnostics, []
+
+    diagnostics["status"] = "completed"
+    diagnostics["reason"] = "paths_found" if paths else "no_matching_paths"
+    diagnostics["path_count"] = len(paths)
+    diagnostics["paths"] = [_directed_path_to_diagnostic(path) for path in paths]
+    return diagnostics, paths
+
+
+def _semantic_path_edges(path: DirectedPath) -> tuple:
+    """Return semantic arrows in causal/process order where that is unambiguous."""
+
+    edges = path.edges
+    if len(edges) < 2:
+        return edges
+    if all(
+        left.target.casefold() == right.source.casefold()
+        for left, right in zip(edges, edges[1:])
+    ):
+        return edges
+    if all(
+        left.source.casefold() == right.target.casefold()
+        for left, right in zip(edges, edges[1:])
+    ):
+        return tuple(reversed(edges))
+    return edges
+
+
+def _format_directed_path(
+    path: DirectedPath, reference_ids: tuple[str, ...] = ()
+) -> str:
+    """Render a compact evidence line using semantic, not storage, direction."""
+
+    edges = _semantic_path_edges(path)
+    if not edges:
+        return ""
+
+    chain = edges[0].source
+    for edge in edges:
+        chain += f" --[{edge.relation_type}]--> {edge.target}"
+
+    evidence: list[str] = []
+    if path.file_paths:
+        evidence.append("files: " + ", ".join(path.file_paths[:3]))
+    if path.source_ids:
+        evidence.append("source ids: " + ", ".join(path.source_ids[:3]))
+    if reference_ids:
+        evidence.append("references: " + ", ".join(f"[{ref}]" for ref in reference_ids))
+    suffix = f" ({'; '.join(evidence)})" if evidence else ""
+    return f"- {chain}{suffix}"
+
+
+def _truncate_directed_path_context(
+    context: str,
+    *,
+    query_param: QueryParam,
+    tokenizer: Tokenizer | None,
+) -> str:
+    """Keep optional path evidence inside a small, deterministic token budget."""
+
+    token_budget = min(
+        _DIRECTED_PATH_CONTEXT_MAX_TOKENS,
+        max(128, query_param.max_relation_tokens // 4),
+    )
+    if tokenizer is None:
+        return context[: token_budget * 4].rstrip()
+
+    tokens = tokenizer.encode(context)
+    if len(tokens) <= token_budget:
+        return context
+    return tokenizer.decode(tokens[:token_budget]).rstrip() + "\n..."
+
+
+def _build_directed_path_context(
+    paths: list[DirectedPath],
+    *,
+    query_param: QueryParam,
+    global_config: dict[str, Any],
+    path_reference_ids: dict[str, tuple[str, ...]] | None = None,
+) -> str:
+    """Build the bounded path section injected for directed or combined plans."""
+
+    max_paths = max(1, min(query_param.chain_top_k_per_prompt, len(paths)))
+    path_reference_ids = path_reference_ids or {}
+    lines = [
+        _format_directed_path(path, path_reference_ids.get(path.path_id, ()))
+        for path in paths[:max_paths]
+    ]
+    lines = [line for line in lines if line]
+    if not lines:
+        return ""
+
+    section = "\n".join(
+        [
+            "Directed Evidence Paths (semantic source -> relation -> target):",
+            "Use these paths as evidence only; do not infer missing hops.",
+            *lines,
+        ]
+    )
+    tokenizer = global_config.get("tokenizer")
+    return _truncate_directed_path_context(
+        section,
+        query_param=query_param,
+        tokenizer=tokenizer if hasattr(tokenizer, "encode") else None,
+    )
 
 
 def _get_relationship_vdb_timeout_seconds(global_config: dict[str, Any]) -> float:
@@ -1845,8 +2175,20 @@ async def _rebuild_single_relationship(
     # normalized_chunk_ids = merge_source_ids([], chunk_ids)
     normalized_chunk_ids = chunk_ids
 
+    relationship_metadata = {
+        key: current_relationship[key]
+        for key in (
+            "semantic_src_id",
+            "semantic_tgt_id",
+            "directionality",
+            "relation_type",
+        )
+        if key in current_relationship
+    }
     if relation_chunks_storage is not None and normalized_chunk_ids:
-        storage_key = make_relation_chunk_key(src, tgt)
+        storage_key = make_directional_relation_chunk_key(
+            src, tgt, relationship_metadata
+        )
         await relation_chunks_storage.upsert(
             {
                 storage_key: {
@@ -2034,20 +2376,31 @@ async def _rebuild_single_relationship(
 
     await knowledge_graph_inst.upsert_edge(src, tgt, updated_relationship_data)
 
-    # Update relationship in vector database
-    # Sort src and tgt to ensure consistent ordering (smaller string first)
-    if src > tgt:
-        src, tgt = tgt, src
+    # Update relationship in vector database with a direction-aware new ID.
+    # Historical pair-hash IDs are removed as a one-way compatibility cleanup.
     try:
-        rel_vdb_id = compute_mdhash_id(src + tgt, prefix="rel-")
-        rel_vdb_id_reverse = compute_mdhash_id(tgt + src, prefix="rel-")
+        relationship_metadata = {
+            key: updated_relationship_data[key]
+            for key in (
+                "semantic_src_id",
+                "semantic_tgt_id",
+                "directionality",
+                "relation_type",
+            )
+            if key in updated_relationship_data
+        }
+        rel_vdb_id = make_directional_relation_vdb_id(
+            src, tgt, relationship_metadata
+        )
+        legacy_vdb_ids = legacy_relation_vdb_ids(src, tgt)
 
-        # Delete old vector records first (both directions to be safe)
+        # Delete historical pair records first. Do not delete a directional
+        # reverse record, because it may represent a distinct semantic fact.
         try:
-            await relationships_vdb.delete([rel_vdb_id, rel_vdb_id_reverse])
+            await relationships_vdb.delete(legacy_vdb_ids)
         except Exception as e:
             logger.debug(
-                f"Could not delete old relationship vector records {rel_vdb_id}, {rel_vdb_id_reverse}: {e}"
+                f"Could not delete legacy relationship vector records {legacy_vdb_ids}: {e}"
             )
 
         # Insert new vector record
@@ -2062,6 +2415,7 @@ async def _rebuild_single_relationship(
                 "description": final_description,
                 "weight": weight,
                 "file_path": updated_relationship_data["file_path"],
+                **relationship_metadata,
             }
         }
 
@@ -2493,10 +2847,27 @@ async def _merge_edges_then_upsert(
 
         new_source_ids = [dp["source_id"] for dp in edges_data if dp.get("source_id")]
 
-        storage_key = make_relation_chunk_key(src_id, tgt_id)
+        # New relation chunk records include semantic direction and predicate.
+        # The old pair key remains a read fallback for documents ingested before
+        # the directed-retrieval rollout.
+        provisional_metadata = _merge_relationship_metadata(
+            already_edge,
+            edges_data,
+            "",
+            src_id,
+            tgt_id,
+        )
+        storage_key = make_directional_relation_chunk_key(
+            src_id, tgt_id, provisional_metadata
+        )
+        legacy_storage_key = make_relation_chunk_key(src_id, tgt_id)
         existing_full_source_ids = []
         if relation_chunks_storage is not None:
             stored_chunks = await relation_chunks_storage.get_by_id(storage_key)
+            if not stored_chunks and legacy_storage_key != storage_key:
+                stored_chunks = await relation_chunks_storage.get_by_id(
+                    legacy_storage_key
+                )
             if stored_chunks and isinstance(stored_chunks, dict):
                 existing_full_source_ids = [
                     chunk_id
@@ -2511,16 +2882,6 @@ async def _merge_edges_then_upsert(
 
         # 2. Merge new source ids with existing ones
         full_source_ids = merge_source_ids(existing_full_source_ids, new_source_ids)
-
-        if relation_chunks_storage is not None and full_source_ids:
-            await relation_chunks_storage.upsert(
-                {
-                    storage_key: {
-                        "chunk_ids": full_source_ids,
-                        "count": len(full_source_ids),
-                    }
-                }
-            )
 
         # 3. Finalize source_id by applying source ids limit
         limit_method = global_config.get("source_ids_limit_method")
@@ -2645,6 +3006,18 @@ async def _merge_edges_then_upsert(
             src_id,
             tgt_id,
         )
+        if relation_chunks_storage is not None and full_source_ids:
+            directional_storage_key = make_directional_relation_chunk_key(
+                src_id, tgt_id, relationship_metadata
+            )
+            await relation_chunks_storage.upsert(
+                {
+                    directional_storage_key: {
+                        "chunk_ids": full_source_ids,
+                        "count": len(full_source_ids),
+                    }
+                }
+            )
 
         # 9. Build file_path within MAX_FILE_PATHS limit
         file_paths_list = []
@@ -2967,18 +3340,16 @@ async def _merge_edges_then_upsert(
             **relationship_metadata,
         )
 
-        # Sort src_id and tgt_id to ensure consistent ordering (smaller string first)
-        if src_id > tgt_id:
-            src_id, tgt_id = tgt_id, src_id
-
         if relationships_vdb is not None:
-            rel_vdb_id = compute_mdhash_id(src_id + tgt_id, prefix="rel-")
-            rel_vdb_id_reverse = compute_mdhash_id(tgt_id + src_id, prefix="rel-")
+            rel_vdb_id = make_directional_relation_vdb_id(
+                src_id, tgt_id, relationship_metadata
+            )
+            legacy_vdb_ids = legacy_relation_vdb_ids(src_id, tgt_id)
             try:
-                await relationships_vdb.delete([rel_vdb_id, rel_vdb_id_reverse])
+                await relationships_vdb.delete(legacy_vdb_ids)
             except Exception as e:
                 logger.debug(
-                    f"Could not delete old relationship vector records {rel_vdb_id}, {rel_vdb_id_reverse}: {e}"
+                    f"Could not delete legacy relationship vector records {legacy_vdb_ids}: {e}"
                 )
             rel_content = _truncate_vdb_content(
                 f"{relationship_metadata['relation_type']}\t{keywords}\t{src_id}\n{tgt_id}\n{description}",
@@ -3998,6 +4369,7 @@ async def kg_query(
         query_param.hop_depth,
         query_param.chain_top_k,
         query_param.chain_fanout,
+        query_param.chain_top_k_per_prompt,
         query_param.min_relation_importance,
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),
@@ -4040,6 +4412,7 @@ async def kg_query(
                 "hop_depth": query_param.hop_depth,
                 "chain_top_k": query_param.chain_top_k,
                 "chain_fanout": query_param.chain_fanout,
+                "chain_top_k_per_prompt": query_param.chain_top_k_per_prompt,
                 "min_relation_importance": query_param.min_relation_importance,
             }
             await save_to_cache(
@@ -5141,6 +5514,40 @@ async def _build_query_context(
         relation_id_to_original=truncation_result["relation_id_to_original"],
     )
 
+    route = route_retrieval_query(query, query_param)
+    directed_diagnostics, directed_paths = await _collect_directed_path_diagnostics(
+        query=query,
+        query_param=query_param,
+        knowledge_graph_inst=knowledge_graph_inst,
+        final_entities=search_result["final_entities"],
+    )
+    path_reference_ids = await _attach_directed_path_sources(
+        raw_data,
+        directed_paths,
+        directed_diagnostics,
+        text_chunks_db,
+    )
+
+    # A normal plan is byte-for-byte the existing context. Combined plans append
+    # bounded evidence, while directed plans deliberately expose only paths.
+    if route.use_directed_paths and directed_paths:
+        directed_context = _build_directed_path_context(
+            directed_paths,
+            query_param=query_param,
+            global_config=text_chunks_db.global_config,
+            path_reference_ids=path_reference_ids,
+        )
+        if route.effective_strategy == "directed":
+            context = directed_context
+        elif directed_context:
+            context = f"{context.rstrip()}\n\n{directed_context}"
+    elif route.effective_strategy == "directed":
+        reason = directed_diagnostics["reason"].replace("_", " ")
+        context = (
+            "Directed Evidence Paths:\n"
+            f"No usable directed evidence paths were found ({reason})."
+        )
+
     # Convert keywords strings to lists and add complete metadata to raw_data
     hl_keywords_list = hl_keywords.split(", ") if hl_keywords else []
     ll_keywords_list = ll_keywords.split(", ") if ll_keywords else []
@@ -5154,11 +5561,8 @@ async def _build_query_context(
         "high_level": hl_keywords_list,
         "low_level": ll_keywords_list,
     }
-    # Diagnostic only for now: the route is exposed to API/WebUI callers but does
-    # not influence the existing search, truncation, or context-building stages.
-    raw_data["metadata"]["retrieval_route"] = asdict(
-        route_retrieval_query(query, query_param)
-    )
+    raw_data["metadata"]["retrieval_route"] = asdict(route)
+    raw_data["metadata"]["directed_paths"] = directed_diagnostics
     raw_data["metadata"]["processing_info"] = {
         "total_entities_found": len(search_result.get("final_entities", [])),
         "total_relations_found": len(search_result.get("final_relations", [])),
@@ -5960,6 +6364,7 @@ async def naive_query(
         query_param.hop_depth,
         query_param.chain_top_k,
         query_param.chain_fanout,
+        query_param.chain_top_k_per_prompt,
         query_param.min_relation_importance,
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),
@@ -5998,6 +6403,7 @@ async def naive_query(
                 "hop_depth": query_param.hop_depth,
                 "chain_top_k": query_param.chain_top_k,
                 "chain_fanout": query_param.chain_fanout,
+                "chain_top_k_per_prompt": query_param.chain_top_k_per_prompt,
                 "min_relation_importance": query_param.min_relation_importance,
             }
             await save_to_cache(

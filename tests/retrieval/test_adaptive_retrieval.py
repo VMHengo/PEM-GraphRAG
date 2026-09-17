@@ -36,6 +36,22 @@ def test_auto_routes_root_cause_queries_inward(query: str, expected_type: str):
 
 @pytest.mark.offline
 @pytest.mark.parametrize(
+    "query",
+    [
+        "Worauf ist der Beschichtungsfehler zur\u00fcckzuf\u00fchren?",
+        "Worauf ist der Beschichtungsfehler zurueckzufuehren?",
+    ],
+)
+def test_auto_routes_unicode_and_transliterated_root_cause_queries_inward(query: str):
+    route = route_retrieval_query(query, QueryParam(retrieval_strategy="auto"))
+
+    assert route.query_type == "root_cause"
+    assert route.effective_strategy == "combined"
+    assert route.edge_direction == "in"
+
+
+@pytest.mark.offline
+@pytest.mark.parametrize(
     ("query", "expected_rule"),
     [
         ("Zu welchen Fehlern führt eine unzureichende Elektrodendicke?", "causal_chain"),
@@ -76,6 +92,22 @@ def test_auto_routes_dependency_chain_outward():
     assert route.effective_strategy == "combined"
     assert route.edge_direction == "out"
     assert route.target_relation_types == DEPENDENCY_RELATIONS
+
+
+@pytest.mark.offline
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Wovon h\u00e4ngt die Elektrodenqualit\u00e4t ab?",
+        "Wovon haengt die Elektrodenqualitaet ab?",
+    ],
+)
+def test_auto_routes_unicode_and_transliterated_dependency_queries_outward(query: str):
+    route = route_retrieval_query(query, QueryParam(retrieval_strategy="auto"))
+
+    assert route.query_type == "dependency_chain"
+    assert route.effective_strategy == "combined"
+    assert route.edge_direction == "out"
 
 
 @pytest.mark.offline

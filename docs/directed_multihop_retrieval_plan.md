@@ -47,6 +47,38 @@ The implementation must stay backward compatible:
 
 ## Current State
 
+### Implemented MVP status
+
+The additive directed-retrieval MVP is now implemented for Neo4j without a
+full storage rewrite:
+
+- Phase 0/1 relation metadata is extracted and stored with backward-compatible
+  defaults for legacy edges.
+- The deterministic router selects a route without an LLM call.
+- Neo4j supplies batched neighbour records and a bounded BFS constructs
+  semantic paths from `semantic_src_id` and `semantic_tgt_id`.
+- `normal` preserves the existing retrieval context and never calls the
+  directed neighbour provider.
+- `combined` and chain-like `auto` append bounded `Directed Evidence Paths`;
+  explicit `directed` uses those paths alone.
+- Structured query metadata exposes the route and directed-path diagnostics.
+- Directed path evidence is resolved back to stored source chunks before it is
+  placed in the answer context; only successfully resolved paths receive normal
+  `[n]` citations.
+- New relation chunk and relation-vector records use a direction-aware identity
+  containing semantic source, predicate, target, and directionality. Historical
+  pair-based records remain readable during the migration period.
+- The WebUI exposes directed controls and opt-in route/path diagnostics. The
+  general public MCP tool remains `normal` until developers opt in through its
+  deployment environment; the dedicated read-only chain-tracing tool accepts
+  bounded direction and hop controls.
+- `pem_directed_retrieval_quality` compares `normal`, `directed`, `combined`,
+  and `auto` on production, causal, and root-cause fixtures.
+
+The physical Neo4j edge merge remains undirected. Semantic direction is still
+provided by relationship metadata, so a later full storage migration is an
+optional optimisation rather than a dependency for the MVP.
+
 LightRAG currently stores Neo4j relationships as technically directed relationships with type `DIRECTED`, but the application treats them mostly as undirected graph edges.
 
 Important current code observations:

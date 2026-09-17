@@ -26,6 +26,7 @@ storage, or access control.
 | Expose or constrain query settings over REST | [`lightrag/api/routers/query_routes.py`](../lightrag/api/routers/query_routes.py) | `QueryRequest` fields, API validation, allowed ranges | No |
 | Tune retrieval without code | [`.env` via `env.example`](../env.example) | `TOP_K`, `CHUNK_TOP_K`, token budgets, reranker settings | No |
 | Change automatic multi-hop query classification | [`lightrag/adaptive_retrieval.py`](../lightrag/adaptive_retrieval.py) | Query patterns, priority, direction, relation-type families | No |
+| Change direction-aware relation identity | [`lightrag/relation_identity.py`](../lightrag/relation_identity.py) | Relation chunk/VDB identifiers, canonical semantic endpoints, legacy key fallback | No for reads; re-extract to populate new records |
 | Change final answer wording or context instructions | [`lightrag/prompt.py`](../lightrag/prompt.py) | `rag_response`, keyword extraction, standard entity extraction templates | No, but test carefully |
 | Change extraction model/provider/cost behaviour | [`.env` via `deploy/mcp/env.example`](../deploy/mcp/env.example) | `EXTRACT_LLM_*`, concurrency, timeouts, Azure Batch settings | No for queries; re-extract to improve existing graph |
 | Change embedding model/provider | [`.env` via `deploy/mcp/env.example`](../deploy/mcp/env.example) | `EMBEDDING_*`, model, dimension, token limit | **Yes: full re-index** |
@@ -83,7 +84,7 @@ configuration. Relevant fields include:
 | `enable_rerank` | Enables chunk reranking if configured |
 | `retrieval_strategy` | `normal`, `directed`, `combined`, or `auto`; currently defaults to `normal` for safe rollout |
 | `edge_direction` | Requested directed traversal direction: `both`, `in`, or `out` |
-| `hop_depth`, `chain_top_k`, `chain_fanout` | Bound future multi-hop traversal work |
+| `hop_depth`, `chain_top_k`, `chain_fanout`, `chain_top_k_per_prompt` | Bound traversal work and the amount of path evidence added to the prompt |
 | `min_relation_importance` | Minimum relation score for directed path selection |
 
 The REST representation and validation live in
@@ -209,9 +210,19 @@ For the directed multi-hop work, keep these responsibilities separate:
 | --- | --- |
 | Query classification | [`lightrag/adaptive_retrieval.py`](../lightrag/adaptive_retrieval.py) |
 | Directed edge normalization, filtering, ranking, and bounded path expansion | [`lightrag/directed_retrieval.py`](../lightrag/directed_retrieval.py) |
+| Direction-aware relation chunk and vector identities | [`lightrag/relation_identity.py`](../lightrag/relation_identity.py) |
 | Directed Neo4j neighbor provider | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
-| Normal/context merge | [`lightrag/operate.py`](../lightrag/operate.py) |
+| Normal/context merge and path-source citations | [`lightrag/operate.py`](../lightrag/operate.py) |
 | Neo4j storage and Cypher | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
+
+For public ChatGPT/MCP use, keep `MCP_RETRIEVAL_STRATEGY=normal` in the
+deployment environment. The general `query_pem_graphrag` tool then preserves
+the existing retrieval behaviour. `trace_pem_graphrag_chain` is a separate,
+read-only tool for bounded root-cause, consequence, dependency, and production
+chains; it exposes `direction`, `hop_depth <= 3`, and a directed strategy while
+retaining normal document citations. The deployment-level defaults, including
+`MCP_DIRECTED_EDGE_DIRECTION`, and range validation live in
+[`lightrag_mcp/config.py`](../lightrag_mcp/config.py).
 
 The current graph merge still uses an undirected Neo4j `MERGE` form. For the
 first directed-retrieval MVP, use `semantic_src_id` and `semantic_tgt_id` as
@@ -225,9 +236,16 @@ Legacy edges without metadata remain `unknown`; they can be traversed in either
 direction but score below explicitly directed edges.
 
 `find_directed_paths()` runs a bounded, beam-pruned breadth-first traversal via
-an injected batched neighbor provider. It is not connected to query execution
-yet: `normal` retrieval therefore remains untouched until future context-merge
-work explicitly integrates it.
+an injected batched neighbor provider. `operate._build_query_context()` invokes
+it only when the resolved route uses `directed` paths. `normal` is still a
+zero-provider-call path and keeps its existing LLM context unchanged.
+
+For `combined` and chain-like `auto` queries, the top
+`chain_top_k_per_prompt` paths are appended as a small, token-bounded
+`Directed Evidence Paths` section. For explicit `directed` queries, that
+section is the complete answer context. The structured response metadata
+always exposes `directed_paths` with a status (`skipped`, `completed`,
+`unsupported`, or `error`), seed entities, and serialised evidence paths.
 
 `Neo4JStorage.get_directed_neighbor_edges_batch()` is the current provider for
 that traversal. It reads physical relationships with an undirected Cypher
@@ -241,6 +259,7 @@ Use the benchmark files to turn a proposed quality change into a measurable
 comparison:
 
 - [`lightrag/evaluation/benchmarks/pem_real_document_quality.json`](../lightrag/evaluation/benchmarks/pem_real_document_quality.json): real-document benchmark packaged with the backend;
+- [`lightrag/evaluation/benchmarks/pem_directed_retrieval_quality.json`](../lightrag/evaluation/benchmarks/pem_directed_retrieval_quality.json): normal/directed/combined path-regression gate;
 - [`evaluation/benchmarks/pem_real_document_quality.json`](../evaluation/benchmarks/pem_real_document_quality.json): repository-level copy for editing and review;
 - [`lightrag/evaluation/live_benchmark.py`](../lightrag/evaluation/live_benchmark.py): benchmark execution and scoring;
 - [`docs/WEBUI_EVALUATION_BENCHMARKS.md`](WEBUI_EVALUATION_BENCHMARKS.md): WebUI benchmark workflow.
@@ -263,6 +282,7 @@ small code or config change
 | --- | --- | --- |
 | Document ingestion, statuses, extraction actions | [`lightrag_webui/src/features/DocumentManager.tsx`](../lightrag_webui/src/features/DocumentManager.tsx) | Admin workflow; rebuild the WebUI after changes |
 | Interactive retrieval options | [`lightrag_webui/src/features/RetrievalTesting.tsx`](../lightrag_webui/src/features/RetrievalTesting.tsx) | Good place for future strategy/direction/hop debug controls |
+| Directed quality comparison | [`lightrag_webui/src/features/EvaluationManager.tsx`](../lightrag_webui/src/features/EvaluationManager.tsx) | Shows normal, directed, and combined path scores for benchmarks with `expected_directed_paths` |
 | WebUI REST client/types | [`lightrag_webui/src/api/lightrag.ts`](../lightrag_webui/src/api/lightrag.ts) | Keep it aligned with `QueryRequest` |
 | ChatGPT MCP tools | [`lightrag_mcp/server.py`](../lightrag_mcp/server.py) | Tool parameters and public descriptions |
 | MCP-to-LightRAG requests | `lightrag_mcp/lightrag_client.py` | Forward new query options only after API behaviour is tested |

@@ -2,6 +2,7 @@ import pytest
 
 from lightrag.adaptive_retrieval import route_retrieval_query
 from lightrag.base import QueryParam
+from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.directed_retrieval import (
     edge_matches_traversal,
     normalize_directed_edge,
@@ -52,6 +53,22 @@ def test_normalization_keeps_legacy_edges_compatible():
     assert edge.relation_type == "causes"
     assert edge.relation_importance == pytest.approx(0.5)
     assert edge.chain_role == "other"
+
+
+@pytest.mark.offline
+def test_normalization_splits_multiple_stored_path_sources():
+    edge = normalize_directed_edge(
+        {
+            "src_id": "A",
+            "tgt_id": "B",
+            "source_id": f"chunk-1{GRAPH_FIELD_SEP}chunk-2",
+            "file_path": f"first.pdf{GRAPH_FIELD_SEP}second.pdf",
+        }
+    )
+
+    assert edge is not None
+    assert edge.source_ids == ("chunk-1", "chunk-2")
+    assert edge.file_paths == ("first.pdf", "second.pdf")
 
 
 @pytest.mark.offline
