@@ -209,7 +209,7 @@ For the directed multi-hop work, keep these responsibilities separate:
 | --- | --- |
 | Query classification | [`lightrag/adaptive_retrieval.py`](../lightrag/adaptive_retrieval.py) |
 | Directed edge normalization, filtering, ranking, and bounded path expansion | [`lightrag/directed_retrieval.py`](../lightrag/directed_retrieval.py) |
-| Actual directed Neo4j path provider | planned extension of [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
+| Directed Neo4j neighbor provider | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
 | Normal/context merge | [`lightrag/operate.py`](../lightrag/operate.py) |
 | Neo4j storage and Cypher | [`lightrag/kg/neo4j_impl.py`](../lightrag/kg/neo4j_impl.py) |
 
@@ -226,8 +226,14 @@ direction but score below explicitly directed edges.
 
 `find_directed_paths()` runs a bounded, beam-pruned breadth-first traversal via
 an injected batched neighbor provider. It is not connected to query execution
-yet: `normal` retrieval therefore remains untouched until the future Neo4j
-provider and context-merge work is explicitly integrated.
+yet: `normal` retrieval therefore remains untouched until future context-merge
+work explicitly integrates it.
+
+`Neo4JStorage.get_directed_neighbor_edges_batch()` is the current provider for
+that traversal. It reads physical relationships with an undirected Cypher
+pattern because the existing storage writes undirected `MERGE` relationships;
+semantic direction continues to come from `semantic_src_id` and
+`semantic_tgt_id` in the relationship metadata.
 
 ## Evaluation And Safe Change Workflow
 

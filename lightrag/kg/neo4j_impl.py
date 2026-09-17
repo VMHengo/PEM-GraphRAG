@@ -1,7 +1,7 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import final
+from typing import Any, Sequence, final
 import configparser
 
 
@@ -1002,6 +1002,104 @@ class Neo4JStorage(BaseGraphStorage):
 
             await result.consume()  # Ensure results are fully consumed
             return edges_dict
+
+    @READ_RETRY
+    async def get_directed_neighbor_edges_batch(
+        self,
+        node_ids: Sequence[str],
+        *,
+        candidate_limit_per_node: int = 200,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Return semantic relationship records for multiple frontier nodes.
+
+        Physical Neo4j relationship direction cannot yet be trusted because
+        LightRAG currently writes edges through an undirected ``MERGE``. The
+        returned ``semantic_src_id`` and ``semantic_tgt_id`` properties remain
+        authoritative for directed retrieval; physical endpoints are supplied
+        only as ``src_id`` and ``tgt_id`` fallbacks for legacy records.
+        """
+
+        if (
+            isinstance(candidate_limit_per_node, bool)
+            or not isinstance(candidate_limit_per_node, int)
+            or not 1 <= candidate_limit_per_node <= 500
+        ):
+            raise ValueError("candidate_limit_per_node must be an integer between 1 and 500")
+
+        unique_node_ids: list[str] = []
+        seen_node_ids: set[str] = set()
+        for node_id in node_ids:
+            if not isinstance(node_id, str):
+                raise ValueError("node_ids must contain only strings")
+            normalized_node_id = node_id.strip()
+            if normalized_node_id and normalized_node_id not in seen_node_ids:
+                unique_node_ids.append(normalized_node_id)
+                seen_node_ids.add(normalized_node_id)
+
+        if not unique_node_ids:
+            return {}
+
+        workspace_label = self._get_workspace_label()
+        edges_by_node: dict[str, list[dict[str, Any]]] = {
+            node_id: [] for node_id in unique_node_ids
+        }
+        result = None
+
+        try:
+            async with self._driver.session(
+                database=self._DATABASE, default_access_mode="READ"
+            ) as session:
+                query = f"""
+                UNWIND $node_ids AS requested_id
+                MATCH (anchor:`{workspace_label}` {{entity_id: requested_id}})
+                OPTIONAL MATCH (anchor)-[r:DIRECTED]-(neighbor:`{workspace_label}`)
+                WITH requested_id, r, neighbor
+                ORDER BY requested_id,
+                         coalesce(r.relation_importance, 0.5) DESC,
+                         coalesce(r.weight, 1.0) DESC,
+                         neighbor.entity_id
+                WITH requested_id, [candidate IN collect(
+                    CASE WHEN r IS NULL THEN NULL ELSE {{
+                        properties: properties(r),
+                        physical_src_id: startNode(r).entity_id,
+                        physical_tgt_id: endNode(r).entity_id
+                    }} END
+                ) WHERE candidate IS NOT NULL] AS candidates
+                RETURN requested_id,
+                       candidates[0..$candidate_limit_per_node] AS candidates
+                """
+                result = await session.run(
+                    query,
+                    node_ids=unique_node_ids,
+                    candidate_limit_per_node=candidate_limit_per_node,
+                )
+
+                async for record in result:
+                    requested_id = record["requested_id"]
+                    candidates = record["candidates"] or []
+                    for candidate in candidates:
+                        properties = dict(candidate.get("properties") or {})
+                        physical_src_id = candidate.get("physical_src_id")
+                        physical_tgt_id = candidate.get("physical_tgt_id")
+
+                        if physical_src_id:
+                            properties.setdefault("src_id", physical_src_id)
+                            properties["physical_src_id"] = physical_src_id
+                        if physical_tgt_id:
+                            properties.setdefault("tgt_id", physical_tgt_id)
+                            properties["physical_tgt_id"] = physical_tgt_id
+
+                        edges_by_node.setdefault(requested_id, []).append(properties)
+
+                return edges_by_node
+        except Exception as e:
+            logger.error(
+                f"[{self.workspace}] Error retrieving directed neighbor edges: {str(e)}"
+            )
+            raise
+        finally:
+            if result is not None:
+                await result.consume()
 
     @retry(
         stop=stop_after_attempt(3),
