@@ -114,9 +114,16 @@ function DirectedRetrievalDiagnostics({ metadata }: { metadata: RetrievalMetadat
         <span><span className="text-muted-foreground">Direction:</span> {route.edge_direction}</span>
         <span><span className="text-muted-foreground">Rule:</span> {route.matched_rule}</span>
         <span><span className="text-muted-foreground">Paths:</span> {paths.path_count} ({paths.status})</span>
+        <span><span className="text-muted-foreground">Citable:</span> {paths.citable_path_count ?? 0}</span>
       </div>
+      <div className="mt-1 text-muted-foreground">Reason: {paths.reason.replaceAll('_', ' ')}</div>
       {paths.anchor_entities.length > 0 && (
         <div className="mt-1 text-muted-foreground">Anchors: {paths.anchor_entities.join(', ')}</div>
+      )}
+      {(paths.uncited_path_count ?? 0) > 0 && (
+        <div className="mt-1 text-amber-400">
+          {paths.uncited_path_count} path(s) were excluded from answer context because no stored source chunk resolved.
+        </div>
       )}
       {paths.paths.slice(0, 3).map((path) => (
         <div key={path.path_id} className="mt-1 break-words font-mono text-[11px]">

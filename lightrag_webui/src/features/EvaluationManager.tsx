@@ -183,6 +183,37 @@ function DirectedRetrievalQuality({ result }: { result: EvaluationRunResult }) {
   )
 }
 
+function QualityGates({ result }: { result: EvaluationRunResult }) {
+  const gates = result.quality_gates
+  if (!gates?.configured) return null
+
+  return (
+    <Card className="rounded-md">
+      <CardHeader>
+        <CardTitle>Quality Gates</CardTitle>
+        <CardDescription>
+          {gates.passed
+            ? 'All configured promotion thresholds passed.'
+            : 'At least one configured promotion threshold failed.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {gates.checks.map((check) => (
+          <div key={check.kind} className="flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm">
+            <span className="font-medium">{check.kind.replaceAll('_', ' ')}</span>
+            <span className={check.passed ? 'text-emerald-400' : 'text-red-400'}>
+              {check.passed ? 'Passed' : 'Failed'}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              expected {String(check.expected)}; actual {String(check.actual)}
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function EvaluationManager() {
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
@@ -317,6 +348,8 @@ export default function EvaluationManager() {
           </Card>
 
           <DirectedRetrievalQuality result={result} />
+
+          <QualityGates result={result} />
 
           <Card className="rounded-md">
             <CardHeader>

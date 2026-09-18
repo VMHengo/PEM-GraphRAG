@@ -83,4 +83,10 @@ Scan tools. The first version intentionally exposes only:
 query_pem_graphrag(question, mode="mix")
 ```
 
+For developer diagnostics, the gateway also exposes
+`trace_pem_graphrag_chain`. It accepts a bounded direction (`in`, `out`, or
+`both`) and hop depth (maximum 3) and returns normal document citations plus
+route/path diagnostics. Keep `MCP_RETRIEVAL_STRATEGY=normal` for the general
+tool unless a reviewed evaluation benchmark supports changing that default.
+
 Document ingestion remains an admin workflow through LightRAG WebUI/API.

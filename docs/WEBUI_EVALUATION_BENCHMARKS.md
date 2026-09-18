@@ -84,6 +84,39 @@ Example:
 - `Overall`: weighted average of available graph, metadata, and retrieval
   scores.
 
+## Promotion Quality Gates
+
+Each benchmark may optionally define a `quality_gates` object. Gates make a
+benchmark result actionable for staging promotion without imposing one global
+threshold on every smoke test. A configured gate appears in the WebUI and is
+also appended to `failed_checks` when it fails.
+
+```json
+{
+  "quality_gates": {
+    "min_scores": {
+      "graph": 80,
+      "metadata": 80,
+      "directed": 80
+    },
+    "min_metadata_coverage": {
+      "directionality": 90,
+      "relation_type": 90
+    },
+    "min_directed_strategy_scores": {
+      "directed": 80,
+      "combined": 80,
+      "auto": 80
+    },
+    "max_failed_checks": 0,
+    "require_directed_cases": true
+  }
+}
+```
+
+All threshold values are percentages. Do not copy the example blindly: choose
+them after recording a reviewed baseline for the particular document set.
+
 ## Directed Retrieval Gate
 
 The packaged `pem_directed_retrieval_quality` benchmark additionally runs every
@@ -124,6 +157,11 @@ WebUI shows a `Directed` score plus per-strategy scores and individual path
 status. A missing or mismatched expected path is included in Failed Checks.
 Set `require_citations` for important acceptance cases: the benchmark then
 requires at least one real reference ID resolved from a stored source chunk.
+
+The query context applies the same safety rule: a discovered directed graph
+path without a resolvable source chunk remains visible in retrieval diagnostics,
+but is excluded from the LLM context. `citable_path_count` and
+`uncited_path_count` make this distinction visible in the Retrieval tab.
 
 The benchmark deliberately avoids exact-answer matching. Expected entities,
 relations, must-include terms, and expected source documents are more robust

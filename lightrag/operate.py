@@ -258,6 +258,33 @@ async def _attach_directed_path_sources(
     return references_by_path_id
 
 
+def _filter_citable_directed_paths(
+    paths: list[DirectedPath],
+    path_reference_ids: dict[str, tuple[str, ...]],
+    diagnostics: dict[str, Any],
+) -> list[DirectedPath]:
+    """Keep graph paths out of answer context unless a source chunk resolved.
+
+    The graph can contain older relationships whose ``source_id`` no longer
+    resolves to a chunk. They are still useful diagnostics for developers, but
+    they must not be presented to the answer model as evidence. Keeping all
+    discovered paths in diagnostics makes that distinction inspectable without
+    weakening the citation requirement for directed context.
+    """
+
+    citable_paths = [
+        path for path in paths if path_reference_ids.get(path.path_id, ())
+    ]
+    citable_path_ids = {path.path_id for path in citable_paths}
+    uncited_paths = [
+        path for path in paths if path.path_id not in citable_path_ids
+    ]
+    diagnostics["citable_path_count"] = len(citable_paths)
+    diagnostics["uncited_path_count"] = len(uncited_paths)
+    diagnostics["uncited_path_ids"] = [path.path_id for path in uncited_paths]
+    return citable_paths
+
+
 async def _collect_directed_path_diagnostics(
     *,
     query: str,
@@ -5527,12 +5554,19 @@ async def _build_query_context(
         directed_diagnostics,
         text_chunks_db,
     )
+    citable_directed_paths = _filter_citable_directed_paths(
+        directed_paths,
+        path_reference_ids,
+        directed_diagnostics,
+    )
+    if directed_paths and not citable_directed_paths:
+        directed_diagnostics["reason"] = "no_citable_paths"
 
     # A normal plan is byte-for-byte the existing context. Combined plans append
     # bounded evidence, while directed plans deliberately expose only paths.
-    if route.use_directed_paths and directed_paths:
+    if route.use_directed_paths and citable_directed_paths:
         directed_context = _build_directed_path_context(
-            directed_paths,
+            citable_directed_paths,
             query_param=query_param,
             global_config=text_chunks_db.global_config,
             path_reference_ids=path_reference_ids,

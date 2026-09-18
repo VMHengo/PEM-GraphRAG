@@ -240,6 +240,12 @@ an injected batched neighbor provider. `operate._build_query_context()` invokes
 it only when the resolved route uses `directed` paths. `normal` is still a
 zero-provider-call path and keeps its existing LLM context unchanged.
 
+Before a directed path reaches the LLM context, `operate.py` resolves each
+edge's stored source IDs against the chunk store. Paths without at least one
+resolved chunk are retained only as diagnostics and are excluded from answer
+context. This makes `reference_ids`, `citable_path_count`, and
+`uncited_path_count` important signals when debugging an older graph.
+
 For `combined` and chain-like `auto` queries, the top
 `chain_top_k_per_prompt` paths are appended as a small, token-bounded
 `Directed Evidence Paths` section. For explicit `directed` queries, that
@@ -263,6 +269,7 @@ comparison:
 - [`evaluation/benchmarks/pem_real_document_quality.json`](../evaluation/benchmarks/pem_real_document_quality.json): repository-level copy for editing and review;
 - [`lightrag/evaluation/live_benchmark.py`](../lightrag/evaluation/live_benchmark.py): benchmark execution and scoring;
 - [`docs/WEBUI_EVALUATION_BENCHMARKS.md`](WEBUI_EVALUATION_BENCHMARKS.md): WebUI benchmark workflow.
+- [`docs/DIRECTED_MULTIHOP_STAGING_RUNBOOK.md`](DIRECTED_MULTIHOP_STAGING_RUNBOOK.md): required staging, evidence, and promotion gates.
 
 Recommended workflow:
 
@@ -282,7 +289,7 @@ small code or config change
 | --- | --- | --- |
 | Document ingestion, statuses, extraction actions | [`lightrag_webui/src/features/DocumentManager.tsx`](../lightrag_webui/src/features/DocumentManager.tsx) | Admin workflow; rebuild the WebUI after changes |
 | Interactive retrieval options | [`lightrag_webui/src/features/RetrievalTesting.tsx`](../lightrag_webui/src/features/RetrievalTesting.tsx) | Good place for future strategy/direction/hop debug controls |
-| Directed quality comparison | [`lightrag_webui/src/features/EvaluationManager.tsx`](../lightrag_webui/src/features/EvaluationManager.tsx) | Shows normal, directed, and combined path scores for benchmarks with `expected_directed_paths` |
+| Directed quality comparison | [`lightrag_webui/src/features/EvaluationManager.tsx`](../lightrag_webui/src/features/EvaluationManager.tsx) | Shows normal, directed, combined, and auto path scores plus configured promotion gates |
 | WebUI REST client/types | [`lightrag_webui/src/api/lightrag.ts`](../lightrag_webui/src/api/lightrag.ts) | Keep it aligned with `QueryRequest` |
 | ChatGPT MCP tools | [`lightrag_mcp/server.py`](../lightrag_mcp/server.py) | Tool parameters and public descriptions |
 | MCP-to-LightRAG requests | `lightrag_mcp/lightrag_client.py` | Forward new query options only after API behaviour is tested |

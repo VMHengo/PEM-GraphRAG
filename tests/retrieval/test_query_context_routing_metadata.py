@@ -173,6 +173,7 @@ async def test_combined_route_appends_semantically_ordered_directed_evidence(mon
                     "relation_type": "causes",
                     "directionality": "directed",
                     "relation_importance": 0.95,
+                    "source_id": "chunk-defect",
                     "file_path": "defects.pdf",
                 }
             ],
@@ -183,6 +184,7 @@ async def test_combined_route_appends_semantically_ordered_directed_evidence(mon
                     "relation_type": "influences",
                     "directionality": "directed",
                     "relation_importance": 0.9,
+                    "source_id": "chunk-process",
                     "file_path": "coating.pdf",
                 }
             ],
@@ -193,6 +195,18 @@ async def test_combined_route_appends_semantically_ordered_directed_evidence(mon
         "What causes defect X?",
         QueryParam(retrieval_strategy="auto", hop_depth=2),
         graph,
+        _ChunkStore(
+            {
+                "chunk-defect": {
+                    "content": "Uneven coating causes Defect X.",
+                    "file_path": "defects.pdf",
+                },
+                "chunk-process": {
+                    "content": "Process instability influences uneven coating.",
+                    "file_path": "coating.pdf",
+                },
+            }
+        ),
     )
 
     assert result is not None
@@ -209,6 +223,41 @@ async def test_combined_route_appends_semantically_ordered_directed_evidence(mon
     assert diagnostics["anchor_entities"] == ["Defect X"]
     assert diagnostics["path_count"] == 2
     assert graph.calls == [("Defect X",), ("Uneven Coating",)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_directed_context_excludes_paths_without_resolved_source_chunks(monkeypatch):
+    _patch_context_dependencies(monkeypatch)
+    graph = _DirectedGraph(
+        {
+            "Defect X": [
+                {
+                    "semantic_src_id": "Uneven Coating",
+                    "semantic_tgt_id": "Defect X",
+                    "relation_type": "causes",
+                    "directionality": "directed",
+                    "relation_importance": 0.95,
+                }
+            ]
+        }
+    )
+
+    result = await _build_context(
+        "What causes defect X?",
+        QueryParam(retrieval_strategy="directed"),
+        graph,
+    )
+
+    assert result is not None
+    assert result.context == (
+        "Directed Evidence Paths:\n"
+        "No usable directed evidence paths were found (no citable paths)."
+    )
+    diagnostics = result.raw_data["metadata"]["directed_paths"]
+    assert diagnostics["path_count"] == 1
+    assert diagnostics["citable_path_count"] == 0
+    assert diagnostics["uncited_path_count"] == 1
 
 
 @pytest.mark.asyncio

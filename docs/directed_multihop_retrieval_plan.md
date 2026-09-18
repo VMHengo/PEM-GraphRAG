@@ -63,8 +63,9 @@ full storage rewrite:
   explicit `directed` uses those paths alone.
 - Structured query metadata exposes the route and directed-path diagnostics.
 - Directed path evidence is resolved back to stored source chunks before it is
-  placed in the answer context; only successfully resolved paths receive normal
-  `[n]` citations.
+  placed in the answer context. Paths without a resolved source chunk remain
+  available only in diagnostics and never reach the answer model; successfully
+  resolved paths receive normal `[n]` citations.
 - New relation chunk and relation-vector records use a direction-aware identity
   containing semantic source, predicate, target, and directionality. Historical
   pair-based records remain readable during the migration period.
@@ -73,7 +74,8 @@ full storage rewrite:
   deployment environment; the dedicated read-only chain-tracing tool accepts
   bounded direction and hop controls.
 - `pem_directed_retrieval_quality` compares `normal`, `directed`, `combined`,
-  and `auto` on production, causal, and root-cause fixtures.
+  and `auto` on production, causal, and root-cause fixtures, with optional
+  benchmark-specific promotion quality gates.
 
 The physical Neo4j edge merge remains undirected. Semantic direction is still
 provided by relationship metadata, so a later full storage migration is an

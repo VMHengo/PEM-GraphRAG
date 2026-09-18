@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lightrag.evaluation.live_benchmark import (
     _directed_path_matches,
+    evaluate_quality_gates,
     list_benchmarks,
     load_benchmark,
     run_live_benchmark,
@@ -28,6 +29,27 @@ def test_directed_path_match_can_require_resolved_source_citations():
     assert matched is False
     assert checks[-1]["kind"] == "source_citations"
     assert checks[-1]["passed"] is False
+
+
+def test_quality_gates_report_a_failed_threshold():
+    gates = evaluate_quality_gates(
+        {"quality_gates": {"min_scores": {"directed": 90}}},
+        scores={"directed": 80.0},
+        graph_summary={"metadata_coverage": {}},
+        directed_summary={"cases": 1, "strategies": {}},
+        failed_checks=[],
+    )
+
+    assert gates["configured"] is True
+    assert gates["passed"] is False
+    assert gates["checks"] == [
+        {
+            "kind": "min_score:directed",
+            "expected": 90.0,
+            "actual": 80.0,
+            "passed": False,
+        }
+    ]
 
 
 def test_graph_case_scores_directed_relation_metadata():
@@ -242,6 +264,11 @@ def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
             {
                 "id": "directed",
                 "name": "Directed",
+                "quality_gates": {
+                    "min_directed_strategy_scores": {"auto": 90},
+                    "max_failed_checks": 0,
+                    "require_directed_cases": True,
+                },
                 "cases": [],
                 "directed_cases": [
                     {
@@ -280,4 +307,6 @@ def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
     assert result["summary"]["directed"]["strategies"]["directed"]["path_score"] == 100.0
     assert result["summary"]["directed"]["strategies"]["combined"]["path_score"] == 100.0
     assert result["summary"]["directed"]["strategies"]["auto"]["path_score"] == 100.0
+    assert result["quality_gates"]["configured"] is True
+    assert result["quality_gates"]["passed"] is True
     assert result["failed_checks"] == []

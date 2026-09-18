@@ -828,6 +828,114 @@ def _average_available(scores: list[tuple[float | None, float]]) -> float | None
     return weighted_sum / total_weight
 
 
+def _as_mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _numeric_gate_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def evaluate_quality_gates(
+    benchmark: dict[str, Any],
+    *,
+    scores: dict[str, float | None],
+    graph_summary: dict[str, Any],
+    directed_summary: dict[str, Any],
+    failed_checks: list[str],
+) -> dict[str, Any]:
+    """Evaluate optional benchmark thresholds without hard-coding PEM policy.
+
+    Benchmarks define their own release requirements. This keeps a small smoke
+    benchmark useful without imposing production-quality thresholds on it, while
+    a reviewed PEM benchmark can fail a staging promotion deterministically.
+    """
+
+    configured_gates = benchmark.get("quality_gates")
+    if configured_gates is None:
+        return {"configured": False, "passed": True, "checks": []}
+    if not isinstance(configured_gates, dict):
+        return {
+            "configured": True,
+            "passed": False,
+            "checks": [
+                {
+                    "kind": "configuration",
+                    "expected": "quality_gates object",
+                    "actual": type(configured_gates).__name__,
+                    "passed": False,
+                }
+            ],
+        }
+
+    checks: list[dict[str, Any]] = []
+
+    def add_minimum_checks(
+        kind_prefix: str,
+        configured: Any,
+        actual_values: dict[str, Any],
+    ) -> None:
+        for name, minimum_value in _as_mapping(configured).items():
+            minimum = _numeric_gate_value(minimum_value)
+            actual = _numeric_gate_value(actual_values.get(name))
+            checks.append(
+                {
+                    "kind": f"{kind_prefix}:{name}",
+                    "expected": minimum,
+                    "actual": actual,
+                    "passed": minimum is not None and actual is not None and actual >= minimum,
+                }
+            )
+
+    add_minimum_checks("min_score", configured_gates.get("min_scores"), scores)
+    add_minimum_checks(
+        "min_metadata_coverage",
+        configured_gates.get("min_metadata_coverage"),
+        _as_mapping(graph_summary.get("metadata_coverage")),
+    )
+    directed_strategy_scores = {
+        str(name): _as_mapping(summary).get("path_score")
+        for name, summary in _as_mapping(directed_summary.get("strategies")).items()
+    }
+    add_minimum_checks(
+        "min_directed_strategy_score",
+        configured_gates.get("min_directed_strategy_scores"),
+        directed_strategy_scores,
+    )
+
+    if "max_failed_checks" in configured_gates:
+        maximum = _numeric_gate_value(configured_gates.get("max_failed_checks"))
+        checks.append(
+            {
+                "kind": "max_failed_checks",
+                "expected": maximum,
+                "actual": len(failed_checks),
+                "passed": maximum is not None and len(failed_checks) <= maximum,
+            }
+        )
+    if configured_gates.get("require_directed_cases"):
+        checks.append(
+            {
+                "kind": "require_directed_cases",
+                "expected": "at least one directed case",
+                "actual": directed_summary.get("cases", 0),
+                "passed": bool(directed_summary.get("cases")),
+            }
+        )
+
+    return {
+        "configured": True,
+        "passed": all(check["passed"] for check in checks),
+        "checks": checks,
+    }
+
+
 def _failed_checks(
     graph_results: list[dict[str, Any]],
     query_results: list[dict[str, Any]],
@@ -978,6 +1086,35 @@ async def run_live_benchmark(
 
     overall = _average_available(overall_components)
 
+    failed_checks = _failed_checks(
+        graph_results,
+        query_results,
+        directed_results,
+    )
+    scores = {
+        "overall": _format_percent(overall) if overall is not None else None,
+        "graph": _format_percent(graph_score) if graph_score is not None else None,
+        "metadata": _format_percent(metadata_score)
+        if metadata_score is not None
+        else None,
+        "retrieval": _format_percent(retrieval_score)
+        if retrieval_score is not None
+        else None,
+        "directed": _format_percent(directed_score)
+        if directed_score is not None
+        else None,
+    }
+    quality_gates = evaluate_quality_gates(
+        benchmark,
+        scores=scores,
+        graph_summary=graph_summary,
+        directed_summary=directed_summary,
+        failed_checks=failed_checks,
+    )
+    for gate in quality_gates["checks"]:
+        if not gate["passed"]:
+            failed_checks.append(f"quality gate failed: {gate['kind']}")
+
     result = {
         "benchmark": {
             "id": benchmark["id"],
@@ -996,19 +1133,7 @@ async def run_live_benchmark(
             "query_checks_enabled": run_queries,
             "directed_path_checks_enabled": bool(directed_results),
         },
-        "scores": {
-            "overall": _format_percent(overall) if overall is not None else None,
-            "graph": _format_percent(graph_score) if graph_score is not None else None,
-            "metadata": _format_percent(metadata_score)
-            if metadata_score is not None
-            else None,
-            "retrieval": _format_percent(retrieval_score)
-            if retrieval_score is not None
-            else None,
-            "directed": _format_percent(directed_score)
-            if directed_score is not None
-            else None,
-        },
+        "scores": scores,
         "summary": {
             "nodes": len(nodes),
             "edges": len(edges),
@@ -1021,11 +1146,8 @@ async def run_live_benchmark(
             "query": query_results,
             "directed": directed_results,
         },
-        "failed_checks": _failed_checks(
-            graph_results,
-            query_results,
-            directed_results,
-        ),
+        "quality_gates": quality_gates,
+        "failed_checks": failed_checks,
     }
 
     if save_result:

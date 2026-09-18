@@ -3,6 +3,20 @@
   "name": "PEM Directed Retrieval Quality",
   "description": "Compares normal, directed, and combined retrieval against known PEM production and causal chains.",
   "default_mode": "mix",
+  "quality_gates": {
+    "min_scores": {
+      "graph": 80,
+      "metadata": 80,
+      "directed": 80
+    },
+    "min_directed_strategy_scores": {
+      "directed": 80,
+      "combined": 80,
+      "auto": 80
+    },
+    "max_failed_checks": 0,
+    "require_directed_cases": true
+  },
   "cases": [
     {
       "id": "continuous_hairpin_process_chain",

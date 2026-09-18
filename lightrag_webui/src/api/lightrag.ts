@@ -206,6 +206,9 @@ export type RetrievalMetadata = {
     reason: string
     anchor_entities: string[]
     path_count: number
+    citable_path_count?: number
+    uncited_path_count?: number
+    uncited_path_ids?: string[]
     paths: DirectedPathDiagnostic[]
   }
 }
@@ -293,6 +296,19 @@ export type EvaluationRunRequest = {
   save_result?: boolean
 }
 
+export type EvaluationQualityGateCheck = {
+  kind: string
+  expected: unknown
+  actual: unknown
+  passed: boolean
+}
+
+export type EvaluationQualityGates = {
+  configured: boolean
+  passed: boolean
+  checks: EvaluationQualityGateCheck[]
+}
+
 export type EvaluationRunResult = {
   benchmark: {
     id: string
@@ -348,6 +364,7 @@ export type EvaluationRunResult = {
     query: Array<Record<string, any>>
     directed?: Array<Record<string, any>>
   }
+  quality_gates: EvaluationQualityGates
   failed_checks: string[]
 }
 
