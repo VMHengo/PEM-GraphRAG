@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from lightrag.api.utils_api import get_combined_auth_dependency
@@ -12,6 +13,16 @@ from lightrag.evaluation.live_benchmark import (
     list_benchmarks,
     load_benchmark,
     run_live_benchmark,
+)
+from lightrag.evaluation.run_history import (
+    complete_run,
+    create_run,
+    fail_run,
+    get_run,
+    list_runs,
+    mark_run_running,
+    recover_interrupted_runs,
+    update_run_metadata,
 )
 from lightrag.utils import logger
 
@@ -41,9 +52,80 @@ class BenchmarkRunRequest(BaseModel):
     )
 
 
+class BenchmarkRunStartRequest(BaseModel):
+    mode: Literal["graph", "retrieval", "full"] = "retrieval"
+    title: str | None = Field(default=None, max_length=160)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class BenchmarkRunUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=160)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class BenchmarkRunSummary(BaseModel):
+    id: str
+    title: str
+    note: str
+    status: Literal["queued", "running", "completed", "failed", "interrupted"]
+    benchmark_id: str
+    benchmark_name: str
+    mode: Literal["graph", "retrieval", "full"]
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    updated_at: str
+    error: str | None = None
+    scores: dict[str, float | None] = Field(default_factory=dict)
+    quality_gates_passed: bool | None = None
+    failed_check_count: int = 0
+    case_count: int = 0
+
+
+class BenchmarkRunListResponse(BaseModel):
+    runs: list[BenchmarkRunSummary]
+    total: int
+
+
+class BenchmarkRunStartResponse(BaseModel):
+    run: BenchmarkRunSummary
+
+
+class BenchmarkRunDetailResponse(BaseModel):
+    run: BenchmarkRunSummary
+    result: dict | None = None
+
+
 def create_evaluation_routes(rag, api_key: Optional[str] = None):
     router = APIRouter(prefix="/evaluation", tags=["evaluation"])
     combined_auth = get_combined_auth_dependency(api_key)
+    working_dir = getattr(rag, "working_dir", "./rag_storage")
+    active_runs: dict[str, asyncio.Task[None]] = {}
+    run_lock = asyncio.Lock()
+
+    recovered = recover_interrupted_runs(working_dir)
+    if recovered:
+        logger.warning("Marked %s interrupted benchmark runs after server restart", recovered)
+
+    async def execute_run(run_id: str, benchmark_id: str, mode: str) -> None:
+        try:
+            mark_run_running(working_dir, run_id)
+            result = await run_live_benchmark(
+                rag,
+                benchmark_id,
+                mode=mode,  # type: ignore[arg-type]
+                save_result=False,
+            )
+            complete_run(working_dir, run_id, result)
+            logger.info("Benchmark run %s completed", run_id)
+        except Exception as exc:
+            logger.error("Benchmark run %s failed: %s", run_id, exc, exc_info=True)
+            try:
+                fail_run(working_dir, run_id, str(exc))
+            except Exception:
+                logger.exception("Failed to persist benchmark run error for %s", run_id)
+        finally:
+            active_runs.pop(run_id, None)
 
     @router.get(
         "/benchmarks",
@@ -52,7 +134,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     )
     async def get_benchmarks():
         try:
-            refs = list_benchmarks(getattr(rag, "working_dir", None))
+            refs = list_benchmarks(working_dir)
             return BenchmarkListResponse(
                 benchmarks=[
                     BenchmarkListItem(
@@ -74,7 +156,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     )
     async def get_benchmark(benchmark_id: str):
         try:
-            benchmark = load_benchmark(benchmark_id, getattr(rag, "working_dir", None))
+            benchmark = load_benchmark(benchmark_id, working_dir)
             benchmark.pop("path", None)
             return benchmark
         except FileNotFoundError as exc:
@@ -99,6 +181,118 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
             logger.error("Failed to run benchmark %s: %s", benchmark_id, exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.post(
+        "/benchmarks/{benchmark_id}/runs",
+        response_model=BenchmarkRunStartResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def start_benchmark_run(benchmark_id: str, request: BenchmarkRunStartRequest):
+        try:
+            benchmark = load_benchmark(benchmark_id, working_dir)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Failed to load benchmark %s: %s", benchmark_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        async with run_lock:
+            active_runs_copy = [
+                run_id for run_id, task in active_runs.items() if not task.done()
+            ]
+            if active_runs_copy:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "message": "Another benchmark run is already active.",
+                        "active_run_id": active_runs_copy[0],
+                    },
+                )
+
+            try:
+                run = create_run(
+                    working_dir,
+                    benchmark_id=str(benchmark["id"]),
+                    benchmark_name=str(benchmark.get("name") or benchmark["id"]),
+                    case_count=(
+                        len(benchmark.get("cases") or [])
+                        + len(benchmark.get("directed_cases") or [])
+                    ),
+                    mode=request.mode,
+                    title=request.title,
+                    note=request.note,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+            active_runs[run["id"]] = asyncio.create_task(
+                execute_run(run["id"], str(benchmark["id"]), request.mode),
+                name=f"evaluation-benchmark-{run['id']}",
+            )
+            return BenchmarkRunStartResponse(run=BenchmarkRunSummary(**run))
+
+    @router.get(
+        "/runs",
+        response_model=BenchmarkRunListResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_benchmark_runs(
+        benchmark_id: str | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+    ):
+        try:
+            runs, total = list_runs(
+                working_dir,
+                benchmark_id=benchmark_id,
+                limit=limit,
+                offset=offset,
+            )
+            return BenchmarkRunListResponse(
+                runs=[BenchmarkRunSummary(**run) for run in runs], total=total
+            )
+        except Exception as exc:
+            logger.error("Failed to list benchmark runs: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.get(
+        "/runs/{run_id}",
+        response_model=BenchmarkRunDetailResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_benchmark_run(run_id: str):
+        try:
+            run = get_run(working_dir, run_id)
+            return BenchmarkRunDetailResponse(
+                run=BenchmarkRunSummary(**run["run"]), result=run["result"]
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Failed to load benchmark run %s: %s", run_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.patch(
+        "/runs/{run_id}",
+        response_model=BenchmarkRunStartResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def edit_benchmark_run(run_id: str, request: BenchmarkRunUpdateRequest):
+        if request.title is None and request.note is None:
+            raise HTTPException(status_code=422, detail="Provide a title or note to update")
+        try:
+            run = update_run_metadata(
+                working_dir, run_id, title=request.title, note=request.note
+            )
+            return BenchmarkRunStartResponse(run=BenchmarkRunSummary(**run))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Failed to update benchmark run %s: %s", run_id, exc)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return router

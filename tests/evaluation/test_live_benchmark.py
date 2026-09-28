@@ -252,6 +252,8 @@ def test_run_live_benchmark_graph_mode(tmp_path, monkeypatch):
     assert result["scores"]["retrieval"] is None
     assert result["failed_checks"] == []
     assert Path(result["run"]["saved_to"]).exists()
+    persisted = json.loads(Path(result["run"]["saved_to"]).read_text(encoding="utf-8"))
+    assert persisted["run"]["saved_to"] == result["run"]["saved_to"]
 
 
 def test_run_live_benchmark_compares_normal_directed_and_combined_paths(

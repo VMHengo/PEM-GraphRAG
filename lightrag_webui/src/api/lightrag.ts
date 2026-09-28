@@ -320,6 +320,47 @@ export type EvaluationRunRequest = {
   save_result?: boolean
 }
 
+export type EvaluationRunStartRequest = {
+  mode: EvaluationRunMode
+  title?: string
+  note?: string
+}
+
+export type EvaluationRunSummary = {
+  id: string
+  title: string
+  note: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
+  benchmark_id: string
+  benchmark_name: string
+  mode: EvaluationRunMode
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+  updated_at: string
+  error?: string | null
+  scores: Partial<{
+    overall: number | null
+    graph: number | null
+    metadata: number | null
+    retrieval: number | null
+    directed: number | null
+  }>
+  quality_gates_passed?: boolean | null
+  failed_check_count: number
+  case_count: number
+}
+
+export type EvaluationRunListResponse = {
+  runs: EvaluationRunSummary[]
+  total: number
+}
+
+export type EvaluationRunDetailResponse = {
+  run: EvaluationRunSummary
+  result: EvaluationRunResult | null
+}
+
 export type EvaluationQualityGateCheck = {
   kind: string
   expected: unknown
@@ -342,6 +383,10 @@ export type EvaluationRunResult = {
     case_count: number
   }
   run: {
+    id?: string
+    title?: string
+    note?: string
+    status?: EvaluationRunSummary['status']
     mode: EvaluationRunMode
     generated_at: string
     query_generation_enabled: boolean
@@ -787,6 +832,47 @@ export const runEvaluationBenchmark = async (
 ): Promise<EvaluationRunResult> => {
   const response = await axiosInstance.post(
     `/evaluation/benchmarks/${encodeURIComponent(benchmarkId)}/run`,
+    request
+  )
+  return response.data
+}
+
+export const startEvaluationBenchmarkRun = async (
+  benchmarkId: string,
+  request: EvaluationRunStartRequest
+): Promise<{ run: EvaluationRunSummary }> => {
+  const response = await axiosInstance.post(
+    `/evaluation/benchmarks/${encodeURIComponent(benchmarkId)}/runs`,
+    request
+  )
+  return response.data
+}
+
+export const getEvaluationRuns = async (
+  options: { benchmarkId?: string; limit?: number; offset?: number } = {}
+): Promise<EvaluationRunListResponse> => {
+  const params = new URLSearchParams()
+  if (options.benchmarkId) params.set('benchmark_id', options.benchmarkId)
+  if (options.limit != null) params.set('limit', String(options.limit))
+  if (options.offset != null) params.set('offset', String(options.offset))
+  const query = params.toString()
+  const response = await axiosInstance.get(`/evaluation/runs${query ? `?${query}` : ''}`)
+  return response.data
+}
+
+export const getEvaluationRun = async (
+  runId: string
+): Promise<EvaluationRunDetailResponse> => {
+  const response = await axiosInstance.get(`/evaluation/runs/${encodeURIComponent(runId)}`)
+  return response.data
+}
+
+export const updateEvaluationRun = async (
+  runId: string,
+  request: Pick<EvaluationRunStartRequest, 'title' | 'note'>
+): Promise<{ run: EvaluationRunSummary }> => {
+  const response = await axiosInstance.patch(
+    `/evaluation/runs/${encodeURIComponent(runId)}`,
     request
   )
   return response.data

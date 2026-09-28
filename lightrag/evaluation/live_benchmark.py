@@ -1152,9 +1152,9 @@ async def run_live_benchmark(
 
     if save_result:
         output_path = _result_output_path(rag, benchmark["id"])
+        result["run"]["saved_to"] = str(output_path)
         output_path.write_text(
             json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        result["run"]["saved_to"] = str(output_path)
 
     return result
