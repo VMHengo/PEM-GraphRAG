@@ -1,0 +1,6 @@
+services:
+  lightrag:
+    volumes:
+      - ../../evaluation/benchmarks:/app/data/evaluation/benchmarks:ro
+    environment:
+      EVALUATION_BENCHMARK_DIR: "/app/data/evaluation/benchmarks"

@@ -13,14 +13,25 @@ Benchmark files are JSON files. The backend searches these locations:
 3. `evaluation/benchmarks` in the application checkout
 4. `lightrag/evaluation/benchmarks` inside the Python package
 
-For VPS work, the easiest editable runtime location is usually:
+The tracked VPS Compose override mounts the repository directory read-only:
 
 ```text
-data/evaluation/benchmarks
+evaluation/benchmarks -> /app/data/evaluation/benchmarks
 ```
 
-Set `EVALUATION_BENCHMARK_DIR=/app/data/evaluation/benchmarks` if you want to
-mount benchmark files there without rebuilding the image.
+`deploy/mcp/compose.evaluation-benchmarks.yml` also sets
+`EVALUATION_BENCHMARK_DIR=/app/data/evaluation/benchmarks`. Combine it with the
+deployment-local VPS Compose file. After the first deployment, benchmark
+updates only need a Git pull; rebuilding the image is not required.
+
+```bash
+docker compose \
+  --project-name mcp \
+  --env-file .env \
+  -f deploy/mcp/docker-compose.vps.yml \
+  -f deploy/mcp/compose.evaluation-benchmarks.yml \
+  up -d --force-recreate lightrag
+```
 
 ## Run Modes
 

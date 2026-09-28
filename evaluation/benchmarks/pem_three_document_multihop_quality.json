@@ -1,0 +1,1378 @@
+{
+  "id": "pem_three_document_multihop_quality",
+  "name": "PEM Three-Document Multi-Hop Quality",
+  "description": "A demanding, evidence-audited benchmark for meaningful directed multi-hop retrieval across three PEM/VDMA battery-production guides. It evaluates causal depth, root-cause direction, production order, source grounding, and whether intermediate mechanisms survive extraction and retrieval.",
+  "version": 1,
+  "default_mode": "mix",
+  "document_scope": [
+    {
+      "file": "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+      "title": "Production of Lithium-Ion Battery Cell Components",
+      "edition": "2nd edition, 2023"
+    },
+    {
+      "file": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+      "title": "Production of a Solid-State Battery Cell",
+      "edition": "3rd edition, 2026"
+    },
+    {
+      "file": "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf",
+      "title": "Production Process of Battery Modules and Battery Packs",
+      "edition": "5th edition, 2026"
+    }
+  ],
+  "benchmark_objectives": [
+    "Prefer ordered mechanisms over topical co-occurrence.",
+    "Distinguish upstream root causes from downstream consequences.",
+    "Require meaningful intermediate entities in two-hop and three-hop chains.",
+    "Preserve process order for manufacturing-chain questions.",
+    "Require every directed path to resolve to a real source chunk and document reference.",
+    "Exercise English and German routing without translating the source terminology away."
+  ],
+  "quality_gates": {
+    "min_scores": {
+      "overall": 70,
+      "graph": 65,
+      "metadata": 80,
+      "retrieval": 75,
+      "directed": 70
+    },
+    "min_metadata_coverage": {
+      "directionality": 90,
+      "relation_type": 90,
+      "relation_importance": 85,
+      "chain_role": 75,
+      "specific_relation_type": 90
+    },
+    "min_directed_strategy_scores": {
+      "directed": 70,
+      "combined": 75,
+      "auto": 75
+    },
+    "max_failed_checks": 12,
+    "require_directed_cases": true
+  },
+  "cases": [
+    {
+      "id": "components_nmc_impurity_capacity_root_cause",
+      "category": "root_cause",
+      "question": "What causes the reduction in reversible battery-cell capacity during NMC precursor production, and through which intermediate mechanisms?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "NMC precursor production",
+        "reversible capacity root cause",
+        "lithium ion transport degradation"
+      ],
+      "ll_keywords": [
+        "impurities",
+        "electrochemically inert phases",
+        "lithium ion transport",
+        "reversible capacity"
+      ],
+      "expected_entities": [
+        "Impurities",
+        "Electrochemically Inert Phases",
+        "Lithium Ion Transport",
+        "Reversible Capacity"
+      ],
+      "expected_relations": [
+        {
+          "source": "Impurities",
+          "relation_type": "causes",
+          "target": "Electrochemically Inert Phases",
+          "directionality": "directed"
+        },
+        {
+          "source": "Electrochemically Inert Phases",
+          "relation_type": "degrades",
+          "target": "Lithium Ion Transport",
+          "directionality": "directed"
+        },
+        {
+          "source": "Lithium Ion Transport",
+          "relation_type": "degrades",
+          "target": "Reversible Capacity",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "impurities",
+        "electrochemically inert phases",
+        "lithium ion transport",
+        "reversible capacity"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+      ],
+      "expected_edge_direction": "in",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "traversal_nodes": [
+            "Reversible Capacity",
+            "Lithium Ion Transport",
+            "Electrochemically Inert Phases",
+            "Impurities"
+          ],
+          "relation_types": [
+            "degrades",
+            "degrades",
+            "causes"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [12],
+        "rationale": "The guide explicitly states that impurities form electrochemically inert phases, disrupt lithium-ion transport, and thereby reduce reversible capacity. The case rejects answers that skip the intermediate mechanism."
+      }
+    },
+    {
+      "id": "components_water_lipf6_hf_consequence_chain",
+      "category": "causal_chain",
+      "question": "What consequences can water contamination have for LiPF6 electrolyte chemistry and safety?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "electrolyte contamination",
+        "LiPF6 decomposition",
+        "electrolyte safety"
+      ],
+      "ll_keywords": [
+        "water contamination",
+        "decomposition reaction",
+        "LiPF6",
+        "hydrofluoric acid"
+      ],
+      "expected_entities": [
+        "Water Contamination",
+        "LiPF6",
+        "Decomposition Reaction",
+        "Hydrofluoric Acid"
+      ],
+      "expected_relations": [
+        {
+          "source": "Water Contamination",
+          "relation_type": "causes",
+          "target": "LiPF6 Decomposition Reaction",
+          "directionality": "directed"
+        },
+        {
+          "source": "LiPF6 Decomposition Reaction",
+          "relation_type": "results_in",
+          "target": "Hydrofluoric Acid",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "water",
+        "LiPF6",
+        "decomposition reaction",
+        "hydrofluoric acid"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Water Contamination",
+            "LiPF6 Decomposition Reaction",
+            "Hydrofluoric Acid"
+          ],
+          "relation_types": [
+            "causes",
+            "results_in"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [18],
+        "rationale": "Water is stated to cause LiPF6 decomposition; handling is safety-critical because contact with water or humidity forms hydrofluoric acid."
+      }
+    },
+    {
+      "id": "components_separator_extraction_pore_formation",
+      "category": "causal_chain",
+      "question": "What does removing mineral oil during separator extraction lead to, and how does the microporous structure arise?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "separator wet process",
+        "extraction and pore formation",
+        "microporous separator structure"
+      ],
+      "ll_keywords": [
+        "extraction",
+        "mineral oil removal",
+        "pores",
+        "microporous structure"
+      ],
+      "expected_entities": [
+        "Separator Extraction",
+        "Mineral Oil Removal",
+        "Pores",
+        "Microporous Structure"
+      ],
+      "expected_relations": [
+        {
+          "source": "Separator Extraction",
+          "relation_type": "results_in",
+          "target": "Mineral Oil Removal",
+          "directionality": "directed"
+        },
+        {
+          "source": "Mineral Oil Removal",
+          "relation_type": "results_in",
+          "target": "Pores",
+          "directionality": "directed"
+        },
+        {
+          "source": "Pores",
+          "relation_type": "results_in",
+          "target": "Microporous Structure",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "mineral oil",
+        "pores",
+        "microporous structure",
+        "extraction"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Separator Extraction",
+            "Mineral Oil Removal",
+            "Pores",
+            "Microporous Structure"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [23],
+        "rationale": "Extraction washes mineral oil from the stretched film; the extracted molecules leave pores that create the microporous separator structure."
+      }
+    },
+    {
+      "id": "components_dry_separator_process_order",
+      "category": "production_chain",
+      "question": "What is the process chain from longitudinal drawing to a dimensionally stable dry-process separator?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "dry separator process chain",
+        "longitudinal drawing",
+        "separator heat setting"
+      ],
+      "ll_keywords": [
+        "cold drawing",
+        "warm drawing",
+        "pore growth",
+        "heat-set",
+        "shrinkage"
+      ],
+      "expected_entities": [
+        "Longitudinal Drawing",
+        "Cold Drawing",
+        "Warm Drawing",
+        "Heat-Setting"
+      ],
+      "expected_relations": [
+        {
+          "source": "Longitudinal Drawing",
+          "relation_type": "contains",
+          "target": "Cold Drawing",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cold Drawing",
+          "relation_type": "precedes",
+          "target": "Warm Drawing",
+          "directionality": "directed"
+        },
+        {
+          "source": "Warm Drawing",
+          "relation_type": "precedes",
+          "target": "Heat-Setting",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "cold drawing",
+        "pore growth",
+        "warm drawing",
+        "enlargement of pores",
+        "reduce shrinkage"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Longitudinal Drawing",
+            "Cold Drawing",
+            "Warm Drawing",
+            "Heat-Setting"
+          ],
+          "relation_types": [
+            "contains",
+            "precedes",
+            "precedes"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [26],
+        "rationale": "Cold drawing initiates pore growth, warm drawing creates and enlarges pores, and subsequent heat-setting reduces shrinkage."
+      }
+    },
+    {
+      "id": "components_nmc_post_treatment_cycle_stability",
+      "category": "production_chain",
+      "question": "Welche Prozesskette wird nach dem Ultrafeinmahlen genutzt, um die Zyklenstabilität von NMC-Kathodenmaterial zu verbessern?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "NMC post-treatment process chain",
+        "cathode cycle stability",
+        "ceramic nanoparticle coating"
+      ],
+      "ll_keywords": [
+        "ultrafine grinding",
+        "post-treatment",
+        "ceramic nanoparticles",
+        "cycle stability"
+      ],
+      "expected_entities": [
+        "Ultrafine Grinding",
+        "NMC Post-Treatment",
+        "Ceramic Nanoparticle Coating",
+        "Cycle Stability"
+      ],
+      "expected_relations": [
+        {
+          "source": "Ultrafine Grinding",
+          "relation_type": "precedes",
+          "target": "NMC Post-Treatment",
+          "directionality": "directed"
+        },
+        {
+          "source": "NMC Post-Treatment",
+          "relation_type": "uses",
+          "target": "Ceramic Nanoparticle Coating",
+          "directionality": "directed"
+        },
+        {
+          "source": "Ceramic Nanoparticle Coating",
+          "relation_type": "influences",
+          "target": "Cycle Stability",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "ultrafine grinding",
+        "post-treatment",
+        "ceramic",
+        "cycle stability"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Ultrafine Grinding",
+            "NMC Post-Treatment",
+            "Ceramic Nanoparticle Coating",
+            "Cycle Stability"
+          ],
+          "relation_types": [
+            "precedes",
+            "uses",
+            "influences"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [14],
+        "rationale": "The guide places post-treatment after ultrafine grinding and identifies ceramic nanoparticle coatings as the means to increase NMC cycle stability."
+      }
+    },
+    {
+      "id": "ssb_flexibility_winding_stacking_chain",
+      "category": "causal_chain",
+      "question": "What can the limited flexibility of solid-state materials lead to for winding and the choice of cell-assembly process?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "solid-state cell format",
+        "winding limitations",
+        "stacking suitability"
+      ],
+      "ll_keywords": [
+        "limited flexibility",
+        "winding stress",
+        "stacking process",
+        "gentle processing"
+      ],
+      "expected_entities": [
+        "Limited Flexibility of Solid-State Materials",
+        "Inability to Withstand Winding Stress",
+        "Stacking Process",
+        "Gentle Material Processing"
+      ],
+      "expected_relations": [
+        {
+          "source": "Limited Flexibility of Solid-State Materials",
+          "relation_type": "causes",
+          "target": "Inability to Withstand Winding Stress",
+          "directionality": "directed"
+        },
+        {
+          "source": "Inability to Withstand Winding Stress",
+          "relation_type": "leads_to",
+          "target": "Stacking Process",
+          "directionality": "directed"
+        },
+        {
+          "source": "Stacking Process",
+          "relation_type": "results_in",
+          "target": "Gentle Material Processing",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "limited flexibility",
+        "winding",
+        "stacking",
+        "gentle processing"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Limited Flexibility of Solid-State Materials",
+            "Inability to Withstand Winding Stress",
+            "Stacking Process",
+            "Gentle Material Processing"
+          ],
+          "relation_types": [
+            "causes",
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [7],
+        "rationale": "Limited material flexibility prevents withstanding cylindrical winding stresses, making stacking particularly suitable and enabling gentler processing."
+      }
+    },
+    {
+      "id": "ssb_compaction_contact_conductivity_density",
+      "category": "causal_chain",
+      "question": "Welche Folgen hat das Kompaktieren eines Festkörperzellstapels für Partikelkontakt, Ionenleitfähigkeit und Energiedichte?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "solid-state cell compaction",
+        "particle contact and ion pathways",
+        "energy density"
+      ],
+      "ll_keywords": [
+        "compacting",
+        "particle contact",
+        "ion conductivity",
+        "reduced porosity",
+        "energy density"
+      ],
+      "expected_entities": [
+        "Cell Stack Compaction",
+        "Particle Contact",
+        "Ion Conductivity",
+        "Energy Density"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cell Stack Compaction",
+          "relation_type": "influences",
+          "target": "Particle Contact",
+          "directionality": "directed"
+        },
+        {
+          "source": "Particle Contact",
+          "relation_type": "influences",
+          "target": "Ion Conductivity",
+          "directionality": "directed"
+        },
+        {
+          "source": "Ion Conductivity",
+          "relation_type": "influences",
+          "target": "Energy Density",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "particle contact",
+        "pathways",
+        "reduced porosity",
+        "ion conductivity",
+        "energy density"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Cell Stack Compaction",
+            "Particle Contact",
+            "Ion Conductivity",
+            "Energy Density"
+          ],
+          "relation_types": [
+            "influences",
+            "influences",
+            "influences"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [16],
+        "rationale": "Compaction is explicitly intended to improve particle contact, secure internal pathways, reduce porosity, increase ion conductivity, and increase energy density."
+      }
+    },
+    {
+      "id": "ssb_cosintering_cycle_efficiency_root_cause",
+      "category": "root_cause",
+      "question": "What causes the increase in cycle efficiency when a solid-state cathode and electrolyte are co-sintered?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "solid-state battery co-sintering",
+        "interfacial resistance",
+        "cycle efficiency"
+      ],
+      "ll_keywords": [
+        "co-sintering",
+        "cathode and electrolyte",
+        "interface resistance",
+        "cycle efficiency"
+      ],
+      "expected_entities": [
+        "Cathode-Electrolyte Co-Sintering",
+        "Interfacial Resistance",
+        "Cycle Efficiency"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cathode-Electrolyte Co-Sintering",
+          "relation_type": "influences",
+          "target": "Interfacial Resistance",
+          "directionality": "directed"
+        },
+        {
+          "source": "Interfacial Resistance",
+          "relation_type": "influences",
+          "target": "Cycle Efficiency",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "co-sintering",
+        "reduces",
+        "interfacial resistance",
+        "cycle efficiency"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "in",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "traversal_nodes": [
+            "Cycle Efficiency",
+            "Interfacial Resistance",
+            "Cathode-Electrolyte Co-Sintering"
+          ],
+          "relation_types": [
+            "influences",
+            "influences"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [15],
+        "rationale": "Co-sintering reduces cathode-electrolyte interfacial resistance, which increases cycle efficiency. The root-cause traversal must recover both the interface mechanism and the process."
+      }
+    },
+    {
+      "id": "ssb_bipolar_stacking_voltage_cost_branches",
+      "category": "causal_chain",
+      "question": "What can bipolar stacking of solid-state elementary cells lead to for cell voltage and packaging cost?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "bipolar stacking",
+        "solid-state cell series connection",
+        "packaging cost reduction"
+      ],
+      "ll_keywords": [
+        "bipolar order",
+        "series connection",
+        "multiplied cell voltage",
+        "outer conductors",
+        "packaging costs"
+      ],
+      "expected_entities": [
+        "Bipolar Stacking",
+        "Series Connection",
+        "Multiplied Cell Voltage",
+        "Outer Conductors",
+        "Packaging Costs"
+      ],
+      "expected_relations": [
+        {
+          "source": "Bipolar Stacking",
+          "relation_type": "results_in",
+          "target": "Series Connection",
+          "directionality": "directed"
+        },
+        {
+          "source": "Series Connection",
+          "relation_type": "leads_to",
+          "target": "Multiplied Cell Voltage",
+          "directionality": "directed"
+        },
+        {
+          "source": "Use of Only Outer Conductors",
+          "relation_type": "results_in",
+          "target": "Reduced Packaging Costs",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "bipolar",
+        "series connection",
+        "multiplied cell voltage",
+        "outer conductors",
+        "packaging costs"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Bipolar Stacking",
+            "Series Connection",
+            "Multiplied Cell Voltage"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Bipolar Stacking",
+            "Series Connection",
+            "Use of Only Outer Conductors",
+            "Reduced Packaging Costs"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [17, 18],
+        "rationale": "Bipolar stacking creates a series connection, enabling multiplied voltage and fewer required conductors; only connecting the outer collectors reduces packaging costs."
+      }
+    },
+    {
+      "id": "ssb_lithium_metal_simplified_formation",
+      "category": "causal_chain",
+      "question": "What can the already-charged state of an assembled lithium-metal solid-state cell lead to for formation time and cost?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "solid-state battery formation",
+        "lithium metal anode charged state",
+        "formation time and cost"
+      ],
+      "ll_keywords": [
+        "lithium metal anode",
+        "already charged after assembly",
+        "simplified formation",
+        "less time",
+        "cost-effective"
+      ],
+      "expected_entities": [
+        "Lithium Metal Anode",
+        "Charged State After Assembly",
+        "Simplified Formation",
+        "Reduced Formation Time and Cost"
+      ],
+      "expected_relations": [
+        {
+          "source": "Lithium Metal Anode",
+          "relation_type": "results_in",
+          "target": "Charged State After Assembly",
+          "directionality": "directed"
+        },
+        {
+          "source": "Charged State After Assembly",
+          "relation_type": "leads_to",
+          "target": "Simplified Formation",
+          "directionality": "directed"
+        },
+        {
+          "source": "Simplified Formation",
+          "relation_type": "results_in",
+          "target": "Reduced Formation Time and Cost",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "lithium metal anode",
+        "already charged",
+        "formation",
+        "less time",
+        "cost-effective"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Lithium Metal Anode",
+            "Charged State After Assembly",
+            "Simplified Formation",
+            "Reduced Formation Time and Cost"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [7, 19],
+        "rationale": "The guide links lithium-metal anodes being charged after assembly to significantly simplified formation and expects shorter, more cost-effective formation and aging."
+      }
+    },
+    {
+      "id": "module_breathing_pressure_aging_service_life",
+      "category": "causal_chain",
+      "question": "What can cyclic cell expansion and contraction lead to for pressure, aging behavior, and service life in a battery module?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "battery cell breathing",
+        "module pressure load",
+        "cell aging and service life"
+      ],
+      "ll_keywords": [
+        "expansion and contraction",
+        "oscillating pressure load",
+        "aging behavior",
+        "0.3 to 0.5 bar",
+        "service life"
+      ],
+      "expected_entities": [
+        "Cell Expansion and Contraction",
+        "Oscillating Pressure Load",
+        "Cell Aging Behavior",
+        "Service Life"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cell Expansion and Contraction",
+          "relation_type": "causes",
+          "target": "Oscillating Pressure Load",
+          "directionality": "directed"
+        },
+        {
+          "source": "Oscillating Pressure Load",
+          "relation_type": "influences",
+          "target": "Cell Aging Behavior",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cell Aging Behavior",
+          "relation_type": "influences",
+          "target": "Service Life",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "expansion and contraction",
+        "oscillating pressure",
+        "aging behavior",
+        "0.3 to 0.5 bar",
+        "service life"
+      ],
+      "expected_documents": [
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Cell Expansion and Contraction",
+            "Oscillating Pressure Load",
+            "Cell Aging Behavior",
+            "Service Life"
+          ],
+          "relation_types": [
+            "causes",
+            "influences",
+            "influences"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [9, 18],
+        "rationale": "The guide connects cell breathing to increasing oscillating pressure, states that pressure decisively influences aging, and identifies a light pressure range as beneficial for long service life."
+      }
+    },
+    {
+      "id": "module_heat_thermal_runaway_fire_chain",
+      "category": "causal_chain",
+      "question": "Welche Folgen kann starke Wärmeentwicklung bei hohen Lade- oder Entladeströmen bis hin zur Brandausbreitung haben?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.6,
+      "hl_keywords": [
+        "battery module thermal safety",
+        "cell overheating",
+        "thermal runaway propagation"
+      ],
+      "ll_keywords": [
+        "strong heat generation",
+        "high discharge and charge",
+        "cell overheating",
+        "exothermic reaction",
+        "thermal runaway",
+        "fire spread"
+      ],
+      "expected_entities": [
+        "Strong Heat Generation",
+        "Cell Overheating",
+        "Thermal Runaway",
+        "Fire or Heat Spread"
+      ],
+      "expected_relations": [
+        {
+          "source": "Strong Heat Generation",
+          "relation_type": "causes",
+          "target": "Cell Overheating",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cell Overheating",
+          "relation_type": "results_in",
+          "target": "Thermal Runaway",
+          "directionality": "directed"
+        },
+        {
+          "source": "Thermal Runaway",
+          "relation_type": "leads_to",
+          "target": "Fire or Heat Spread",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "heat generation",
+        "overheating",
+        "exothermic reaction",
+        "thermal runaway",
+        "fire"
+      ],
+      "expected_documents": [
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Strong Heat Generation",
+            "Cell Overheating",
+            "Thermal Runaway",
+            "Fire or Heat Spread"
+          ],
+          "relation_types": [
+            "causes",
+            "results_in",
+            "leads_to"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [18, 28],
+        "rationale": "High charge/discharge loads generate heat; overheating can trigger a self-reinforcing exothermic thermal runaway, which creates fire, explosion, and propagation hazards."
+      }
+    },
+    {
+      "id": "module_laser_reflectivity_heat_root_cause",
+      "category": "root_cause",
+      "question": "What causes uneven heat distribution when highly reflective cell contacts are laser welded?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "laser welding root cause",
+        "reflective contact surfaces",
+        "uneven heat distribution"
+      ],
+      "ll_keywords": [
+        "highly reflective surfaces",
+        "energy absorption",
+        "uneven heat distribution",
+        "laser welding"
+      ],
+      "expected_entities": [
+        "Highly Reflective Surfaces",
+        "Poor Energy Absorption",
+        "Uneven Heat Distribution"
+      ],
+      "expected_relations": [
+        {
+          "source": "Highly Reflective Surfaces",
+          "relation_type": "causes",
+          "target": "Poor Energy Absorption",
+          "directionality": "directed"
+        },
+        {
+          "source": "Poor Energy Absorption",
+          "relation_type": "results_in",
+          "target": "Uneven Heat Distribution",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "highly reflective",
+        "do not absorb energy optimally",
+        "uneven heat distribution",
+        "laser welding"
+      ],
+      "expected_documents": [
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "in",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "traversal_nodes": [
+            "Uneven Heat Distribution",
+            "Poor Energy Absorption",
+            "Highly Reflective Surfaces"
+          ],
+          "relation_types": [
+            "results_in",
+            "causes"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [13, 15],
+        "rationale": "The welding overview explicitly identifies high reflectivity as problematic because poor energy absorption results in uneven heat distribution."
+      }
+    },
+    {
+      "id": "module_ctp_density_repair_tradeoff",
+      "category": "causal_chain",
+      "question": "What can direct cell integration in a cell-to-pack architecture lead to for energy density, production effort, and repairability?",
+      "mode": "mix",
+      "top_k": 60,
+      "chunk_top_k": 30,
+      "hop_depth": 3,
+      "chain_top_k": 30,
+      "chain_fanout": 15,
+      "chain_top_k_per_prompt": 10,
+      "min_relation_importance": 0.55,
+      "hl_keywords": [
+        "cell-to-pack architecture trade-off",
+        "direct cell integration",
+        "energy density and repairability"
+      ],
+      "ll_keywords": [
+        "elimination of module level",
+        "fewer interfaces",
+        "energy density",
+        "assembly steps",
+        "considerable disassembly",
+        "repair and service"
+      ],
+      "expected_entities": [
+        "Direct Cell Integration",
+        "Elimination of Module Level",
+        "Reduced Components and Assembly Steps",
+        "Higher Energy Density",
+        "Considerable Disassembly Work",
+        "Harder Repair and Service"
+      ],
+      "expected_relations": [
+        {
+          "source": "Direct Cell Integration",
+          "relation_type": "results_in",
+          "target": "Elimination of Module Level",
+          "directionality": "directed"
+        },
+        {
+          "source": "Elimination of Module Level",
+          "relation_type": "results_in",
+          "target": "Reduced Components and Assembly Steps",
+          "directionality": "directed"
+        },
+        {
+          "source": "Considerable Disassembly Work",
+          "relation_type": "results_in",
+          "target": "Harder Repair and Service",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "directly into the pack",
+        "components",
+        "assembly steps",
+        "energy density",
+        "repair and service",
+        "disassembly"
+      ],
+      "expected_documents": [
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Direct Cell Integration",
+            "Elimination of Module Level",
+            "Reduced Components and Assembly Steps",
+            "Higher Energy Density"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Direct Cell Integration",
+            "Highly Integrated Pack",
+            "Considerable Disassembly Work",
+            "Harder Repair and Service"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [5, 27],
+        "rationale": "Cell-to-pack removes module-level components and stations, improving density and production efficiency, while high integration makes individual-cell replacement and service more difficult."
+      }
+    },
+    {
+      "id": "module_and_pack_ordered_process_chains",
+      "category": "production_chain",
+      "question": "What are the ordered process chains for module production and subsequent battery-pack production?",
+      "mode": "mix",
+      "top_k": 70,
+      "chunk_top_k": 35,
+      "hop_depth": 3,
+      "chain_top_k": 40,
+      "chain_fanout": 18,
+      "chain_top_k_per_prompt": 12,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "battery module production process chain",
+        "battery pack production process chain",
+        "manufacturing sequence"
+      ],
+      "ll_keywords": [
+        "beginning-of-line test",
+        "cell stacking",
+        "tensioning the cells",
+        "contacting the tabs",
+        "integration of modules",
+        "assembly of pack components",
+        "sealing and leak testing",
+        "charging and flashing"
+      ],
+      "expected_entities": [
+        "Beginning-of-Line Test",
+        "Cell Stacking",
+        "Tensioning the Cells",
+        "Contacting the Tabs",
+        "Integration of Modules",
+        "Assembly of Pack Components",
+        "Sealing and Leak Testing",
+        "Charging and Flashing"
+      ],
+      "expected_relations": [
+        {
+          "source": "Beginning-of-Line Test",
+          "relation_type": "precedes",
+          "target": "Cell Stacking",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cell Stacking",
+          "relation_type": "precedes",
+          "target": "Tensioning the Cells",
+          "directionality": "directed"
+        },
+        {
+          "source": "Integration of Modules",
+          "relation_type": "precedes",
+          "target": "Assembly of Pack Components",
+          "directionality": "directed"
+        },
+        {
+          "source": "Sealing and Leak Testing",
+          "relation_type": "precedes",
+          "target": "Charging and Flashing",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "beginning-of-line",
+        "cell stacking",
+        "tensioning",
+        "contacting",
+        "integration of modules",
+        "sealing",
+        "charging",
+        "end-of-line"
+      ],
+      "expected_documents": [
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Beginning-of-Line Test",
+            "Cell Stacking",
+            "Tensioning the Cells",
+            "Contacting the Tabs"
+          ],
+          "relation_types": [
+            "precedes",
+            "precedes",
+            "precedes"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Integration of Modules",
+            "Assembly of Pack Components",
+            "Sealing and Leak Testing",
+            "Charging and Flashing"
+          ],
+          "relation_types": [
+            "precedes",
+            "precedes",
+            "precedes"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [6, 7],
+        "rationale": "The guide gives explicit ordered module and pack manufacturing chains. This case tests temporal order rather than merely retrieving the list of process names."
+      }
+    }
+  ]
+}
