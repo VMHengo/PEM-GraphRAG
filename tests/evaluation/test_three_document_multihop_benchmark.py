@@ -6,7 +6,12 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from lightrag.adaptive_retrieval import CAUSAL_RELATIONS, PRODUCTION_RELATIONS
+from lightrag import QueryParam
+from lightrag.adaptive_retrieval import (
+    CAUSAL_RELATIONS,
+    PRODUCTION_RELATIONS,
+    route_retrieval_query,
+)
 from lightrag.evaluation.live_benchmark import load_benchmark_file
 
 
@@ -34,7 +39,8 @@ def test_benchmark_loads_with_unique_balanced_cases():
     cases = benchmark["cases"]
 
     assert benchmark["id"] == "pem_three_document_multihop_quality"
-    assert len(cases) == 15
+    assert benchmark["version"] == 2
+    assert len(cases) == 20
     assert len({case["id"] for case in cases}) == len(cases)
 
     document_counts = Counter(
@@ -43,7 +49,9 @@ def test_benchmark_loads_with_unique_balanced_cases():
         for document in case.get("expected_documents", [])
     )
     assert set(document_counts) == EXPECTED_DOCUMENTS
-    assert set(document_counts.values()) == {5}
+    assert all(count >= 5 for count in document_counts.values())
+    assert sum(len(case["expected_documents"]) == 1 for case in cases) == 15
+    assert sum(len(case["expected_documents"]) > 1 for case in cases) == 5
 
 
 def test_every_case_is_a_grounded_multihop_acceptance_case():
@@ -62,7 +70,7 @@ def test_every_case_is_a_grounded_multihop_acceptance_case():
         assert len(case["expected_entities"]) >= 3, case["id"]
         assert len(case["expected_relations"]) >= 2, case["id"]
         assert len(case["must_include"]) >= 4, case["id"]
-        assert len(case["expected_documents"]) == 1, case["id"]
+        assert 1 <= len(case["expected_documents"]) <= 3, case["id"]
         assert case["expected_directed_paths"], case["id"]
         assert case["evidence"]["pages"], case["id"]
         assert len(case["evidence"]["rationale"]) >= 80, case["id"]
@@ -84,6 +92,8 @@ def test_directed_paths_are_bounded_ordered_citable_and_route_compatible():
             else set(CAUSAL_RELATIONS)
         )
 
+        cited_documents: set[str] = set()
+        expected_documents = set(case["expected_documents"])
         for path in case["expected_directed_paths"]:
             nodes = path.get("traversal_nodes") or path.get("nodes")
             relation_types = path["relation_types"]
@@ -91,8 +101,12 @@ def test_directed_paths_are_bounded_ordered_citable_and_route_compatible():
             assert 3 <= len(nodes) <= 4, case["id"]
             assert len(relation_types) == len(nodes) - 1, case["id"]
             assert set(relation_types) <= allowed_types, case["id"]
-            assert path["source_documents"] == case["expected_documents"], case["id"]
+            assert path["source_documents"], case["id"]
+            assert set(path["source_documents"]) <= expected_documents, case["id"]
             assert path["require_citations"] is True, case["id"]
+            cited_documents.update(path["source_documents"])
+
+        assert cited_documents == expected_documents, case["id"]
 
         if case["category"] == "root_cause":
             assert case["expected_edge_direction"] == "in", case["id"]
@@ -104,12 +118,28 @@ def test_directed_paths_are_bounded_ordered_citable_and_route_compatible():
             assert case["expected_edge_direction"] == "out", case["id"]
 
 
+def test_auto_router_activates_the_declared_directed_strategy():
+    cases = _load_raw_benchmark()["cases"]
+
+    for case in cases:
+        route = route_retrieval_query(
+            case["question"],
+            QueryParam(retrieval_strategy="auto"),
+        )
+
+        assert route.effective_strategy == case["expected_auto_strategy"], case["id"]
+        assert route.edge_direction == case["expected_edge_direction"], case["id"]
+        assert route.use_directed_paths is True, case["id"]
+
+
 def test_benchmark_has_cross_page_branching_and_multilingual_challenges():
     cases = _load_raw_benchmark()["cases"]
 
-    assert sum(len(case["expected_directed_paths"]) for case in cases) >= 17
+    assert sum(len(case["expected_directed_paths"]) for case in cases) >= 30
     assert sum(len(case["evidence"]["pages"]) > 1 for case in cases) >= 4
-    assert sum(len(case["expected_directed_paths"]) > 1 for case in cases) >= 2
+    assert sum(len(case["expected_directed_paths"]) > 1 for case in cases) >= 7
+    assert sum(len(case["expected_documents"]) > 1 for case in cases) == 5
+    assert any(len(case["expected_documents"]) == 3 for case in cases)
     assert sum(
         any(token in case["question"] for token in ("Welche", "Prozesskette"))
         for case in cases

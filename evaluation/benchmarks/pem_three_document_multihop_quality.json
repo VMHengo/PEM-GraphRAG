@@ -1,8 +1,8 @@
 {
   "id": "pem_three_document_multihop_quality",
   "name": "PEM Three-Document Multi-Hop Quality",
-  "description": "A demanding, evidence-audited benchmark for meaningful directed multi-hop retrieval across three PEM/VDMA battery-production guides. It evaluates causal depth, root-cause direction, production order, source grounding, and whether intermediate mechanisms survive extraction and retrieval.",
-  "version": 1,
+  "description": "A demanding, evidence-audited benchmark for meaningful directed multi-hop retrieval across three PEM/VDMA battery-production guides. It evaluates causal depth, root-cause direction, production order, cross-document synthesis, terminology disambiguation, source grounding, and whether intermediate mechanisms survive extraction and retrieval.",
+  "version": 2,
   "default_mode": "mix",
   "document_scope": [
     {
@@ -27,7 +27,9 @@
     "Require meaningful intermediate entities in two-hop and three-hop chains.",
     "Preserve process order for manufacturing-chain questions.",
     "Require every directed path to resolve to a real source chunk and document reference.",
-    "Exercise English and German routing without translating the source terminology away."
+    "Exercise English and German routing without translating the source terminology away.",
+    "Require synthesis across material, cell, module, and pack abstraction levels.",
+    "Disambiguate identical process terms when their mechanisms and outputs differ."
   ],
   "quality_gates": {
     "min_scores": {
@@ -49,7 +51,7 @@
       "combined": 75,
       "auto": 75
     },
-    "max_failed_checks": 12,
+    "max_failed_checks": 16,
     "require_directed_cases": true
   },
   "cases": [
@@ -140,7 +142,7 @@
     {
       "id": "components_water_lipf6_hf_consequence_chain",
       "category": "causal_chain",
-      "question": "What consequences can water contamination have for LiPF6 electrolyte chemistry and safety?",
+      "question": "What can water contamination lead to for LiPF6 electrolyte chemistry and safety?",
       "mode": "mix",
       "top_k": 60,
       "chunk_top_k": 30,
@@ -1258,7 +1260,7 @@
     {
       "id": "module_and_pack_ordered_process_chains",
       "category": "production_chain",
-      "question": "What are the ordered process chains for module production and subsequent battery-pack production?",
+      "question": "What is the ordered production process chain for module production and subsequent battery-pack production?",
       "mode": "mix",
       "top_k": 70,
       "chunk_top_k": 35,
@@ -1372,6 +1374,719 @@
       "evidence": {
         "pages": [6, 7],
         "rationale": "The guide gives explicit ordered module and pack manufacturing chains. This case tests temporal order rather than merely retrieving the list of process names."
+      }
+    },
+    {
+      "id": "cross_pressure_objectives_cell_and_module",
+      "category": "causal_chain",
+      "question": "What can applied pressure lead to at the solid-state cell-compaction level and at the battery-module tensioning level, and why must these two pressure functions not be conflated?",
+      "mode": "mix",
+      "top_k": 80,
+      "chunk_top_k": 40,
+      "hop_depth": 3,
+      "chain_top_k": 45,
+      "chain_fanout": 18,
+      "chain_top_k_per_prompt": 14,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "solid-state cell compaction pressure",
+        "battery module tensioning pressure",
+        "particle contact and cell breathing"
+      ],
+      "ll_keywords": [
+        "5 - 600 MPa",
+        "particle contact",
+        "pathways within the battery",
+        "energy density",
+        "defined surface pressure",
+        "cell breathing",
+        "0.3 to 0.5 bar",
+        "service life"
+      ],
+      "expected_entities": [
+        "Solid-State Cell Compaction",
+        "Particle Contact",
+        "Internal Ion Pathways",
+        "Cell Stack Tensioning",
+        "Cell Breathing",
+        "Service Life"
+      ],
+      "expected_relations": [
+        {
+          "source": "Solid-State Cell Compaction",
+          "relation_type": "results_in",
+          "target": "Improved Particle Contact",
+          "directionality": "directed"
+        },
+        {
+          "source": "Improved Particle Contact",
+          "relation_type": "influences",
+          "target": "Internal Ion Pathways",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cell Stack Tensioning",
+          "relation_type": "results_in",
+          "target": "Defined Surface Pressure",
+          "directionality": "directed"
+        },
+        {
+          "source": "Defined Surface Pressure",
+          "relation_type": "influences",
+          "target": "Cell Breathing",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "particle contact",
+        "pathways within the battery",
+        "energy density",
+        "cell breathing",
+        "0.3 to 0.5 bar",
+        "service life"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Solid-State Cell Compaction",
+            "Improved Particle Contact",
+            "Internal Ion Pathways",
+            "Higher Energy Density"
+          ],
+          "relation_types": [
+            "results_in",
+            "influences",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Cell Stack Tensioning",
+            "Defined Surface Pressure",
+            "Controlled Cell Breathing",
+            "Longer Service Life"
+          ],
+          "relation_types": [
+            "results_in",
+            "influences",
+            "influences"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [16, 18],
+        "sources": [
+          {
+            "document": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+            "pages": [16],
+            "claim": "Compaction improves particle contact, secures internal pathways, reduces porosity, and increases energy density."
+          },
+          {
+            "document": "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf",
+            "pages": [9, 18],
+            "claim": "Module tensioning establishes controlled surface pressure; pressure affects breathing, aging, and service life."
+          }
+        ],
+        "rationale": "The same engineering variable is used at two abstraction levels for different mechanisms. The answer must retrieve both documents and preserve the distinction between densifying cell layers and controlling module-level breathing."
+      }
+    },
+    {
+      "id": "cross_energy_density_levers_across_scales",
+      "category": "causal_chain",
+      "question": "What can interventions at material, solid-state cell, and pack scale lead to for energy density, and which different intermediate mechanisms connect each intervention to that outcome?",
+      "mode": "mix",
+      "top_k": 90,
+      "chunk_top_k": 45,
+      "hop_depth": 3,
+      "chain_top_k": 50,
+      "chain_fanout": 20,
+      "chain_top_k_per_prompt": 15,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "energy density across material cell and pack scales",
+        "NMC composition solid-state compaction cell-to-pack",
+        "multi-scale battery design"
+      ],
+      "ll_keywords": [
+        "manganese",
+        "cell material energy density",
+        "particle contact",
+        "reduces porosity",
+        "module level",
+        "fewer components",
+        "volumetric and gravimetric energy density"
+      ],
+      "expected_entities": [
+        "Manganese Content",
+        "NMC Material Energy Density",
+        "Solid-State Cell Compaction",
+        "Particle Contact",
+        "Cell-to-Pack Architecture",
+        "Elimination of Module Level",
+        "Pack Energy Density"
+      ],
+      "expected_relations": [
+        {
+          "source": "Manganese Content",
+          "relation_type": "influences",
+          "target": "NMC Material Energy Density",
+          "directionality": "directed"
+        },
+        {
+          "source": "Solid-State Cell Compaction",
+          "relation_type": "results_in",
+          "target": "Improved Particle Contact",
+          "directionality": "directed"
+        },
+        {
+          "source": "Direct Cell Integration",
+          "relation_type": "results_in",
+          "target": "Elimination of Module Level",
+          "directionality": "directed"
+        },
+        {
+          "source": "Elimination of Module Level",
+          "relation_type": "results_in",
+          "target": "Reduced Components and Interfaces",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "manganese",
+        "energy density",
+        "particle contact",
+        "porosity",
+        "module level",
+        "components"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "NMC Material Composition",
+            "Manganese Content",
+            "Higher Cell Material Energy Density"
+          ],
+          "relation_types": [
+            "influences",
+            "results_in"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Solid-State Cell Compaction",
+            "Improved Particle Contact",
+            "Reduced Porosity",
+            "Higher Cell Energy Density"
+          ],
+          "relation_types": [
+            "results_in",
+            "influences",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Direct Cell Integration",
+            "Elimination of Module Level",
+            "Reduced Components and Interfaces",
+            "Higher Pack Energy Density"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [6, 16, 5],
+        "sources": [
+          {
+            "document": "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+            "pages": [6],
+            "claim": "Cathode chemistry and manganese integration affect cell-material energy density."
+          },
+          {
+            "document": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+            "pages": [16],
+            "claim": "Compaction improves contact, reduces porosity, and increases cell energy density."
+          },
+          {
+            "document": "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf",
+            "pages": [5],
+            "claim": "Cell-to-pack removes module-level components and interfaces to improve volumetric and gravimetric energy density."
+          }
+        ],
+        "rationale": "This is the strongest abstraction-shift case: the answer must distinguish three independent optimization levers rather than collapsing every mention of energy density into one generic relationship."
+      }
+    },
+    {
+      "id": "cross_dry_process_terminology_disambiguation",
+      "category": "production_chain",
+      "question": "What production chain is called a dry process in conventional separator manufacture and dry coating in solid-state cell manufacture, and how do the mechanisms and outputs differ?",
+      "mode": "mix",
+      "top_k": 80,
+      "chunk_top_k": 40,
+      "hop_depth": 3,
+      "chain_top_k": 45,
+      "chain_fanout": 18,
+      "chain_top_k_per_prompt": 14,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "separator dry process",
+        "solid-state dry coating",
+        "dry manufacturing terminology"
+      ],
+      "ll_keywords": [
+        "cold drawing",
+        "warm drawing",
+        "pore growth",
+        "heat-set",
+        "dry spraying deposition",
+        "Maxwell process",
+        "direct rolling",
+        "coherent network"
+      ],
+      "expected_entities": [
+        "Separator Dry Process",
+        "Cold Drawing",
+        "Warm Drawing",
+        "Heat Setting",
+        "Solid-State Dry Coating",
+        "Dry Spraying Deposition",
+        "Calendering",
+        "Coherent Coating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cold Drawing",
+          "relation_type": "precedes",
+          "target": "Warm Drawing",
+          "directionality": "directed"
+        },
+        {
+          "source": "Warm Drawing",
+          "relation_type": "precedes",
+          "target": "Heat Setting",
+          "directionality": "directed"
+        },
+        {
+          "source": "Dry Spraying Deposition",
+          "relation_type": "precedes",
+          "target": "Heated Calendering",
+          "directionality": "directed"
+        },
+        {
+          "source": "Heated Calendering",
+          "relation_type": "produces",
+          "target": "Coherent Coating",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "cold drawing",
+        "warm drawing",
+        "pore growth",
+        "heat-set",
+        "dry spraying",
+        "calender",
+        "coherent network"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Separator Polymer Film",
+            "Cold Drawing",
+            "Warm Drawing",
+            "Heat Setting"
+          ],
+          "relation_types": [
+            "precedes",
+            "precedes",
+            "precedes"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Dry Powder and Binder",
+            "Dry Spraying Deposition",
+            "Heated Calendering",
+            "Coherent Coating"
+          ],
+          "relation_types": [
+            "uses",
+            "precedes",
+            "produces"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [26, 13],
+        "sources": [
+          {
+            "document": "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+            "pages": [26],
+            "claim": "Cold and warm drawing create and enlarge separator pores, followed by heat setting to reduce shrinkage."
+          },
+          {
+            "document": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+            "pages": [13],
+            "claim": "Dry coating deposits or rolls powder-binder mixtures and uses heat, pressure, or shear to form coherent layers."
+          }
+        ],
+        "rationale": "The shared word dry hides unrelated mechanisms and outputs. Correct retrieval must keep microporous separator stretching separate from solvent-free electrode or electrolyte layer formation."
+      }
+    },
+    {
+      "id": "cross_calcination_and_sintering_thermal_roles",
+      "category": "causal_chain",
+      "question": "What can calcination of cathode material and sintering of oxide solid-state layers lead to, and through which different mechanisms do the thermal treatments improve material or interface quality?",
+      "mode": "mix",
+      "top_k": 80,
+      "chunk_top_k": 40,
+      "hop_depth": 3,
+      "chain_top_k": 45,
+      "chain_fanout": 18,
+      "chain_top_k_per_prompt": 14,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "cathode material calcination",
+        "oxide solid electrolyte sintering",
+        "thermal process quality mechanisms"
+      ],
+      "ll_keywords": [
+        "final chemical composition",
+        "volatile components",
+        "homogeneous",
+        "particles fuse",
+        "dense structures",
+        "interface resistance",
+        "cycle efficiency"
+      ],
+      "expected_entities": [
+        "Cathode Material Calcination",
+        "Volatile Components",
+        "Homogeneous Cathode Powder",
+        "Oxide Solid Electrolyte Sintering",
+        "Particle Fusion",
+        "Dense Structure",
+        "Interfacial Resistance",
+        "Cycle Efficiency"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cathode Material Calcination",
+          "relation_type": "results_in",
+          "target": "Final Chemical Composition",
+          "directionality": "directed"
+        },
+        {
+          "source": "Cathode Material Calcination",
+          "relation_type": "results_in",
+          "target": "Removal of Volatile Components",
+          "directionality": "directed"
+        },
+        {
+          "source": "Oxide Solid Electrolyte Sintering",
+          "relation_type": "results_in",
+          "target": "Particle Fusion and Densification",
+          "directionality": "directed"
+        },
+        {
+          "source": "Co-Sintering",
+          "relation_type": "results_in",
+          "target": "Reduced Interfacial Resistance",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "final chemical composition",
+        "volatile components",
+        "homogeneous",
+        "particles",
+        "dense structures",
+        "interface resistance",
+        "cycle efficiency"
+      ],
+      "expected_documents": [
+        "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Cathode Material Calcination",
+            "Removal of Volatile Components",
+            "Final Grinding",
+            "Homogeneous Cathode Powder"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Oxide Solid Electrolyte Sintering",
+            "Particle Fusion",
+            "Dense Structure",
+            "High Ion Conductivity"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "influences"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Co-Sintering",
+            "Reduced Interfacial Resistance",
+            "Higher Cycle Efficiency"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [9, 15],
+        "sources": [
+          {
+            "document": "Komponentenherstellung+einer+Lithium-Ionen-Batteriezelle+2023+(ENG).pdf",
+            "pages": [9, 11],
+            "claim": "Calcination establishes cathode chemistry and removes volatile components; subsequent grinding restores a homogeneous target particle size."
+          },
+          {
+            "document": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+            "pages": [15],
+            "claim": "Sintering fuses and densifies particles, while co-sintering can reduce cathode-electrolyte interfacial resistance and improve cycle efficiency."
+          }
+        ],
+        "rationale": "Both are high-temperature operations, but they solve different quality problems. The case rejects shallow retrieval that treats calcination and sintering as synonyms merely because both use heat."
+      }
+    },
+    {
+      "id": "cross_architecture_simplification_complexity_shift",
+      "category": "causal_chain",
+      "question": "What can architectural simplification lead to when moving from liquid-electrolyte cells to solid-state cells and from module-based packs to cell-to-pack, and where does complexity remain or move?",
+      "mode": "mix",
+      "top_k": 90,
+      "chunk_top_k": 45,
+      "hop_depth": 3,
+      "chain_top_k": 50,
+      "chain_fanout": 20,
+      "chain_top_k_per_prompt": 15,
+      "min_relation_importance": 0.5,
+      "hl_keywords": [
+        "solid-state cell process simplification",
+        "cell-to-pack architectural simplification",
+        "removed steps and shifted complexity"
+      ],
+      "ll_keywords": [
+        "electrolyte filling step is omitted",
+        "already charged after assembly",
+        "simplified formation",
+        "eliminating the module level",
+        "fewer process stations",
+        "considerable disassembly",
+        "repair and service"
+      ],
+      "expected_entities": [
+        "Solid Electrolyte",
+        "Omitted Electrolyte Filling",
+        "Lithium Metal Anode",
+        "Simplified Formation",
+        "Cell-to-Pack Architecture",
+        "Elimination of Module Level",
+        "Considerable Disassembly",
+        "Repair and Service"
+      ],
+      "expected_relations": [
+        {
+          "source": "Solid Electrolyte",
+          "relation_type": "results_in",
+          "target": "Omitted Electrolyte Filling",
+          "directionality": "directed"
+        },
+        {
+          "source": "Lithium Metal Anode",
+          "relation_type": "results_in",
+          "target": "Simplified Formation",
+          "directionality": "directed"
+        },
+        {
+          "source": "Direct Cell Integration",
+          "relation_type": "results_in",
+          "target": "Elimination of Module Level",
+          "directionality": "directed"
+        },
+        {
+          "source": "Highly Integrated Pack",
+          "relation_type": "leads_to",
+          "target": "Considerable Disassembly Work",
+          "directionality": "directed"
+        }
+      ],
+      "must_include": [
+        "filling",
+        "formation",
+        "already charged",
+        "module level",
+        "process stations",
+        "disassembly",
+        "repair and service"
+      ],
+      "expected_documents": [
+        "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+        "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "expected_directed_paths": [
+        {
+          "nodes": [
+            "Solid Electrolyte",
+            "Omitted Electrolyte Filling",
+            "Later Complete Sealing"
+          ],
+          "relation_types": [
+            "results_in",
+            "leads_to"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Lithium Metal Anode",
+            "Already Charged After Assembly",
+            "Simplified Formation",
+            "Reduced Formation Time"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Direct Cell Integration",
+            "Elimination of Module Level",
+            "Reduced Process Stations",
+            "Higher Pack Energy Density"
+          ],
+          "relation_types": [
+            "results_in",
+            "results_in",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        },
+        {
+          "nodes": [
+            "Highly Integrated Pack",
+            "Considerable Disassembly Work",
+            "Harder Repair and Service"
+          ],
+          "relation_types": [
+            "leads_to",
+            "results_in"
+          ],
+          "source_documents": [
+            "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf"
+          ],
+          "require_citations": true
+        }
+      ],
+      "evidence": {
+        "pages": [8, 19, 5, 27],
+        "sources": [
+          {
+            "document": "Production+of+a+Solid-State+Battery+Cell+(2026-03).pdf",
+            "pages": [8, 19],
+            "claim": "Solid-state production omits electrolyte filling; lithium-metal cells may already be charged after assembly and therefore need less formation effort."
+          },
+          {
+            "document": "Production+Process+of+Battery+Modules+and+Battery+Packs+(2026-03).pdf",
+            "pages": [5, 27],
+            "claim": "Cell-to-pack removes module-level stations and interfaces but raises disassembly and individual-cell service difficulty."
+          }
+        ],
+        "rationale": "This case tests whether the system can explain that process-step removal is not equivalent to complexity disappearing: the burden moves into interfaces, handling, integration, disassembly, or service."
       }
     }
   ]
