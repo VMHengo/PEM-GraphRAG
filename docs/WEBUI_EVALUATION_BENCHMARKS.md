@@ -13,7 +13,7 @@ Benchmark files are JSON files. The backend searches these locations:
 3. `evaluation/benchmarks` in the application checkout
 4. `lightrag/evaluation/benchmarks` inside the Python package
 
-The tracked VPS Compose override mounts the repository directory read-only:
+The tracked Compose override mounts the repository directory read-only:
 
 ```text
 evaluation/benchmarks -> /app/data/evaluation/benchmarks
@@ -21,8 +21,22 @@ evaluation/benchmarks -> /app/data/evaluation/benchmarks
 
 `deploy/mcp/compose.evaluation-benchmarks.yml` also sets
 `EVALUATION_BENCHMARK_DIR=/app/data/evaluation/benchmarks`. Combine it with the
-deployment-local VPS Compose file. After the first deployment, benchmark
-updates only need a Git pull; rebuilding the image is not required.
+deployment-local staging or production Compose file. After the first
+deployment, benchmark updates only need a Git pull; rebuilding the image is
+not required.
+
+For staging:
+
+```bash
+docker compose \
+  --project-name pem-staging \
+  --env-file .env.staging \
+  -f deploy/mcp/docker-compose.staging.yml \
+  -f deploy/mcp/compose.evaluation-benchmarks.yml \
+  up -d --force-recreate lightrag
+```
+
+For production:
 
 ```bash
 docker compose \
