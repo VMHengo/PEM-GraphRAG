@@ -6,6 +6,7 @@ import { GraphSearchOption } from '@react-sigma/graph-search'
 import { EdgeArrowProgram, NodePointProgram, NodeCircleProgram } from 'sigma/rendering'
 import { NodeBorderProgram } from '@sigma/node-border'
 import { EdgeCurvedArrowProgram, createEdgeCurveProgram } from '@sigma/edge-curve'
+import { Code2 } from 'lucide-react'
 
 import FocusOnNode from '@/components/graph/FocusOnNode'
 import LayoutsControl from '@/components/graph/LayoutsControl'
@@ -20,6 +21,8 @@ import PropertiesView from '@/components/graph/PropertiesView'
 import SettingsDisplay from '@/components/graph/SettingsDisplay'
 import Legend from '@/components/graph/Legend'
 import LegendButton from '@/components/graph/LegendButton'
+import CypherExplorerDrawer from '@/components/graph/CypherExplorerDrawer'
+import Button from '@/components/ui/Button'
 
 import { useSettingsStore } from '@/stores/settings'
 import { useGraphStore } from '@/stores/graph'
@@ -133,6 +136,7 @@ const GraphViewer = () => {
   const theme = useSettingsStore.use.theme()
 
   const [isThemeSwitching, setIsThemeSwitching] = useState(false)
+  const [isCypherExplorerOpen, setIsCypherExplorerOpen] = useState(false)
 
   // Memoize sigma settings to prevent unnecessary re-creation
   const memoizedSigmaSettings = useMemo(() => {
@@ -263,6 +267,17 @@ const GraphViewer = () => {
           </div>
         )}
 
+        <div className="absolute top-20 right-2 z-20">
+          <Button
+            variant="outline"
+            size="icon"
+            tooltip="Open Cypher Explorer"
+            onClick={() => setIsCypherExplorerOpen(true)}
+          >
+            <Code2 />
+          </Button>
+        </div>
+
         {showLegend && (
           <div className="absolute bottom-10 right-2 z-0">
             <Legend className="bg-background/60 backdrop-blur-lg" />
@@ -274,6 +289,11 @@ const GraphViewer = () => {
         </div> */}
 
         <SettingsDisplay />
+
+        <CypherExplorerDrawer
+          open={isCypherExplorerOpen}
+          onClose={() => setIsCypherExplorerOpen(false)}
+        />
       </SigmaContainer>
 
       {/* Loading overlay - shown when data is loading or theme is switching */}

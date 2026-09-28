@@ -25,6 +25,30 @@ export type LightragGraphType = {
   edges: LightragEdgeType[]
 }
 
+export type GraphCypherNode = LightragNodeType
+export type GraphCypherEdge = LightragEdgeType
+
+export type GraphCypherRow = {
+  values: Record<string, unknown>
+  node_ids: string[]
+  edge_ids: string[]
+}
+
+export type GraphCypherReadRequest = {
+  query: string
+  parameters?: Record<string, unknown>
+  max_records?: number
+}
+
+export type GraphCypherReadResponse = {
+  columns: string[]
+  rows: GraphCypherRow[]
+  nodes: GraphCypherNode[]
+  edges: GraphCypherEdge[]
+  truncated: boolean
+  execution_time_ms: number
+}
+
 export type LightragQueueStatus = {
   available: boolean
   queue_name?: string
@@ -703,6 +727,13 @@ export const getPopularLabels = async (limit: number = popularLabelsDefaultLimit
 
 export const searchLabels = async (query: string, limit: number = searchLabelsDefaultLimit): Promise<string[]> => {
   const response = await axiosInstance.get(`/graph/label/search?q=${encodeURIComponent(query)}&limit=${limit}`)
+  return response.data
+}
+
+export const runGraphCypherRead = async (
+  request: GraphCypherReadRequest
+): Promise<GraphCypherReadResponse> => {
+  const response = await axiosInstance.post('/graph/cypher/read', request)
   return response.data
 }
 

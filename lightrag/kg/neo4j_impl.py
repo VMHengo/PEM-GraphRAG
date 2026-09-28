@@ -1,6 +1,7 @@
 import os
 import re
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Sequence, final
 import configparser
 
@@ -15,6 +16,10 @@ from tenacity import (
 import logging
 from ..utils import logger
 from ..base import BaseGraphStorage
+from ..graph_cypher import (
+    cypher_explorer_limit_parameter_name,
+    validate_read_only_cypher,
+)
 from ..types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
 from ..kg.shared_storage import get_data_init_lock
 import pipmaster as pm
@@ -433,6 +438,188 @@ class Neo4JStorage(BaseGraphStorage):
     async def index_done_callback(self) -> None:
         # Neo4J handles persistence automatically
         pass
+
+    @staticmethod
+    def _cypher_explorer_node_payload(node: Any) -> dict[str, Any]:
+        properties = dict(node)
+        node_id = str(getattr(node, "id", getattr(node, "element_id", "")))
+        entity_id = properties.get("entity_id")
+        labels = [str(entity_id)] if entity_id else [node_id]
+        return {
+            "id": node_id,
+            "labels": labels,
+            "properties": Neo4JStorage._cypher_explorer_json_value(properties),
+        }
+
+    @staticmethod
+    def _cypher_explorer_json_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {
+                str(key): Neo4JStorage._cypher_explorer_json_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [Neo4JStorage._cypher_explorer_json_value(item) for item in value]
+        if hasattr(value, "iso_format"):
+            return value.iso_format()
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    @staticmethod
+    def _cypher_explorer_is_relationship(value: Any) -> bool:
+        return hasattr(value, "start_node") and hasattr(value, "end_node") and hasattr(value, "type")
+
+    @staticmethod
+    def _cypher_explorer_is_node(value: Any) -> bool:
+        return hasattr(value, "labels") and hasattr(value, "id") and not Neo4JStorage._cypher_explorer_is_relationship(value)
+
+    @classmethod
+    def _cypher_explorer_relationship_payload(cls, relationship: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        properties = dict(relationship)
+        start_node = relationship.start_node
+        end_node = relationship.end_node
+        start_payload = cls._cypher_explorer_node_payload(start_node)
+        end_payload = cls._cypher_explorer_node_payload(end_node)
+
+        source = start_payload
+        target = end_payload
+        semantic_source = properties.get("semantic_src_id")
+        semantic_target = properties.get("semantic_tgt_id")
+        if semantic_source and semantic_target:
+            start_entity_id = start_payload["properties"].get("entity_id")
+            end_entity_id = end_payload["properties"].get("entity_id")
+            if start_entity_id == semantic_target and end_entity_id == semantic_source:
+                source, target = target, source
+
+        edge_id = str(getattr(relationship, "id", getattr(relationship, "element_id", "")))
+        return (
+            {
+                "id": edge_id,
+                "type": str(relationship.type),
+                "source": source["id"],
+                "target": target["id"],
+                "properties": cls._cypher_explorer_json_value(properties),
+            },
+            [start_payload, end_payload],
+        )
+
+    @classmethod
+    def _cypher_explorer_display_value(cls, value: Any) -> Any:
+        if cls._cypher_explorer_is_node(value):
+            properties = dict(value)
+            return properties.get("entity_id") or str(getattr(value, "id", "node"))
+        if cls._cypher_explorer_is_relationship(value):
+            properties = dict(value)
+            return (
+                properties.get("relation_type")
+                or properties.get("keywords")
+                or properties.get("relation")
+                or str(value.type)
+            )
+        return cls._cypher_explorer_json_value(value)
+
+    @classmethod
+    def _cypher_explorer_collect_value(
+        cls,
+        value: Any,
+        nodes: dict[str, dict[str, Any]],
+        edges: dict[str, dict[str, Any]],
+        node_ids: list[str],
+        edge_ids: list[str],
+    ) -> None:
+        if cls._cypher_explorer_is_node(value):
+            payload = cls._cypher_explorer_node_payload(value)
+            nodes[payload["id"]] = payload
+            node_ids.append(payload["id"])
+            return
+        if cls._cypher_explorer_is_relationship(value):
+            payload, endpoints = cls._cypher_explorer_relationship_payload(value)
+            edges[payload["id"]] = payload
+            edge_ids.append(payload["id"])
+            for endpoint in endpoints:
+                nodes[endpoint["id"]] = endpoint
+                node_ids.append(endpoint["id"])
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                cls._cypher_explorer_collect_value(item, nodes, edges, node_ids, edge_ids)
+            return
+        if isinstance(value, (list, tuple, set, frozenset)):
+            for item in value:
+                cls._cypher_explorer_collect_value(item, nodes, edges, node_ids, edge_ids)
+
+    @READ_RETRY
+    async def execute_readonly_cypher(
+        self,
+        query: str,
+        parameters: dict[str, Any] | None = None,
+        max_records: int = 100,
+    ) -> dict[str, Any]:
+        """Execute a bounded developer query and serialize graph values for the WebUI."""
+
+        validated_query = validate_read_only_cypher(query, max_records)
+        query_parameters = dict(parameters or {})
+        reserved_limit_parameter = cypher_explorer_limit_parameter_name()
+        if reserved_limit_parameter in query_parameters:
+            raise ValueError("Cypher explorer parameter name is reserved.")
+        query_parameters[reserved_limit_parameter] = max_records
+
+        started_at = perf_counter()
+        result = None
+        async with self._driver.session(
+            database=self._DATABASE, default_access_mode="READ"
+        ) as session:
+            async with await session.begin_transaction(timeout=5.0) as transaction:
+                result = await transaction.run(validated_query, parameters=query_parameters)
+                columns = list(result.keys())
+                records = await result.fetch(max_records + 1)
+                truncated = len(records) > max_records
+                if truncated:
+                    records = records[:max_records]
+                await result.consume()
+
+        nodes: dict[str, dict[str, Any]] = {}
+        edges: dict[str, dict[str, Any]] = {}
+        rows: list[dict[str, Any]] = []
+        for record in records:
+            values: dict[str, Any] = {}
+            row_node_ids: list[str] = []
+            row_edge_ids: list[str] = []
+            for column in columns:
+                value = record[column]
+                values[column] = self._cypher_explorer_display_value(value)
+                self._cypher_explorer_collect_value(
+                    value, nodes, edges, row_node_ids, row_edge_ids
+                )
+            rows.append(
+                {
+                    "values": values,
+                    "node_ids": list(dict.fromkeys(row_node_ids)),
+                    "edge_ids": list(dict.fromkeys(row_edge_ids)),
+                }
+            )
+
+        execution_time_ms = round((perf_counter() - started_at) * 1000)
+        logger.info(
+            "[%s] Cypher explorer query completed rows=%s nodes=%s edges=%s truncated=%s duration_ms=%s",
+            self.workspace,
+            len(rows),
+            len(nodes),
+            len(edges),
+            truncated,
+            execution_time_ms,
+        )
+        return {
+            "columns": columns,
+            "rows": rows,
+            "nodes": list(nodes.values()),
+            "edges": list(edges.values()),
+            "truncated": truncated,
+            "execution_time_ms": execution_time_ms,
+        }
 
     @READ_RETRY
     async def has_node(self, node_id: str) -> bool:

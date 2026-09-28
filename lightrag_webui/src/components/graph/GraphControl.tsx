@@ -11,6 +11,13 @@ import * as Constants from '@/lib/constants'
 
 import { useSettingsStore } from '@/stores/settings'
 import { useGraphStore } from '@/stores/graph'
+import {
+  CYPHER_FOCUS_EDGE_OPACITY,
+  CYPHER_FOCUS_LABEL_OPACITY,
+  CYPHER_FOCUS_NODE_OPACITY,
+  isCypherFocusActive,
+  withGraphOpacity
+} from '@/utils/graphFocus'
 
 const isButtonPressed = (ev: MouseEvent | TouchEvent) => {
   if (ev.type.startsWith('mouse')) {
@@ -42,6 +49,7 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
   const focusedNode = useGraphStore.use.focusedNode()
   const selectedEdge = useGraphStore.use.selectedEdge()
   const focusedEdge = useGraphStore.use.focusedEdge()
+  const cypherFocus = useGraphStore.use.cypherFocus()
   const sigmaGraph = useGraphStore.use.sigmaGraph()
 
   // Track system theme changes when theme is set to 'system'
@@ -101,7 +109,14 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
    * => register events
    */
   useEffect(() => {
-    const { setFocusedNode, setSelectedNode, setFocusedEdge, setSelectedEdge, clearSelection } =
+    const {
+      setFocusedNode,
+      setSelectedNode,
+      setFocusedEdge,
+      setSelectedEdge,
+      clearSelection,
+      clearCypherFocus
+    } =
       useGraphStore.getState()
 
     // Define event types
@@ -130,7 +145,10 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
           setSelectedEdge(null)
         }
       },
-      clickStage: () => clearSelection()
+      clickStage: () => {
+        clearSelection()
+        clearCypherFocus()
+      }
     }
 
     // Only add edge event handlers if enableEdgeEvents is true
@@ -222,9 +240,12 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
       (theme === 'system' && window.document.documentElement.classList.contains('dark'))
     const labelColor = isDarkTheme ? Constants.labelColorDarkTheme : undefined
     const edgeColor = isDarkTheme ? Constants.edgeColorDarkTheme : undefined
+    const cypherFocusActive = isCypherFocusActive(cypherFocus)
 
     // Update all dynamic settings directly without recreating the sigma container
-    const showContextEdgeLabels = Boolean(focusedNode || selectedNode || focusedEdge || selectedEdge)
+    const showContextEdgeLabels = Boolean(
+      focusedNode || selectedNode || focusedEdge || selectedEdge || cypherFocusActive
+    )
     setSettings({
       // Update display settings
       enableEdgeEvents,
@@ -245,6 +266,24 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
           labelColor?: string
           borderColor?: string
         } = { ...data, highlighted: data.highlighted || false, labelColor }
+
+        if (cypherFocusActive) {
+          if (cypherFocus.nodeIds.includes(node)) {
+            newData.highlighted = true
+            newData.size = Math.max(data.size * 1.18, 4)
+            newData.borderColor = Constants.nodeBorderColorSelected
+            if (isDarkTheme) newData.labelColor = Constants.LabelColorHighlightedDarkTheme
+          } else {
+            newData.highlighted = false
+            newData.color = withGraphOpacity(data.color, CYPHER_FOCUS_NODE_OPACITY)
+            newData.borderColor = withGraphOpacity(data.borderColor, CYPHER_FOCUS_NODE_OPACITY)
+            newData.labelColor = withGraphOpacity(
+              labelColor || data.labelColor,
+              CYPHER_FOCUS_LABEL_OPACITY
+            )
+          }
+          return newData
+        }
 
         if (!disableHoverEffect) {
           newData.highlighted = false
@@ -300,6 +339,26 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
 
         const newData = { ...data, hidden: false, labelColor, color: edgeColor }
 
+        if (cypherFocusActive) {
+          if (cypherFocus.edgeIds.includes(edge)) {
+            newData.color = Constants.edgeColorSelected
+            newData.labelColor = isDarkTheme
+              ? Constants.edgeLabelColorDarkTheme
+              : Constants.edgeLabelColorLightTheme
+            newData.size = Math.max(data.size || 1, 2.5)
+          } else {
+            newData.color = withGraphOpacity(
+              edgeColor || data.color,
+              CYPHER_FOCUS_EDGE_OPACITY
+            )
+            newData.labelColor = withGraphOpacity(
+              labelColor || data.labelColor,
+              CYPHER_FOCUS_LABEL_OPACITY
+            )
+          }
+          return newData
+        }
+
         if (!disableHoverEffect) {
           const _focusedNode = focusedNode || selectedNode
           // Choose edge highlight color based on theme
@@ -351,6 +410,7 @@ const GraphControl = ({ disableHoverEffect }: { disableHoverEffect?: boolean }) 
     focusedNode,
     selectedEdge,
     focusedEdge,
+    cypherFocus,
     setSettings,
     sigma,
     disableHoverEffect,

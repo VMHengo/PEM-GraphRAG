@@ -2,9 +2,10 @@
 This module contains all graph-related routes for the LightRAG API.
 """
 
+import os
 from typing import Optional, Dict, Any
 import traceback
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from lightrag.utils import logger
@@ -85,6 +86,43 @@ class RelationCreateRequest(BaseModel):
     )
 
 
+class CypherReadRequest(BaseModel):
+    """Bounded request body for the developer-only Cypher explorer."""
+
+    query: str = Field(..., min_length=1, max_length=8_000)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    max_records: int = Field(default=100, ge=1, le=200)
+
+
+def _require_cypher_explorer_access(request: Request) -> None:
+    """Optionally restrict Cypher Explorer to selected OAuth2 Proxy identities.
+
+    When ``GRAPH_CYPHER_EXPLORER_ALLOWED_EMAILS`` is unset, the normal API
+    authentication dependency remains the access control. Deployments can set
+    a comma-separated allowlist without changing code.
+    """
+
+    allowed_emails = {
+        email.strip().casefold()
+        for email in os.getenv("GRAPH_CYPHER_EXPLORER_ALLOWED_EMAILS", "").split(",")
+        if email.strip()
+    }
+    if not allowed_emails:
+        return
+
+    authenticated_email = (
+        request.headers.get("X-Auth-Request-Email")
+        or request.headers.get("X-Forwarded-Email")
+        or request.headers.get("X-Forwarded-User")
+        or ""
+    ).strip().casefold()
+    if authenticated_email not in allowed_emails:
+        raise HTTPException(
+            status_code=403,
+            detail="Cypher Explorer access is restricted to approved developers.",
+        )
+
+
 def create_graph_routes(rag, api_key: Optional[str] = None):
     # Fresh router per call. A module-level instance would accumulate
     # duplicate routes when the factory is invoked more than once in the
@@ -160,6 +198,40 @@ def create_graph_routes(rag, api_key: Optional[str] = None):
             raise HTTPException(
                 status_code=500, detail=f"Error searching labels: {str(e)}"
             )
+
+    @router.post("/graph/cypher/read", dependencies=[Depends(combined_auth)])
+    async def run_readonly_cypher(
+        payload: CypherReadRequest,
+        request: Request,
+    ):
+        """Run a bounded read-only Cypher query against Neo4j graph storage.
+
+        The storage implementation validates the query and applies a hard
+        result cap. It never exposes Neo4j credentials to the WebUI.
+        """
+
+        _require_cypher_explorer_access(request)
+        graph_storage = rag.chunk_entity_relation_graph
+        try:
+            return await graph_storage.execute_readonly_cypher(
+                query=payload.query,
+                parameters=payload.parameters,
+                max_records=payload.max_records,
+            )
+        except NotImplementedError as exc:
+            raise HTTPException(
+                status_code=501,
+                detail="Cypher Explorer requires Neo4j graph storage.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Cypher Explorer query failed: %s", exc)
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail="Cypher Explorer query failed. Check server logs for details.",
+            ) from exc
 
     @router.get("/graphs", dependencies=[Depends(combined_auth)])
     async def get_knowledge_graph(

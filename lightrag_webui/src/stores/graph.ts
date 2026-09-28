@@ -3,6 +3,9 @@ import { createSelectors } from '@/lib/utils'
 import { DirectedGraph } from 'graphology'
 import MiniSearch from 'minisearch'
 import { resolveNodeColor, DEFAULT_NODE_COLOR } from '@/utils/graphColor'
+import { minNodeSize, nodeBorderColor } from '@/lib/constants'
+import type { CypherGraphFocus } from '@/utils/graphFocus'
+import type { GraphCypherEdge, GraphCypherNode } from '@/api/lightrag'
 
 const createErrorWithCause = (message: string, cause: unknown): Error => {
   const error = new Error(message) as Error & { cause?: unknown }
@@ -86,6 +89,9 @@ interface GraphState {
   focusedNode: string | null
   selectedEdge: string | null
   focusedEdge: string | null
+  cypherFocus: CypherGraphFocus
+  cypherTemporaryNodeIds: string[]
+  cypherTemporaryEdgeIds: string[]
 
   rawGraph: RawGraph | null
   sigmaGraph: DirectedGraph | null
@@ -109,6 +115,9 @@ interface GraphState {
   setFocusedNode: (nodeId: string | null) => void
   setSelectedEdge: (edgeId: string | null) => void
   setFocusedEdge: (edgeId: string | null) => void
+  focusCypherNode: (node: GraphCypherNode) => void
+  focusCypherRelation: (edge: GraphCypherEdge, nodes: GraphCypherNode[]) => void
+  clearCypherFocus: () => void
   clearSelection: () => void
   reset: () => void
 
@@ -153,6 +162,9 @@ const useGraphStoreBase = create<GraphState>()((set, get) => ({
   focusedNode: null,
   selectedEdge: null,
   focusedEdge: null,
+  cypherFocus: { nodeIds: [], edgeIds: [] },
+  cypherTemporaryNodeIds: [],
+  cypherTemporaryEdgeIds: [],
 
   moveToSelectedNode: false,
   isFetching: false,
@@ -181,6 +193,177 @@ const useGraphStoreBase = create<GraphState>()((set, get) => ({
   setFocusedNode: (nodeId: string | null) => set({ focusedNode: nodeId }),
   setSelectedEdge: (edgeId: string | null) => set({ selectedEdge: edgeId }),
   setFocusedEdge: (edgeId: string | null) => set({ focusedEdge: edgeId }),
+  focusCypherNode: (node: GraphCypherNode) => {
+    const state = get()
+    const { sigmaGraph, rawGraph } = state
+    if (!sigmaGraph || !rawGraph) return
+
+    const temporaryNodeIds = [...state.cypherTemporaryNodeIds]
+    if (!sigmaGraph.hasNode(node.id)) {
+      const entityType = node.properties?.entity_type as string | undefined
+      const { color, map, updated } = resolveNodeColor(entityType, state.typeColorMap)
+      if (updated) set({ typeColorMap: map })
+      const size = Math.max(minNodeSize, 8)
+      const x = Math.random()
+      const y = Math.random()
+      sigmaGraph.addNode(node.id, {
+        label: node.labels.join(', ') || String(node.properties?.entity_id || node.id),
+        color: color || DEFAULT_NODE_COLOR,
+        x,
+        y,
+        size,
+        borderColor: nodeBorderColor,
+        borderSize: 0.2
+      })
+      rawGraph.nodes.push({
+        id: node.id,
+        labels: node.labels,
+        properties: node.properties,
+        size,
+        x,
+        y,
+        color: color || DEFAULT_NODE_COLOR,
+        degree: 0
+      })
+      rawGraph.nodeIdMap[node.id] = rawGraph.nodes.length - 1
+      temporaryNodeIds.push(node.id)
+      state.resetSearchEngine()
+    }
+
+    set((current) => ({
+      cypherFocus: { nodeIds: [node.id], edgeIds: [] },
+      cypherTemporaryNodeIds: Array.from(new Set(temporaryNodeIds)),
+      selectedNode: node.id,
+      selectedEdge: null,
+      moveToSelectedNode: true,
+      graphDataVersion: current.graphDataVersion + 1
+    }))
+  },
+  focusCypherRelation: (edge: GraphCypherEdge, nodes: GraphCypherNode[]) => {
+    const state = get()
+    const { sigmaGraph, rawGraph } = state
+    if (!sigmaGraph || !rawGraph) return
+
+    const nodesById = new Map(nodes.map((node) => [node.id, node]))
+    const temporaryNodeIds = [...state.cypherTemporaryNodeIds]
+    const temporaryEdgeIds = [...state.cypherTemporaryEdgeIds]
+
+    for (const nodeId of [edge.source, edge.target]) {
+      if (sigmaGraph.hasNode(nodeId)) continue
+      const sourceNode = nodesById.get(nodeId)
+      if (!sourceNode) continue
+
+      const entityType = sourceNode.properties?.entity_type as string | undefined
+      const { color, map, updated } = resolveNodeColor(entityType, state.typeColorMap)
+      if (updated) set({ typeColorMap: map })
+      const size = Math.max(minNodeSize, 8)
+      const x = Math.random()
+      const y = Math.random()
+      sigmaGraph.addNode(nodeId, {
+        label: sourceNode.labels.join(', ') || String(sourceNode.properties?.entity_id || nodeId),
+        color: color || DEFAULT_NODE_COLOR,
+        x,
+        y,
+        size,
+        borderColor: nodeBorderColor,
+        borderSize: 0.2
+      })
+      rawGraph.nodes.push({
+        id: nodeId,
+        labels: sourceNode.labels,
+        properties: sourceNode.properties,
+        size,
+        x,
+        y,
+        color: color || DEFAULT_NODE_COLOR,
+        degree: 0
+      })
+      temporaryNodeIds.push(nodeId)
+    }
+
+    let dynamicEdgeId = rawGraph.getEdge(edge.id, false)?.dynamicId
+    if (!dynamicEdgeId) {
+      if (sigmaGraph.hasEdge(edge.source, edge.target)) {
+        dynamicEdgeId = sigmaGraph.edge(edge.source, edge.target)
+      } else if (sigmaGraph.hasNode(edge.source) && sigmaGraph.hasNode(edge.target)) {
+        const weight = Number(edge.properties?.weight ?? 1)
+        const relationLabel = String(
+          edge.properties?.relation_type ||
+          edge.properties?.keywords ||
+          edge.properties?.relation ||
+          edge.type ||
+          'related to'
+        )
+        dynamicEdgeId = sigmaGraph.addEdge(edge.source, edge.target, {
+          label: relationLabel,
+          size: weight,
+          originalWeight: weight,
+          type: 'curvedNoArrow'
+        })
+        rawGraph.edges.push({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: edge.type,
+          properties: edge.properties,
+          dynamicId: dynamicEdgeId
+        })
+        temporaryEdgeIds.push(edge.id)
+      }
+    }
+
+    rawGraph.nodeIdMap = Object.fromEntries(rawGraph.nodes.map((node, index) => [node.id, index]))
+    rawGraph.edgeIdMap = Object.fromEntries(rawGraph.edges.map((item, index) => [item.id, index]))
+    rawGraph.buildDynamicMap()
+    state.resetSearchEngine()
+
+    if (!dynamicEdgeId) return
+    set((current) => ({
+      cypherFocus: { nodeIds: [edge.source, edge.target], edgeIds: [dynamicEdgeId] },
+      cypherTemporaryNodeIds: Array.from(new Set(temporaryNodeIds)),
+      cypherTemporaryEdgeIds: Array.from(new Set(temporaryEdgeIds)),
+      selectedEdge: dynamicEdgeId,
+      selectedNode: null,
+      graphDataVersion: current.graphDataVersion + 1
+    }))
+  },
+  clearCypherFocus: () => {
+    const state = get()
+    const { sigmaGraph, rawGraph } = state
+    if (sigmaGraph && rawGraph) {
+      const temporaryEdgeIds = new Set(state.cypherTemporaryEdgeIds)
+      for (const edgeId of temporaryEdgeIds) {
+        const dynamicId = rawGraph.getEdge(edgeId, false)?.dynamicId
+        if (dynamicId && sigmaGraph.hasEdge(dynamicId)) sigmaGraph.dropEdge(dynamicId)
+      }
+      rawGraph.edges = rawGraph.edges.filter((edge) => !temporaryEdgeIds.has(edge.id))
+
+      const temporaryNodeIds = new Set(state.cypherTemporaryNodeIds)
+      const removedNodeIds = new Set<string>()
+      for (const nodeId of temporaryNodeIds) {
+        if (sigmaGraph.hasNode(nodeId) && sigmaGraph.degree(nodeId) === 0) {
+          sigmaGraph.dropNode(nodeId)
+          removedNodeIds.add(nodeId)
+        }
+      }
+      rawGraph.nodes = rawGraph.nodes.filter((node) => !removedNodeIds.has(node.id))
+      rawGraph.nodeIdMap = Object.fromEntries(rawGraph.nodes.map((node, index) => [node.id, index]))
+      rawGraph.edgeIdMap = Object.fromEntries(rawGraph.edges.map((edge, index) => [edge.id, index]))
+      rawGraph.buildDynamicMap()
+      state.resetSearchEngine()
+    }
+
+    set((current) => ({
+      cypherFocus: { nodeIds: [], edgeIds: [] },
+      cypherTemporaryNodeIds: [],
+      cypherTemporaryEdgeIds: [],
+      selectedNode: null,
+      focusedNode: null,
+      selectedEdge: null,
+      focusedEdge: null,
+      graphDataVersion: current.graphDataVersion + 1
+    }))
+  },
   clearSelection: () =>
     set({
       selectedNode: null,
@@ -194,6 +377,9 @@ const useGraphStoreBase = create<GraphState>()((set, get) => ({
       focusedNode: null,
       selectedEdge: null,
       focusedEdge: null,
+      cypherFocus: { nodeIds: [], edgeIds: [] },
+      cypherTemporaryNodeIds: [],
+      cypherTemporaryEdgeIds: [],
       rawGraph: null,
       sigmaGraph: null,  // to avoid other components from acccessing graph objects
       searchEngine: null,

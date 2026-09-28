@@ -650,6 +650,23 @@ class BaseGraphStorage(StorageNameSpace, ABC):
             result[node_id] = edges if edges is not None else []
         return result
 
+    async def execute_readonly_cypher(
+        self,
+        query: str,
+        parameters: dict[str, Any] | None = None,
+        max_records: int = 100,
+    ) -> dict[str, Any]:
+        """Execute a bounded, read-only Cypher query when supported.
+
+        Most graph backends are not Cypher databases. They keep the default
+        implementation so callers can expose an explicit capability error
+        instead of depending on a Neo4j implementation detail.
+        """
+
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support the Cypher explorer."
+        )
+
     @abstractmethod
     async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
         """Insert a new node or update an existing node in the graph.
