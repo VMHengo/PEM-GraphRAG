@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import traceback
 import asyncio
+import json
 import os
 import time
 import warnings
@@ -14,6 +15,7 @@ except Exception:  # pragma: no cover - optional dependency
 from dataclasses import InitVar, asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from functools import partial
+from pathlib import Path
 from typing import (
     Any,
     AsyncIterator,
@@ -32,6 +34,7 @@ from typing import (
 from lightrag.prompt import (
     PROMPTS,
     get_default_entity_extraction_prompt_profile,
+    resolve_entity_type_prompt_path,
     resolve_entity_extraction_prompt_profile,
     validate_entity_extraction_prompt_profile_for_mode,
 )
@@ -799,6 +802,67 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         self._cached_entity_extraction_use_json = self.entity_extraction_use_json
         self._addon_params_dirty = False
 
+    def _active_extraction_profile_pointer_path(self) -> Path:
+        """Return the persistent runtime prompt pointer for this workspace."""
+
+        return Path(self.working_dir) / "active_extraction_prompt_profile.json"
+
+    def _apply_active_extraction_profile_pointer(self) -> None:
+        """Prefer a previously promoted prompt profile when its snapshot exists.
+
+        The pointer is deliberately stored next to runtime graph data instead of
+        modifying a tracked YAML file or a deployment `.env`.  Invalid or stale
+        pointers fall back to the configured `ENTITY_TYPE_PROMPT_FILE`.
+        """
+
+        pointer_path = self._active_extraction_profile_pointer_path()
+        if not pointer_path.exists():
+            return
+        try:
+            payload = json.loads(pointer_path.read_text(encoding="utf-8"))
+            prompt_file = str(payload.get("prompt_file") or "").strip()
+            if not prompt_file:
+                raise ValueError("prompt_file is missing")
+            resolved = resolve_entity_type_prompt_path(prompt_file)
+            if not resolved.exists():
+                raise FileNotFoundError(resolved)
+        except Exception as exc:
+            logger.warning(
+                "Ignoring invalid active extraction prompt pointer %s: %s",
+                pointer_path,
+                exc,
+            )
+            return
+        self._addon_params["entity_type_prompt_file"] = prompt_file
+
+    def set_active_entity_extraction_prompt_profile(
+        self,
+        prompt_file: str,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist and activate a validated extraction prompt profile.
+
+        This is used by prompt-experiment promotion. It changes only derived
+        runtime configuration; documents remain independently versioned through
+        their extraction revision metadata.
+        """
+
+        resolved = resolve_entity_type_prompt_path(prompt_file)
+        if not resolved.exists():
+            raise FileNotFoundError(f"Prompt profile '{prompt_file}' does not exist")
+        pointer_path = self._active_extraction_profile_pointer_path()
+        pointer_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"prompt_file": Path(prompt_file).name, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if metadata:
+            payload["metadata"] = dict(metadata)
+        temporary = pointer_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(pointer_path)
+        self._addon_params["entity_type_prompt_file"] = Path(prompt_file).name
+        self._ensure_addon_params_cache()
+        return self.get_extraction_revision()
+
     def _ensure_addon_params_cache(self) -> None:
         if (
             not self._addon_params_dirty
@@ -861,6 +925,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             )
 
         self._replace_addon_params(addon_params, mark_dirty=False)
+        self._apply_active_extraction_profile_pointer()
         self._apply_chunk_size_overlay()
         self._refresh_addon_params_cache()
 
@@ -1453,9 +1518,10 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         except Exception as e:
             error_msg = f"Failed to extract entities and relationships: {str(e)}"
             logger.error(error_msg)
-            async with pipeline_status_lock:
-                pipeline_status["latest_message"] = error_msg
-                pipeline_status["history_messages"].append(error_msg)
+            if pipeline_status is not None and pipeline_status_lock is not None:
+                async with pipeline_status_lock:
+                    pipeline_status["latest_message"] = error_msg
+                    pipeline_status["history_messages"].append(error_msg)
             raise e
 
     async def _insert_done(

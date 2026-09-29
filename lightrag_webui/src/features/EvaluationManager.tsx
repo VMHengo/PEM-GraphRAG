@@ -40,6 +40,7 @@ import {
 import { errorMessage } from '@/lib/utils'
 import { CircleHelpIcon, PencilIcon, PlayIcon, RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import PromptExperimentManager from '@/features/PromptExperimentManager'
 
 const modeDescriptions: Record<EvaluationRunMode, string> = {
   graph: 'Graph metadata only, no query calls',
@@ -760,6 +761,8 @@ export default function EvaluationManager() {
             </div>
           </CardContent>
         </Card>
+
+        <PromptExperimentManager benchmarks={benchmarks} />
 
         <RunHistory
           runs={runs}

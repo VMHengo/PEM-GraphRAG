@@ -14,6 +14,19 @@ from lightrag.evaluation.live_benchmark import (
     load_benchmark,
     run_live_benchmark,
 )
+from lightrag.evaluation.prompt_experiments import (
+    create_prompt_experiment,
+    estimate_prompt_experiment,
+    execute_prompt_experiment,
+    list_prompt_experiments,
+    list_prompt_profiles,
+    load_prompt_experiment,
+    prompt_experiment_promotion_enabled,
+    prompt_experiments_enabled,
+    prompt_experiment_limits,
+    promote_prompt_experiment_candidate,
+    recover_interrupted_prompt_experiments,
+)
 from lightrag.evaluation.run_history import (
     complete_run,
     create_run,
@@ -97,16 +110,47 @@ class BenchmarkRunDetailResponse(BaseModel):
     result: dict | None = None
 
 
+class PromptExperimentEstimateRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1, max_length=20)
+    profile_files: list[str] = Field(min_length=1, max_length=5)
+    optimization_mode: Literal["screening", "validation", "final"] = "screening"
+
+
+class PromptExperimentStartRequest(PromptExperimentEstimateRequest):
+    title: str = Field(min_length=1, max_length=160)
+    note: str = Field(default="", max_length=4000)
+    benchmark_id: str = Field(min_length=1, max_length=160)
+    benchmark_mode: Literal["graph", "retrieval", "full"] | None = None
+
+
+class PromptExperimentPromotionRequest(BaseModel):
+    profile_file: str = Field(min_length=1, max_length=255)
+
+
 def create_evaluation_routes(rag, api_key: Optional[str] = None):
     router = APIRouter(prefix="/evaluation", tags=["evaluation"])
     combined_auth = get_combined_auth_dependency(api_key)
     working_dir = getattr(rag, "working_dir", "./rag_storage")
     active_runs: dict[str, asyncio.Task[None]] = {}
     run_lock = asyncio.Lock()
+    active_prompt_experiments: dict[str, asyncio.Task[None]] = {}
+    prompt_experiment_lock = asyncio.Lock()
+
+    def get_active_extraction_revision() -> dict | None:
+        """Return provenance when the supplied RAG implementation supports it."""
+
+        get_revision = getattr(rag, "get_extraction_revision", None)
+        return get_revision() if callable(get_revision) else None
 
     recovered = recover_interrupted_runs(working_dir)
     if recovered:
         logger.warning("Marked %s interrupted benchmark runs after server restart", recovered)
+    recovered_experiments = recover_interrupted_prompt_experiments(working_dir)
+    if recovered_experiments:
+        logger.warning(
+            "Marked %s interrupted prompt experiments after server restart",
+            recovered_experiments,
+        )
 
     async def execute_run(run_id: str, benchmark_id: str, mode: str) -> None:
         try:
@@ -127,6 +171,12 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                 logger.exception("Failed to persist benchmark run error for %s", run_id)
         finally:
             active_runs.pop(run_id, None)
+
+    async def execute_experiment(experiment_id: str) -> None:
+        try:
+            await execute_prompt_experiment(rag, experiment_id)
+        finally:
+            active_prompt_experiments.pop(experiment_id, None)
 
     @router.get(
         "/benchmarks",
@@ -224,7 +274,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                     mode=request.mode,
                     title=request.title,
                     note=request.note,
-                    extraction_revision=rag.get_extraction_revision(),
+                    extraction_revision=get_active_extraction_revision(),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -295,6 +345,151 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             logger.error("Failed to update benchmark run %s: %s", run_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.get(
+        "/prompt-experiments/config",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_prompt_experiment_config():
+        return {
+            "enabled": prompt_experiments_enabled(),
+            "promotion_enabled": prompt_experiment_promotion_enabled(),
+            "profiles": list_prompt_profiles(rag),
+            "active_extraction_revision": get_active_extraction_revision(),
+            "limits": prompt_experiment_limits(),
+        }
+
+    @router.post(
+        "/prompt-experiments/estimate",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def estimate_prompt_experiment_route(request: PromptExperimentEstimateRequest):
+        if not prompt_experiments_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Prompt experiments are disabled by the operator.",
+            )
+        try:
+            return await estimate_prompt_experiment(
+                rag,
+                document_ids=request.document_ids,
+                profile_files=request.profile_files,
+                optimization_mode=request.optimization_mode,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Failed to estimate prompt experiment: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.get(
+        "/prompt-experiments",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_prompt_experiments(limit: int = Query(default=20, ge=1, le=100)):
+        return {"experiments": list_prompt_experiments(working_dir, limit=limit)}
+
+    @router.get(
+        "/prompt-experiments/{experiment_id}",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_prompt_experiment(experiment_id: str):
+        try:
+            return load_prompt_experiment(working_dir, experiment_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Prompt experiment not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.post(
+        "/prompt-experiments",
+        status_code=status.HTTP_202_ACCEPTED,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def start_prompt_experiment(request: PromptExperimentStartRequest):
+        if not prompt_experiments_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Prompt experiments are disabled by the operator.",
+            )
+        async with prompt_experiment_lock:
+            existing = [
+                experiment_id
+                for experiment_id, task in active_prompt_experiments.items()
+                if not task.done()
+            ]
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "message": "Another prompt experiment is already active.",
+                        "active_experiment_id": existing[0],
+                    },
+                )
+            if any(not task.done() for task in active_runs.values()):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A regular benchmark is active. Wait before starting a prompt experiment.",
+                )
+            try:
+                experiment = await create_prompt_experiment(
+                    rag,
+                    title=request.title,
+                    note=request.note,
+                    document_ids=request.document_ids,
+                    profile_files=request.profile_files,
+                    benchmark_id=request.benchmark_id,
+                    optimization_mode=request.optimization_mode,
+                    benchmark_mode=request.benchmark_mode,
+                )
+            except PermissionError as exc:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+            task = asyncio.create_task(
+                execute_experiment(str(experiment["id"])),
+                name=f"prompt-experiment-{experiment['id']}",
+            )
+            active_prompt_experiments[str(experiment["id"])] = task
+            return experiment
+
+    @router.post(
+        "/prompt-experiments/{experiment_id}/cancel",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def cancel_prompt_experiment(experiment_id: str):
+        task = active_prompt_experiments.get(experiment_id)
+        if task is None or task.done():
+            raise HTTPException(status_code=409, detail="This prompt experiment is not running")
+        task.cancel()
+        return {"id": experiment_id, "status": "cancelling"}
+
+    @router.post(
+        "/prompt-experiments/{experiment_id}/promote",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def promote_prompt_experiment(
+        experiment_id: str, request: PromptExperimentPromotionRequest
+    ):
+        if experiment_id in active_prompt_experiments:
+            raise HTTPException(status_code=409, detail="Wait for the prompt experiment to complete before promotion")
+        try:
+            return await promote_prompt_experiment_candidate(
+                rag,
+                experiment_id=experiment_id,
+                profile_file=request.profile_file,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Prompt experiment promotion failed: %s", exc, exc_info=True)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return router

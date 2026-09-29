@@ -362,6 +362,106 @@ export type EvaluationRunDetailResponse = {
   result: EvaluationRunResult | null
 }
 
+export type PromptExperimentMode = 'screening' | 'validation' | 'final'
+
+export type PromptExperimentProfile = {
+  file: string
+  active: boolean
+  fingerprint: string
+  estimated_prompt_tokens: number
+  guidance_characters: number
+  example_count: number
+}
+
+export type PromptExperimentConfig = {
+  enabled: boolean
+  promotion_enabled: boolean
+  profiles: PromptExperimentProfile[]
+  active_extraction_revision: ExtractionRevision
+  limits: {
+    max_documents: number
+    max_profiles: number
+  }
+}
+
+export type PromptExperimentEstimateProfile = {
+  profile_file: string
+  profile_prompt_tokens: number
+  selected_chunk_count: number
+  calls_per_chunk: number
+  estimated_llm_calls: number
+  estimated_input_tokens: number
+  estimated_output_tokens: number
+  estimated_cost_usd: number
+}
+
+export type PromptExperimentEstimate = {
+  optimization_mode: PromptExperimentMode
+  benchmark_mode: EvaluationRunMode
+  selected_documents: number
+  selected_chunks: number
+  all_document_chunks: number
+  max_gleaning: number
+  per_profile: PromptExperimentEstimateProfile[]
+  estimated_llm_calls: number
+  estimated_input_tokens: number
+  estimated_output_tokens: number
+  estimated_cost_usd: number
+  notes: string[]
+}
+
+export type PromptExperimentCandidate = {
+  profile_file: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  started_at?: string | null
+  completed_at?: string | null
+  scores: Partial<EvaluationRunSummary['scores']>
+  summary?: EvaluationRunResult['summary']
+  artifact?: string | null
+  result?: string | null
+  extraction_revision?: ExtractionRevision | null
+  error?: string | null
+}
+
+export type PromptExperiment = {
+  id: string
+  title: string
+  note: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  created_at: string
+  updated_at: string
+  started_at?: string | null
+  completed_at?: string | null
+  error?: string | null
+  document_ids: string[]
+  profile_files: string[]
+  benchmark_id: string
+  optimization_mode: PromptExperimentMode
+  benchmark_mode: EvaluationRunMode
+  estimate: PromptExperimentEstimate
+  candidates: PromptExperimentCandidate[]
+  promotion?: {
+    profile_file: string
+    promoted_at: string
+    document_ids: string[]
+    extraction_revision: ExtractionRevision
+  }
+}
+
+export type PromptExperimentListResponse = {
+  experiments: PromptExperiment[]
+}
+
+export type PromptExperimentRequest = {
+  title: string
+  note?: string
+  document_ids: string[]
+  profile_files: string[]
+  benchmark_id: string
+  optimization_mode: PromptExperimentMode
+  benchmark_mode?: EvaluationRunMode
+}
+
 export type EvaluationQualityGateCheck = {
   kind: string
   expected: unknown
@@ -875,6 +975,53 @@ export const updateEvaluationRun = async (
   const response = await axiosInstance.patch(
     `/evaluation/runs/${encodeURIComponent(runId)}`,
     request
+  )
+  return response.data
+}
+
+export const getPromptExperimentConfig = async (): Promise<PromptExperimentConfig> => {
+  const response = await axiosInstance.get('/evaluation/prompt-experiments/config')
+  return response.data
+}
+
+export const estimatePromptExperiment = async (
+  request: Pick<PromptExperimentRequest, 'document_ids' | 'profile_files' | 'optimization_mode'>
+): Promise<PromptExperimentEstimate> => {
+  const response = await axiosInstance.post('/evaluation/prompt-experiments/estimate', request)
+  return response.data
+}
+
+export const getPromptExperiments = async (): Promise<PromptExperimentListResponse> => {
+  const response = await axiosInstance.get('/evaluation/prompt-experiments')
+  return response.data
+}
+
+export const getPromptExperiment = async (experimentId: string): Promise<PromptExperiment> => {
+  const response = await axiosInstance.get(`/evaluation/prompt-experiments/${encodeURIComponent(experimentId)}`)
+  return response.data
+}
+
+export const startPromptExperiment = async (
+  request: PromptExperimentRequest
+): Promise<PromptExperiment> => {
+  const response = await axiosInstance.post('/evaluation/prompt-experiments', request)
+  return response.data
+}
+
+export const cancelPromptExperiment = async (
+  experimentId: string
+): Promise<{ id: string; status: string }> => {
+  const response = await axiosInstance.post(`/evaluation/prompt-experiments/${encodeURIComponent(experimentId)}/cancel`)
+  return response.data
+}
+
+export const promotePromptExperiment = async (
+  experimentId: string,
+  profileFile: string
+): Promise<PromptExperiment['promotion']> => {
+  const response = await axiosInstance.post(
+    `/evaluation/prompt-experiments/${encodeURIComponent(experimentId)}/promote`,
+    { profile_file: profileFile }
   )
   return response.data
 }

@@ -66,9 +66,9 @@ def build_extraction_revision(rag: Any) -> dict[str, Any]:
         ),
         "model": model_identity.get("model") or getattr(rag, "llm_model_name", ""),
         "model_binding": model_identity.get("binding"),
-        "max_gleaning": getattr(rag, "max_gleaning", None),
-        "max_extraction_records": getattr(rag, "max_extraction_records", None),
-        "max_extraction_entities": getattr(rag, "max_extraction_entities", None),
+        "max_gleaning": getattr(rag, "entity_extract_max_gleaning", None),
+        "max_extraction_records": getattr(rag, "entity_extract_max_records", None),
+        "max_extraction_entities": getattr(rag, "entity_extract_max_entities", None),
     }
     prompt_profile_sha256 = hashlib.sha256(
         _canonical_json(prompt_profile).encode("utf-8")
