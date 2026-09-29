@@ -107,6 +107,7 @@ def _summary(metadata: dict[str, Any]) -> dict[str, Any]:
         "quality_gates_passed": metadata.get("quality_gates_passed"),
         "failed_check_count": int(metadata.get("failed_check_count") or 0),
         "case_count": int(metadata.get("case_count") or 0),
+        "extraction_revision": metadata.get("extraction_revision"),
     }
 
 
@@ -119,12 +120,13 @@ def create_run(
     mode: str,
     title: str | None = None,
     note: str | None = None,
+    extraction_revision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = _utc_now()
     run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     run_title = _validate_title(title or _default_title(benchmark_name, mode))
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": run_id,
         "title": run_title,
         "note": _validate_note(note),
@@ -141,6 +143,10 @@ def create_run(
         "scores": {},
         "quality_gates_passed": None,
         "failed_check_count": 0,
+        # Snapshot the live extraction configuration at scheduling time. This
+        # lets benchmark history compare prompts/algorithms without retaining
+        # duplicate historic graphs in rag_storage.
+        "extraction_revision": dict(extraction_revision or {}) or None,
     }
     _atomic_write_json(_metadata_path(working_dir, run_id), metadata)
     return _summary(metadata)

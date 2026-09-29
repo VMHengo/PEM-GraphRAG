@@ -37,6 +37,8 @@ import {
   getDocumentBatchExtractionStatus,
   importCompletedBatchExtractions,
   importDocumentBatchExtraction,
+  getExtractionRevisionOverview,
+  reextractDocuments,
   startAllBatchExtractions,
   startDocumentBatchExtraction,
   updateDocumentMetadata,
@@ -48,7 +50,8 @@ import {
   PaginationInfo,
   type BatchExtractionResponse,
   type BatchExtractionBulkResponse,
-  type BatchExtractionOverviewResponse
+  type BatchExtractionOverviewResponse,
+  type ExtractionRevisionOverviewResponse
 } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -576,6 +579,9 @@ export default function DocumentManager() {
   const [advanceAllResult, setAdvanceAllResult] = useState<BatchExtractionBulkResponse | null>(null)
   const [advanceAllLoading, setAdvanceAllLoading] = useState(false)
   const [advanceAllAction, setAdvanceAllAction] = useState<'overview' | 'start' | 'import' | null>(null)
+  const [reextractOpen, setReextractOpen] = useState(false)
+  const [reextractOverview, setReextractOverview] = useState<ExtractionRevisionOverviewResponse | null>(null)
+  const [reextractLoading, setReextractLoading] = useState(false)
   const [sourceUrlDoc, setSourceUrlDoc] = useState<DocStatusResponse | null>(null)
   const [sourceUrlValue, setSourceUrlValue] = useState('')
   const [savingSourceUrlDocId, setSavingSourceUrlDocId] = useState<string | null>(null)
@@ -1474,6 +1480,39 @@ export default function DocumentManager() {
     }
   }, [loadAdvanceAllOverview, refreshDocumentsThrottled])
 
+  const openReextractDialog = useCallback(async () => {
+    setReextractOpen(true)
+    setReextractLoading(true)
+    try {
+      setReextractOverview(await getExtractionRevisionOverview())
+    } catch (err) {
+      toast.error(`Failed to load extraction revision: ${errorMessage(err)}`)
+    } finally {
+      setReextractLoading(false)
+    }
+  }, [])
+
+  const handleReextractOutdated = useCallback(async () => {
+    setReextractLoading(true)
+    try {
+      const result = await reextractDocuments({ outdated_only: true })
+      if (result.status === 'busy') {
+        toast.error(result.message)
+        return
+      }
+      toast.success(result.message)
+      setReextractOpen(false)
+      refreshDocumentsThrottled()
+      if (result.queued_documents > 0) {
+        startActivityProbe('re-extract-outdated')
+      }
+    } catch (err) {
+      toast.error(`Failed to queue re-extraction: ${errorMessage(err)}`)
+    } finally {
+      setReextractLoading(false)
+    }
+  }, [refreshDocumentsThrottled, startActivityProbe])
+
   // New paginated data fetching function
   const fetchPaginatedDocuments = useCallback(async (
     page: number,
@@ -1824,6 +1863,17 @@ export default function DocumentManager() {
               )}
             >
               <ActivityIcon /> {t('documentPanel.documentManager.pipelineStatusButton')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openReextractDialog}
+              side="bottom"
+              tooltip="Rebuild graph entities and relations for documents with an older extraction revision"
+              size="sm"
+              disabled={pipelineActive || reextractLoading}
+            >
+              {reextractLoading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RotateCcwIcon />}
+              Re-extract outdated
             </Button>
           </div>
 
@@ -2337,6 +2387,45 @@ export default function DocumentManager() {
             >
               {advanceAllAction === 'start' ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <PlayIcon className="h-4 w-4" />}
               Start batch extraction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={reextractOpen} onOpenChange={(open) => {
+        if (!reextractLoading) setReextractOpen(open)
+      }}>
+        <DialogContent className="sm:max-w-xl" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Re-extract outdated documents</DialogTitle>
+            <DialogDescription>
+              This keeps the original document, source URL, chunks, and chunk embeddings. Only the derived entities and relationships are rebuilt.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {reextractOverview ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 rounded-md border p-3 sm:grid-cols-4">
+                  <div><div className="text-muted-foreground text-xs">Eligible</div><div className="font-medium">{formatNumber(reextractOverview.eligible_documents)}</div></div>
+                  <div><div className="text-muted-foreground text-xs">Outdated</div><div className="font-medium">{formatNumber(reextractOverview.outdated_documents)}</div></div>
+                  <div><div className="text-muted-foreground text-xs">Current</div><div className="font-medium">{formatNumber(reextractOverview.current_documents)}</div></div>
+                  <div><div className="text-muted-foreground text-xs">Legacy</div><div className="font-medium">{formatNumber(reextractOverview.legacy_documents)}</div></div>
+                </div>
+                <div className="rounded-md border p-3 text-xs text-muted-foreground">
+                  Active revision {reextractOverview.current_revision.version} / {reextractOverview.current_revision.prompt_profile} / {reextractOverview.current_revision.fingerprint.slice(0, 12)}
+                </div>
+              </>
+            ) : (
+              <div className="text-muted-foreground">Loading extraction revision...</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReextractOpen(false)} disabled={reextractLoading}>Close</Button>
+            <Button
+              onClick={handleReextractOutdated}
+              disabled={reextractLoading || !reextractOverview?.outdated_documents}
+            >
+              {reextractLoading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <RotateCcwIcon />}
+              Re-extract {formatNumber(reextractOverview?.outdated_documents ?? 0)} outdated
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -40,6 +40,7 @@ from lightrag.constants import (
     PARSER_ENGINE_NATIVE,
 )
 from lightrag.exceptions import MultimodalAnalysisError, PipelineCancelledException
+from lightrag.extraction_revisions import build_extraction_revision
 from lightrag.kg.shared_storage import get_namespace_data, get_namespace_lock
 from lightrag.operate import merge_nodes_and_edges
 from lightrag.parser.routing import (
@@ -2251,6 +2252,7 @@ class _PipelineMixin:
                         metadata_extra={
                             "processing_start_time": processing_start_time,
                             "processing_end_time": processing_end_time,
+                            "extraction_revision": build_extraction_revision(self),
                             **extraction_meta,
                         },
                     )

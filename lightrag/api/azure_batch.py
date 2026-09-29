@@ -535,6 +535,7 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
             "batch_id": job["batch_id"],
             "batch_status": "imported",
             "batch_imported_at": _now_iso(),
+            "extraction_revision": rag.get_extraction_revision(),
         }
     )
 

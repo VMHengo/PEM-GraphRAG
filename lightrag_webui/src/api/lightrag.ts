@@ -349,6 +349,7 @@ export type EvaluationRunSummary = {
   quality_gates_passed?: boolean | null
   failed_check_count: number
   case_count: number
+  extraction_revision?: ExtractionRevision | null
 }
 
 export type EvaluationRunListResponse = {
@@ -1206,11 +1207,54 @@ export type DocumentMetadataUpdateResponse = {
   message: string
 }
 
+export type ExtractionRevision = {
+  version: string
+  fingerprint: string
+  prompt_profile: string
+  prompt_profile_sha256?: string
+  relation_schema_version?: string
+  model?: string
+  model_binding?: string | null
+  entity_extraction_use_json?: boolean
+  git_commit?: string | null
+}
+
+export type ExtractionRevisionOverviewResponse = {
+  current_revision: ExtractionRevision
+  eligible_documents: number
+  current_documents: number
+  outdated_documents: number
+  legacy_documents: number
+  chunk_only_documents: number
+}
+
+export type ReextractDocumentsResponse = {
+  status: 'reextraction_started' | 'busy'
+  message: string
+  queued_documents: number
+  skipped_documents: number
+  current_revision: ExtractionRevision
+}
+
 export const updateDocumentMetadata = async (
   docId: string,
   metadata: Record<string, any>
 ): Promise<DocumentMetadataUpdateResponse> => {
   const response = await axiosInstance.patch(`/documents/${encodeURIComponent(docId)}/metadata`, { metadata })
+  return response.data
+}
+
+export const getExtractionRevisionOverview = async (): Promise<ExtractionRevisionOverviewResponse> => {
+  const response = await axiosInstance.get('/documents/extraction_revision')
+  return response.data
+}
+
+export const reextractDocuments = async (request: {
+  doc_ids?: string[]
+  outdated_only?: boolean
+  force?: boolean
+} = {}): Promise<ReextractDocumentsResponse> => {
+  const response = await axiosInstance.post('/documents/reextract', request)
   return response.data
 }
 

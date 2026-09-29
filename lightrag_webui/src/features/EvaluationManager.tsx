@@ -30,6 +30,7 @@ import {
   EvaluationRunMode,
   EvaluationRunResult,
   EvaluationRunSummary,
+  ExtractionRevision,
   getEvaluationBenchmarks,
   getEvaluationRun,
   getEvaluationRuns,
@@ -95,9 +96,21 @@ const formatDate = (value: string | null | undefined) => {
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short'
-      }).format(date)
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    }).format(date)
+}
+
+const formatRevision = (revision: ExtractionRevision | null | undefined) => {
+  if (!revision) return 'Legacy / unknown'
+  const fingerprint = revision.fingerprint ? revision.fingerprint.slice(0, 12) : 'unknown'
+  return `${revision.version} / ${revision.prompt_profile} / ${fingerprint}`
+}
+
+const scoreDelta = (candidate: number | null | undefined, baseline: number | null | undefined) => {
+  if (candidate == null || baseline == null) return '-'
+  const delta = candidate - baseline
+  return `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`
 }
 
 function MetricLabel({
@@ -361,10 +374,11 @@ function RunHistory({
           <div className="text-muted-foreground text-sm">No saved runs for this benchmark yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="text-muted-foreground border-b text-xs uppercase">
                 <tr>
                   <th className="px-2 py-2 font-medium">Title and note</th>
+                  <th className="px-2 py-2 font-medium">Extraction revision</th>
                   <th className="px-2 py-2 font-medium">Mode</th>
                   <th className="px-2 py-2 font-medium">Status</th>
                   <th className="px-2 py-2 font-medium">Overall</th>
@@ -382,6 +396,9 @@ function RunHistory({
                       <div className="font-medium">{run.title}</div>
                       {run.note && <div className="text-muted-foreground mt-1 truncate text-xs">{run.note}</div>}
                       {run.error && <div className="mt-1 truncate text-xs text-red-400">{run.error}</div>}
+                    </td>
+                    <td className="max-w-[220px] px-2 py-3 align-top text-xs text-muted-foreground">
+                      {formatRevision(run.extraction_revision)}
                     </td>
                     <td className="px-2 py-3 align-top capitalize">{run.mode}</td>
                     <td className={`px-2 py-3 align-top capitalize ${statusTone[run.status]}`}>{run.status}</td>
@@ -411,6 +428,116 @@ function RunHistory({
   )
 }
 
+function PromptComparison({
+  runs,
+  selectedRun,
+  baselineRunId,
+  onBaselineChange
+}: {
+  runs: EvaluationRunSummary[]
+  selectedRun: EvaluationRunSummary | null
+  baselineRunId: string
+  onBaselineChange: (runId: string) => void
+}) {
+  const baseline = runs.find((run) => run.id === baselineRunId) || null
+  const comparableRuns = runs.filter(
+    (run) => run.status === 'completed' && run.id !== selectedRun?.id
+  )
+
+  if (!selectedRun || selectedRun.status !== 'completed' || comparableRuns.length === 0) {
+    return null
+  }
+
+  const metrics: Array<keyof EvaluationRunSummary['scores']> = [
+    'overall',
+    'graph',
+    'metadata',
+    'retrieval',
+    'directed'
+  ]
+
+  return (
+    <Card className="rounded-md">
+      <CardHeader>
+        <CardTitle>Prompt Comparison</CardTitle>
+        <CardDescription>
+          Compare the selected completed run with an earlier run. Each run stores the active extraction revision at its start.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-md border p-3 text-sm">
+            <div className="text-muted-foreground text-xs uppercase">Candidate</div>
+            <div className="mt-1 font-medium">{selectedRun.title}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {formatRevision(selectedRun.extraction_revision)}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium" htmlFor="evaluation-comparison-baseline">
+              Baseline run
+            </label>
+            <Select value={baselineRunId} onValueChange={onBaselineChange}>
+              <SelectTrigger id="evaluation-comparison-baseline">
+                <SelectValue placeholder="Select baseline" />
+              </SelectTrigger>
+              <SelectContent>
+                {comparableRuns.map((run) => (
+                  <SelectItem key={run.id} value={run.id}>
+                    {run.title} ({formatRevision(run.extraction_revision)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {baseline && (
+              <div className="text-xs text-muted-foreground">
+                {formatRevision(baseline.extraction_revision)}
+              </div>
+            )}
+          </div>
+        </div>
+        {baseline && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left text-sm">
+              <thead className="text-muted-foreground border-b text-xs uppercase">
+                <tr>
+                  <th className="px-2 py-2">Metric</th>
+                  <th className="px-2 py-2">Baseline</th>
+                  <th className="px-2 py-2">Candidate</th>
+                  <th className="px-2 py-2">Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.map((metric) => {
+                  const candidateScore = selectedRun.scores[metric]
+                  const baselineScore = baseline.scores[metric]
+                  const delta = candidateScore != null && baselineScore != null
+                    ? candidateScore - baselineScore
+                    : null
+                  return (
+                    <tr key={metric} className="border-b last:border-0">
+                      <td className="px-2 py-2 capitalize">{metric}</td>
+                      <td className={`px-2 py-2 ${scoreTone(baselineScore)}`}>
+                        {formatScore(baselineScore)}
+                      </td>
+                      <td className={`px-2 py-2 ${scoreTone(candidateScore)}`}>
+                        {formatScore(candidateScore)}
+                      </td>
+                      <td className={`px-2 py-2 ${delta == null ? 'text-muted-foreground' : delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {scoreDelta(candidateScore, baselineScore)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function EvaluationManager() {
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
@@ -418,6 +545,7 @@ export default function EvaluationManager() {
   const [isLoading, setIsLoading] = useState(false)
   const [runs, setRuns] = useState<EvaluationRunSummary[]>([])
   const [selectedRunId, setSelectedRunId] = useState('')
+  const [comparisonBaselineId, setComparisonBaselineId] = useState('')
   const [runDetail, setRunDetail] = useState<EvaluationRunDetailResponse | null>(null)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -488,6 +616,16 @@ export default function EvaluationManager() {
     setRunDetail(null)
     void loadRuns()
   }, [loadRuns])
+
+  const effectiveComparisonBaselineId = useMemo(() => {
+    const stillValid = runs.some(
+      (run) => run.id === comparisonBaselineId && run.id !== selectedRunId && run.status === 'completed'
+    )
+    if (stillValid) return comparisonBaselineId
+    return runs.find(
+      (run) => run.id !== selectedRunId && run.status === 'completed'
+    )?.id || ''
+  }, [comparisonBaselineId, runs, selectedRunId])
 
   useEffect(() => {
     if (selectedRunId) void loadRun(selectedRunId)
@@ -632,6 +770,13 @@ export default function EvaluationManager() {
           onRefresh={() => void loadRuns()}
         />
 
+        <PromptComparison
+          runs={runs}
+          selectedRun={selectedRun}
+          baselineRunId={effectiveComparisonBaselineId}
+          onBaselineChange={setComparisonBaselineId}
+        />
+
         {selectedRun && (
           <div className="border-y py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -643,6 +788,9 @@ export default function EvaluationManager() {
                   </span>
                 </div>
                 {selectedRun.note && <p className="text-muted-foreground mt-1 text-sm">{selectedRun.note}</p>}
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Extraction: {formatRevision(selectedRun.extraction_revision)}
+                </p>
                 <p className="text-muted-foreground mt-1 text-xs">
                   {selectedRun.benchmark_name} · {selectedRun.mode} · {formatDate(selectedRun.created_at)}
                 </p>

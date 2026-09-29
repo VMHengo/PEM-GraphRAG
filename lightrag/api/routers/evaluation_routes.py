@@ -80,6 +80,7 @@ class BenchmarkRunSummary(BaseModel):
     quality_gates_passed: bool | None = None
     failed_check_count: int = 0
     case_count: int = 0
+    extraction_revision: dict | None = None
 
 
 class BenchmarkRunListResponse(BaseModel):
@@ -223,6 +224,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                     mode=request.mode,
                     title=request.title,
                     note=request.note,
+                    extraction_revision=rag.get_extraction_revision(),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc

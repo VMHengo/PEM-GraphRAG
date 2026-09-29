@@ -59,6 +59,11 @@ from lightrag.api.azure_batch import (
     refresh_azure_batch_status,
     start_azure_batch_extraction,
 )
+from lightrag.extraction_revisions import (
+    extraction_revision_from_metadata,
+    is_extraction_revision_current,
+    validate_reextract_selection,
+)
 from ..config import global_args
 
 
@@ -121,10 +126,28 @@ def is_valid_file_source(file_source: str | None) -> bool:
 
 def _doc_waiting_for_extraction(doc: Any) -> bool:
     """Return True when a processed document only completed chunking."""
-    metadata = getattr(doc, "metadata", None)
-    if metadata is None and isinstance(doc, dict):
-        metadata = doc.get("metadata")
-    return bool((metadata or {}).get("skip_kg"))
+    return bool(_doc_metadata(doc).get("skip_kg"))
+
+
+def _doc_metadata(doc: Any) -> dict[str, Any]:
+    metadata = doc.get("metadata") if isinstance(doc, dict) else getattr(doc, "metadata", None)
+    return dict(metadata) if isinstance(metadata, dict) else {}
+
+
+def _doc_chunk_ids(doc: Any) -> list[str]:
+    chunk_ids = doc.get("chunks_list") if isinstance(doc, dict) else getattr(doc, "chunks_list", None)
+    return [chunk_id for chunk_id in (chunk_ids or []) if isinstance(chunk_id, str) and chunk_id]
+
+
+async def _docs_eligible_for_reextraction(rag: LightRAG) -> dict[str, Any]:
+    """Return completed and retryable failed records with retained chunks."""
+    statuses = [DocStatus.PROCESSED, DocStatus.FAILED]
+    if hasattr(rag.doc_status, "get_docs_by_statuses"):
+        return await rag.doc_status.get_docs_by_statuses(statuses)
+    documents: dict[str, Any] = {}
+    for status in statuses:
+        documents.update(await rag.doc_status.get_docs_by_status(status))
+    return documents
 
 
 async def _adjust_status_counts_for_deferred_extraction(rag) -> dict[str, int]:
@@ -821,6 +844,53 @@ class BatchExtractionBulkResponse(BaseModel):
     failed: int = 0
     results: list[BatchExtractionBulkItem] = Field(default_factory=list)
     message: str
+
+
+class ExtractionRevisionOverviewResponse(BaseModel):
+    """Current extraction configuration and completed-document freshness."""
+
+    current_revision: dict[str, Any]
+    eligible_documents: int = 0
+    current_documents: int = 0
+    outdated_documents: int = 0
+    legacy_documents: int = 0
+    chunk_only_documents: int = 0
+
+
+class ReextractDocumentsRequest(BaseModel):
+    """Select retained-chunk documents for an in-place graph refresh."""
+
+    doc_ids: list[str] | None = Field(default=None, max_length=500)
+    outdated_only: bool = True
+    force: bool = False
+
+    @field_validator("doc_ids")
+    @classmethod
+    def validate_doc_ids(cls, doc_ids: list[str] | None) -> list[str] | None:
+        if doc_ids is None:
+            return None
+        normalized = list(
+            dict.fromkeys(doc_id.strip() for doc_id in doc_ids if doc_id.strip())
+        )
+        if not normalized:
+            raise ValueError("doc_ids must contain at least one document ID")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_force_for_full_refresh(self):
+        validate_reextract_selection(
+            outdated_only=self.outdated_only,
+            force=self.force,
+        )
+        return self
+
+
+class ReextractDocumentsResponse(BaseModel):
+    status: Literal["reextraction_started", "busy"]
+    message: str
+    queued_documents: int = 0
+    skipped_documents: int = 0
+    current_revision: dict[str, Any]
 
 
 class DocsStatusesResponse(BaseModel):
@@ -3095,6 +3165,91 @@ async def background_delete_documents(
                 logger.error(f"Error processing pending documents after deletion: {e}")
 
 
+async def background_reextract_documents(
+    rag: LightRAG,
+    doc_ids: list[str],
+) -> None:
+    """Refresh retained-chunk documents while preserving source artefacts.
+
+    The request route reserves the pipeline's exclusive maintenance slot before
+    scheduling this task. That serialises the graph rebuild against uploads,
+    scans, and destructive document operations.
+    """
+
+    from lightrag.kg.shared_storage import get_namespace_data, get_namespace_lock
+
+    pipeline_status = await get_namespace_data(
+        "pipeline_status", workspace=rag.workspace
+    )
+    pipeline_status_lock = get_namespace_lock(
+        "pipeline_status", workspace=rag.workspace
+    )
+    total_docs = len(doc_ids)
+    completed = 0
+    failed = 0
+
+    async with pipeline_status_lock:
+        pipeline_status.update(
+            {
+                "job_name": f"Re-extracting {total_docs} document(s)",
+                "job_start": datetime.now(timezone.utc).isoformat(),
+                "docs": total_docs,
+                "batchs": total_docs,
+                "cur_batch": 0,
+                "latest_message": "Starting graph-only document re-extraction",
+            }
+        )
+        pipeline_status["history_messages"][:] = [
+            "Starting graph-only document re-extraction"
+        ]
+
+    try:
+        for index, doc_id in enumerate(doc_ids, start=1):
+            async with pipeline_status_lock:
+                if pipeline_status.get("cancellation_requested", False):
+                    message = f"Re-extraction cancelled at document {index}/{total_docs}"
+                    pipeline_status["latest_message"] = message
+                    pipeline_status["history_messages"].append(message)
+                    failed += total_docs - index + 1
+                    break
+                message = f"Re-extracting document {index}/{total_docs}: {doc_id}"
+                pipeline_status["cur_batch"] = index
+                pipeline_status["latest_message"] = message
+                pipeline_status["history_messages"].append(message)
+
+            try:
+                await rag.areextract_doc_kg(
+                    doc_id,
+                    pipeline_status=pipeline_status,
+                    pipeline_status_lock=pipeline_status_lock,
+                )
+                completed += 1
+            except Exception as exc:
+                failed += 1
+                logger.error("Re-extraction failed for %s: %s", doc_id, exc, exc_info=True)
+                async with pipeline_status_lock:
+                    message = f"Re-extraction failed for {doc_id}: {exc}"
+                    pipeline_status["latest_message"] = message
+                    pipeline_status["history_messages"].append(message)
+    finally:
+        async with pipeline_status_lock:
+            pipeline_status["busy"] = False
+            pipeline_status["destructive_busy"] = False
+            pipeline_status["cancellation_requested"] = False
+            message = (
+                f"Re-extraction completed: {completed} successful, {failed} failed"
+            )
+            pipeline_status["latest_message"] = message
+            pipeline_status["history_messages"].append(message)
+            has_pending_request = pipeline_status.get("request_pending", False)
+
+        if has_pending_request:
+            try:
+                await rag.apipeline_process_enqueue_documents()
+            except Exception as exc:
+                logger.error("Failed to process queued documents after re-extraction: %s", exc)
+
+
 def create_document_routes(
     rag: LightRAG, doc_manager: DocumentManager, api_key: Optional[str] = None
 ):
@@ -4622,6 +4777,111 @@ def create_document_routes(
             logger.error(f"Error getting document status counts: {str(e)}")
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
+
+    @router.get(
+        "/extraction_revision",
+        response_model=ExtractionRevisionOverviewResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_extraction_revision_overview() -> ExtractionRevisionOverviewResponse:
+        """Report which retained-chunk documents need an extraction refresh."""
+        try:
+            current_revision = rag.get_extraction_revision()
+            processed_docs = await _docs_eligible_for_reextraction(rag)
+            eligible = current = outdated = legacy = chunk_only = 0
+            for status_doc in processed_docs.values():
+                metadata = _doc_metadata(status_doc)
+                if metadata.get("skip_kg"):
+                    chunk_only += 1
+                    continue
+                if not _doc_chunk_ids(status_doc):
+                    continue
+                eligible += 1
+                if is_extraction_revision_current(metadata, current_revision):
+                    current += 1
+                else:
+                    outdated += 1
+                    if extraction_revision_from_metadata(metadata) is None:
+                        legacy += 1
+            return ExtractionRevisionOverviewResponse(
+                current_revision=current_revision,
+                eligible_documents=eligible,
+                current_documents=current,
+                outdated_documents=outdated,
+                legacy_documents=legacy,
+                chunk_only_documents=chunk_only,
+            )
+        except Exception as exc:
+            logger.error("Error reading extraction revision overview: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @router.post(
+        "/reextract",
+        response_model=ReextractDocumentsResponse,
+        status_code=202,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def reextract_documents(
+        request: ReextractDocumentsRequest,
+        background_tasks: BackgroundTasks,
+    ) -> ReextractDocumentsResponse:
+        """Queue a graph-only re-extraction without deleting document artefacts."""
+        try:
+            current_revision = rag.get_extraction_revision()
+            processed_docs = await _docs_eligible_for_reextraction(rag)
+            requested_ids = set(request.doc_ids or processed_docs.keys())
+            selected_ids: list[str] = []
+            skipped = 0
+
+            for doc_id, status_doc in processed_docs.items():
+                if doc_id not in requested_ids:
+                    continue
+                metadata = _doc_metadata(status_doc)
+                eligible = bool(_doc_chunk_ids(status_doc)) and not metadata.get("skip_kg")
+                is_current = is_extraction_revision_current(metadata, current_revision)
+                if not eligible or (request.outdated_only and is_current and not request.force):
+                    skipped += 1
+                    continue
+                selected_ids.append(doc_id)
+
+            if request.doc_ids:
+                skipped += len(requested_ids - set(processed_docs))
+
+            acquired, reason = await _acquire_destructive_busy(rag)
+            if not acquired:
+                return ReextractDocumentsResponse(
+                    status="busy",
+                    message=reason or "Pipeline is busy with another operation.",
+                    queued_documents=0,
+                    skipped_documents=skipped,
+                    current_revision=current_revision,
+                )
+
+            if not selected_ids:
+                await _release_destructive_busy(rag)
+                return ReextractDocumentsResponse(
+                    status="reextraction_started",
+                    message="No completed documents require re-extraction.",
+                    queued_documents=0,
+                    skipped_documents=skipped,
+                    current_revision=current_revision,
+                )
+
+            background_tasks.add_task(background_reextract_documents, rag, selected_ids)
+            return ReextractDocumentsResponse(
+                status="reextraction_started",
+                message=(
+                    f"Queued graph-only re-extraction for {len(selected_ids)} document(s)."
+                ),
+                queued_documents=len(selected_ids),
+                skipped_documents=skipped,
+                current_revision=current_revision,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("Failed to start document re-extraction: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.patch(
         "/{doc_id}/metadata",

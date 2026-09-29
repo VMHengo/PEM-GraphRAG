@@ -403,6 +403,9 @@ parses the returned entities/relations, and merges them into the graph.
 | Pipeline call into extraction | `lightrag/lightrag.py` (`_process_extract_entities`) |
 | Pipeline orchestration | `lightrag/pipeline.py` (`process_single_document`) |
 | Merge into graph/vector stores | `lightrag/operate.py` (`merge_nodes_and_edges`) |
+| Extraction provenance | `lightrag/extraction_revisions.py` |
+| Graph-only re-extraction | `lightrag/lightrag.py` (`areextract_doc_kg`) |
+| Re-extraction API and WebUI | `document_routes.py`, `DocumentManager.tsx` |
 
 ### Prompt Preparation
 
@@ -485,6 +488,28 @@ RELATION_IMPORTANCE_THRESHOLD=0.45
 ```
 
 The default is `0.0`, which keeps all relationships during evaluation.
+
+### Extraction Versioning And Prompt Experiments
+
+Every newly completed normal or Azure Batch extraction stores an active
+extraction revision in the document metadata. A revision contains a
+human-managed semantic version, prompt profile, optional Git commit, and a
+fingerprint calculated from the resolved prompt, model, JSON mode, and
+extraction settings. Documents with no revision are treated as legacy and are
+eligible for a refresh.
+
+```env
+EXTRACTION_ALGORITHM_VERSION=1.0.0
+RELATION_SCHEMA_VERSION=1
+EXTRACTION_GIT_COMMIT=
+```
+
+The **Documents -> Re-extract outdated** action retains the document, source
+URL, chunks, and chunk embeddings. It removes and regenerates only the
+document's derived graph contribution. Benchmark runs save the same revision
+snapshot, so **Evaluation -> Prompt Comparison** can compare a selected run
+against a saved baseline. The operational workflow is documented in
+[`EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md`](EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md).
 
 ### Current Extraction LLM Configuration
 
@@ -800,6 +825,8 @@ OAUTH2_PROXY_ISSUER_URL=https://...
 | Change extraction model | `.env`, compose env, `lightrag/api/lightrag_server.py` |
 | Change entity types/prompt | `prompts/entity_type/*.yml`, `lightrag/prompt.py` |
 | Change extraction parsing | `lightrag/operate.py` |
+| Version prompts and re-extract documents | `lightrag/extraction_revisions.py`, `document_routes.py`, `DocumentManager.tsx`, `docs/EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md` |
+| Compare prompt revisions | `evaluation/run_history.py`, `evaluation_routes.py`, `EvaluationManager.tsx` |
 | Change directed relationship metadata | `prompts/entity_type/*.yml`, `lightrag/prompt.py`, `lightrag/operate.py`, `docs/directed_multihop_retrieval_plan.md` |
 | Change Azure Batch behavior | `lightrag/api/azure_batch.py`, `DocumentManager.tsx` |
 | Change Neo4j behavior | `lightrag/kg/neo4j_impl.py` |

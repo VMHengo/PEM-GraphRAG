@@ -106,9 +106,11 @@ from lightrag.chunker import chunking_by_token_size
 from lightrag.operate import (
     extract_entities,
     kg_query,
+    merge_nodes_and_edges,
     naive_query,
     rebuild_knowledge_from_chunks,
 )
+from lightrag.extraction_revisions import build_extraction_revision
 from lightrag.utils_pipeline import normalize_document_file_path
 from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.utils import (
@@ -2394,8 +2396,9 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         *,
         pipeline_status: dict,
         pipeline_status_lock: Any,
+        delete_chunks: bool = True,
     ) -> None:
-        """Remove a document's chunks and clean up its knowledge-graph contributions.
+        """Clean up a document's knowledge-graph contributions.
 
         Used by:
             - The pipeline resume branch in ``process_document`` when a
@@ -2415,8 +2418,10 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                ``source_id`` lists, then classifies it as either
                *delete-outright* (no remaining sources) or *rebuild*
                (still references chunks from other documents).
-            3. Deletes the chunks themselves from ``chunks_vdb`` and
-               ``text_chunks``.
+            3. Optionally deletes the chunks themselves from ``chunks_vdb``
+               and ``text_chunks``. Set ``delete_chunks=False`` when an
+               extraction refresh must retain chunk embeddings and source
+               content.
             4. For *delete-outright* entries: removes the relationship /
                entity from the graph storage, vector storage, and chunk
                tracking.
@@ -2647,20 +2652,29 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             )
             raise Exception(f"Failed to process graph dependencies: {e}") from e
 
-        # ---- 3. Delete chunks themselves ----
-        try:
-            await self.chunks_vdb.delete(chunk_ids)
-            await self.text_chunks.delete(chunk_ids)
+        # ---- 3. Delete chunks themselves when this is a full reprocess ----
+        if delete_chunks:
+            try:
+                await self.chunks_vdb.delete(chunk_ids)
+                await self.text_chunks.delete(chunk_ids)
+                async with pipeline_status_lock:
+                    log_message = (
+                        f"[purge] {doc_id}: deleted {len(chunk_ids)} chunk(s) from storage"
+                    )
+                    logger.info(log_message)
+                    pipeline_status["latest_message"] = log_message
+                    pipeline_status["history_messages"].append(log_message)
+            except Exception as e:
+                logger.error(f"[purge] Failed to delete chunks for {doc_id}: {e}")
+                raise Exception(f"Failed to delete document chunks: {e}") from e
+        else:
             async with pipeline_status_lock:
                 log_message = (
-                    f"[purge] {doc_id}: deleted {len(chunk_ids)} chunk(s) from storage"
+                    f"[purge] {doc_id}: retained {len(chunk_ids)} chunk(s) for re-extraction"
                 )
                 logger.info(log_message)
                 pipeline_status["latest_message"] = log_message
                 pipeline_status["history_messages"].append(log_message)
-        except Exception as e:
-            logger.error(f"[purge] Failed to delete chunks for {doc_id}: {e}")
-            raise Exception(f"Failed to delete document chunks: {e}") from e
 
         # ---- 4. Delete relationships with no remaining sources ----
         if relationships_to_delete:
@@ -2797,6 +2811,148 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             raise Exception(
                 f"Failed to delete from full_entities/full_relations: {e}"
             ) from e
+
+    def get_extraction_revision(self) -> dict[str, Any]:
+        """Return the active extraction configuration snapshot.
+
+        The semantic version is operator-controlled through
+        ``EXTRACTION_ALGORITHM_VERSION``. The fingerprint also includes the
+        resolved prompt and extraction options, which makes accidental version
+        drift visible in the document and evaluation UIs.
+        """
+
+        self._ensure_addon_params_cache()
+        return build_extraction_revision(self)
+
+    async def areextract_doc_kg(
+        self,
+        doc_id: str,
+        *,
+        pipeline_status: dict,
+        pipeline_status_lock: Any,
+    ) -> dict[str, Any]:
+        """Rebuild one document's KG contribution from its existing chunks.
+
+        This is intentionally not a re-ingestion: it retains ``full_docs``,
+        ``text_chunks``, chunk embeddings, the original file, and editable
+        source metadata. Only derived entity/relation graph artefacts are
+        removed and regenerated using the currently active extraction revision.
+        """
+
+        status_doc = await self.doc_status.get_by_id(doc_id)
+        if status_doc is None:
+            raise ValueError(f"Document not found: {doc_id}")
+        if not isinstance(status_doc, DocProcessingStatus):
+            raw_status = dict(status_doc)
+            raw_status["status"] = DocStatus(raw_status["status"])
+            status_doc = DocProcessingStatus(**raw_status)
+
+        if status_doc.status not in {DocStatus.PROCESSED, DocStatus.FAILED}:
+            raise ValueError("Only completed or retryable failed documents can be re-extracted")
+        if (status_doc.metadata or {}).get("skip_kg"):
+            raise ValueError("Chunk-only documents must be extracted before re-extraction")
+
+        chunk_ids = [chunk_id for chunk_id in (status_doc.chunks_list or []) if chunk_id]
+        if not chunk_ids:
+            raise ValueError("Document has no retained chunks to re-extract")
+
+        records = await self.text_chunks.get_by_ids(chunk_ids)
+        chunks = {
+            chunk_id: record
+            for chunk_id, record in zip(chunk_ids, records, strict=False)
+            if isinstance(record, dict) and record
+        }
+        missing_chunk_ids = [chunk_id for chunk_id in chunk_ids if chunk_id not in chunks]
+        if missing_chunk_ids:
+            raise ValueError(
+                "Document chunks are incomplete; re-ingest the document before re-extracting "
+                f"({len(missing_chunk_ids)} missing)."
+            )
+
+        current_revision = self.get_extraction_revision()
+        file_path = status_doc.file_path
+        started_at = datetime.now(timezone.utc).isoformat()
+        await self._upsert_doc_status_transition(
+            doc_id=doc_id,
+            status=DocStatus.PROCESSING,
+            status_doc=status_doc,
+            file_path=file_path,
+            extra_fields={
+                "chunks_count": len(chunk_ids),
+                "chunks_list": chunk_ids,
+                "error_msg": None,
+            },
+            metadata_extra={"reextraction_started_at": started_at},
+        )
+
+        try:
+            await self._raise_if_cancelled(pipeline_status, pipeline_status_lock)
+            await self._purge_doc_chunks_and_kg(
+                doc_id,
+                set(chunk_ids),
+                pipeline_status=pipeline_status,
+                pipeline_status_lock=pipeline_status_lock,
+                delete_chunks=False,
+            )
+            await self._raise_if_cancelled(pipeline_status, pipeline_status_lock)
+            chunk_results = await self._process_extract_entities(
+                chunks, pipeline_status, pipeline_status_lock
+            )
+            await merge_nodes_and_edges(
+                chunk_results=chunk_results,
+                knowledge_graph_inst=self.chunk_entity_relation_graph,
+                entity_vdb=self.entities_vdb,
+                relationships_vdb=self.relationships_vdb,
+                global_config=self._build_global_config(),
+                full_entities_storage=self.full_entities,
+                full_relations_storage=self.full_relations,
+                doc_id=doc_id,
+                pipeline_status=pipeline_status,
+                pipeline_status_lock=pipeline_status_lock,
+                llm_response_cache=self.llm_response_cache,
+                entity_chunks_storage=self.entity_chunks,
+                relation_chunks_storage=self.relation_chunks,
+                current_file_number=1,
+                total_files=1,
+                file_path=file_path,
+            )
+            finished_at = datetime.now(timezone.utc).isoformat()
+            await self._upsert_doc_status_transition(
+                doc_id=doc_id,
+                status=DocStatus.PROCESSED,
+                status_doc=status_doc,
+                file_path=file_path,
+                extra_fields={
+                    "chunks_count": len(chunk_ids),
+                    "chunks_list": chunk_ids,
+                    "error_msg": None,
+                },
+                metadata_extra={
+                    "extraction_revision": current_revision,
+                    "last_reextracted_at": finished_at,
+                },
+            )
+            await self._insert_done(pipeline_status, pipeline_status_lock)
+            return {
+                "doc_id": doc_id,
+                "chunks_count": len(chunk_ids),
+                "extraction_revision": current_revision,
+            }
+        except Exception as exc:
+            await self._upsert_doc_status_transition(
+                doc_id=doc_id,
+                status=DocStatus.FAILED,
+                status_doc=status_doc,
+                file_path=file_path,
+                extra_fields={
+                    "chunks_count": len(chunk_ids),
+                    "chunks_list": chunk_ids,
+                    "error_msg": str(exc),
+                },
+                metadata_extra={"reextraction_failed_at": datetime.now(timezone.utc).isoformat()},
+            )
+            await self._insert_done(pipeline_status, pipeline_status_lock)
+            raise
 
     async def adelete_by_doc_id(
         self, doc_id: str, delete_llm_cache: bool = False

@@ -223,6 +223,22 @@ def doc_status_field(doc: Any, field: str, default: Any = "") -> Any:
 _DOC_STATUS_METADATA_CARRY_OVER_KEYS: tuple[str, ...] = (
     "process_options",
     "source_file_name",
+    # User-maintained source metadata must survive an extraction refresh.
+    "source_url",
+    "download_url",
+    "title",
+    "authors",
+    "year",
+    "publisher",
+    "document_type",
+    "extraction_confirmed_at",
+    "batch_extraction",
+    "batch_id",
+    "batch_status",
+    "batch_imported_at",
+    # Active extraction provenance is updated only after a successful merge.
+    "extraction_revision",
+    "last_reextracted_at",
     "parse_warnings",
     "chunk_opts",
     "parsing_start_time",
