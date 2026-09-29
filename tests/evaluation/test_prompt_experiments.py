@@ -4,10 +4,12 @@ import importlib
 import sys
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from lightrag.evaluation.prompt_experiments import (
+    _cancel_unfinished_candidates,
     _estimate_for_profile,
     _serialise_chunk_results,
     deserialise_chunk_results,
@@ -25,6 +27,24 @@ _evaluation_routes = importlib.import_module("lightrag.api.routers.evaluation_ro
 sys.argv = _original_argv
 
 create_evaluation_routes = _evaluation_routes.create_evaluation_routes
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_candidate_merge_does_not_require_live_pipeline_status():
+    """Prompt candidates merge into isolated workspaces without pipeline UI state."""
+
+    from lightrag.operate import merge_nodes_and_edges
+
+    await merge_nodes_and_edges(
+        chunk_results=[],
+        knowledge_graph_inst=object(),
+        entity_vdb=object(),
+        relationships_vdb=object(),
+        global_config={"llm_model_max_async": 1},
+        pipeline_status=None,
+        pipeline_status_lock=None,
+    )
 
 
 def test_chunk_result_artifact_round_trip_preserves_tuple_edge_keys():
@@ -162,3 +182,25 @@ def test_recovery_marks_only_inflight_experiments_interrupted(tmp_path):
     assert manifests["prompt_running"]["status"] == "interrupted"
     assert manifests["prompt_running"]["candidates"][0]["status"] == "interrupted"
     assert manifests["prompt_complete"]["status"] == "completed"
+
+
+def test_cancellation_moves_unfinished_candidates_to_terminal_state():
+    manifest = {
+        "candidates": [
+            {"profile_file": "failed.yml", "status": "failed", "error": "boom"},
+            {"profile_file": "running.yml", "status": "running", "error": None},
+            {"profile_file": "queued.yml", "status": "queued", "error": None},
+        ]
+    }
+
+    _cancel_unfinished_candidates(manifest)
+
+    assert manifest["candidates"][0] == {
+        "profile_file": "failed.yml",
+        "status": "failed",
+        "error": "boom",
+    }
+    assert manifest["candidates"][1]["status"] == "cancelled"
+    assert manifest["candidates"][2]["status"] == "cancelled"
+    assert manifest["candidates"][1]["error"] == "Cancelled by an operator."
+    assert manifest["candidates"][2]["completed_at"]

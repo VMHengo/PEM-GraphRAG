@@ -3491,9 +3491,10 @@ async def merge_nodes_and_edges(
 
     log_message = f"Merging stage {current_file_number}/{total_files}: {file_path}"
     logger.info(log_message)
-    async with pipeline_status_lock:
-        pipeline_status["latest_message"] = log_message
-        pipeline_status["history_messages"].append(log_message)
+    if pipeline_status is not None and pipeline_status_lock is not None:
+        async with pipeline_status_lock:
+            pipeline_status["latest_message"] = log_message
+            pipeline_status["history_messages"].append(log_message)
 
     # Get max async tasks limit from global_config for semaphore control
     graph_max_async = global_config.get("llm_model_max_async", 4) * 2
@@ -3502,9 +3503,10 @@ async def merge_nodes_and_edges(
     # ===== Phase 1: Process all entities concurrently =====
     log_message = f"Phase 1: Processing {total_entities_count} entities from {doc_id} (async: {graph_max_async})"
     logger.info(log_message)
-    async with pipeline_status_lock:
-        pipeline_status["latest_message"] = log_message
-        pipeline_status["history_messages"].append(log_message)
+    if pipeline_status is not None and pipeline_status_lock is not None:
+        async with pipeline_status_lock:
+            pipeline_status["latest_message"] = log_message
+            pipeline_status["history_messages"].append(log_message)
 
     async def _locked_process_entity_name(entity_name, entities):
         async with semaphore:
@@ -3607,9 +3609,10 @@ async def merge_nodes_and_edges(
     # ===== Phase 2: Process all relationships concurrently =====
     log_message = f"Phase 2: Processing {total_relations_count} relations from {doc_id} (async: {graph_max_async})"
     logger.info(log_message)
-    async with pipeline_status_lock:
-        pipeline_status["latest_message"] = log_message
-        pipeline_status["history_messages"].append(log_message)
+    if pipeline_status is not None and pipeline_status_lock is not None:
+        async with pipeline_status_lock:
+            pipeline_status["latest_message"] = log_message
+            pipeline_status["history_messages"].append(log_message)
 
     async def _locked_process_edges(edge_key, edges):
         async with semaphore:
@@ -3783,9 +3786,10 @@ async def merge_nodes_and_edges(
 
             log_message = f"Phase 3: Updating final {len(final_entity_names)}({len(processed_entities)}+{len(all_added_entities)}) entities and  {len(final_relation_pairs)} relations from {doc_id}"
             logger.info(log_message)
-            async with pipeline_status_lock:
-                pipeline_status["latest_message"] = log_message
-                pipeline_status["history_messages"].append(log_message)
+            if pipeline_status is not None and pipeline_status_lock is not None:
+                async with pipeline_status_lock:
+                    pipeline_status["latest_message"] = log_message
+                    pipeline_status["history_messages"].append(log_message)
 
             # Update storage
             if final_entity_names:
@@ -3822,9 +3826,10 @@ async def merge_nodes_and_edges(
 
     log_message = f"Completed merging: {len(processed_entities)} entities, {len(all_added_entities)} extra entities, {len(processed_edges)} relations"
     logger.info(log_message)
-    async with pipeline_status_lock:
-        pipeline_status["latest_message"] = log_message
-        pipeline_status["history_messages"].append(log_message)
+    if pipeline_status is not None and pipeline_status_lock is not None:
+        async with pipeline_status_lock:
+            pipeline_status["latest_message"] = log_message
+            pipeline_status["history_messages"].append(log_message)
 
 
 async def extract_entities(

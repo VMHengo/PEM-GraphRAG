@@ -184,6 +184,26 @@ def recover_interrupted_prompt_experiments(working_dir: str | Path) -> int:
     return recovered
 
 
+def _cancel_unfinished_candidates(
+    manifest: dict[str, Any], *, message: str = "Cancelled by an operator."
+) -> None:
+    """Move queued/running candidates into a terminal state after cancellation."""
+
+    completed_at = _utc_now()
+    for candidate in manifest.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        if candidate.get("status") not in {"queued", "running"}:
+            continue
+        candidate.update(
+            {
+                "status": "cancelled",
+                "completed_at": completed_at,
+                "error": message,
+            }
+        )
+
+
 def _profile_token_estimate(profile: Mapping[str, Any]) -> int:
     canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True)
     return max(1, (len(canonical) + 3) // 4)
@@ -761,6 +781,15 @@ async def _extract_candidate(
                 "extraction_revision": extraction_revision,
             }
         )
+    except asyncio.CancelledError:
+        candidate_manifest.update(
+            {
+                "status": "cancelled",
+                "completed_at": _utc_now(),
+                "error": "Cancelled by an operator.",
+            }
+        )
+        raise
     except Exception as exc:
         logger.error("Prompt experiment candidate %s failed: %s", profile_file, exc, exc_info=True)
         candidate_manifest.update(
@@ -800,6 +829,7 @@ async def execute_prompt_experiment(rag: Any, experiment_id: str) -> None:
         manifest["status"] = "cancelled"
         manifest["completed_at"] = _utc_now()
         manifest["error"] = "Cancelled by an operator."
+        _cancel_unfinished_candidates(manifest)
         raise
     except Exception as exc:
         logger.error("Prompt experiment %s failed: %s", experiment_id, exc, exc_info=True)
