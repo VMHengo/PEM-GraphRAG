@@ -1,0 +1,39 @@
+# Compact JSON extraction profile: favor explicit production and material chains.
+# Install as PROMPT_DIR/entity_type/pem_process_chain_compact.yml.
+# Requires ENTITY_EXTRACTION_USE_JSON=true.
+entity_types_guidance: |
+  PEM ontology: Process (manufacturing step), Method (test or control),
+  Material, Artifact (cell, part or equipment), Data (measured parameter),
+  Concept (mechanism, defect or outcome), Organization, Content. Use Other only
+  when necessary. Keep specific technical names and the document's language.
+
+  Extract the smallest useful set of entities that explains a stated process,
+  material or quality chain. Reuse exactly the same name for an intermediate
+  step or material across adjacent edges. Prefer explicit local steps over
+  a vague edge from the first process to the final product. Do not invent
+  missing steps, inputs, outputs or temporal order. Mere topic proximity is
+  not a relationship. Keep descriptions short and tied to the source text.
+
+  For each relationship provide source, target, keywords, description,
+  directionality, relation_type, relation_importance, and chain_role.
+  Use forward source -> target order: earlier -> later for precedes,
+  process -> output for produces, process -> input for uses, and cause ->
+  outcome for causal effects. Do not create a reverse duplicate.
+  Prefer precedes, produces, uses, contains, part_of, requires, influences,
+  causes or results_in only when directly supported by the text.
+  Use undirected only for explicitly symmetric facts. Omit generic
+  related_to edges and unsupported process shortcuts.
+  Assign 0.85-1.0 to explicit links that connect a production chain,
+  0.55-0.8 to useful direct context. Use process_step, process_input,
+  process_output, material_dependency, process_parameter or quality_outcome
+  as chain_role. Output fewer records when evidence is sparse.
+
+entity_extraction_json_examples:
+  - |
+    ---Input Text---
+    First, electrode mixing produces electrode slurry. Next, electrode coating
+    uses the slurry to make a coated electrode. Electrode drying follows coating
+    and removes solvent from the coated electrode.
+
+    ---Output---
+    {"entities":[{"name":"Electrode Mixing","type":"Process","description":"A step that produces electrode slurry."},{"name":"Electrode Slurry","type":"Material","description":"The material produced by electrode mixing and used in coating."},{"name":"Electrode Coating","type":"Process","description":"A step that uses slurry to make a coated electrode."},{"name":"Coated Electrode","type":"Artifact","description":"The output of electrode coating."},{"name":"Electrode Drying","type":"Process","description":"A step after coating that removes solvent."},{"name":"Solvent","type":"Material","description":"Material removed from the coated electrode during drying."}],"relationships":[{"source":"Electrode Mixing","target":"Electrode Slurry","keywords":"mixing,slurry","description":"Electrode mixing produces electrode slurry.","directionality":"directed","relation_type":"produces","relation_importance":0.94,"chain_role":"process_output"},{"source":"Electrode Mixing","target":"Electrode Coating","keywords":"mixing,coating","description":"Mixing occurs before coating.","directionality":"directed","relation_type":"precedes","relation_importance":0.87,"chain_role":"process_step"},{"source":"Electrode Coating","target":"Electrode Slurry","keywords":"coating,slurry","description":"Electrode coating uses electrode slurry.","directionality":"directed","relation_type":"uses","relation_importance":0.91,"chain_role":"process_input"},{"source":"Electrode Coating","target":"Coated Electrode","keywords":"coating,product","description":"Electrode coating makes a coated electrode.","directionality":"directed","relation_type":"produces","relation_importance":0.93,"chain_role":"process_output"},{"source":"Electrode Coating","target":"Electrode Drying","keywords":"coating,drying","description":"Electrode drying follows electrode coating.","directionality":"directed","relation_type":"precedes","relation_importance":0.92,"chain_role":"process_step"},{"source":"Electrode Drying","target":"Solvent","keywords":"drying,solvent","description":"Electrode drying removes solvent from the coated electrode.","directionality":"directed","relation_type":"removes","relation_importance":0.88,"chain_role":"process_output"}]}

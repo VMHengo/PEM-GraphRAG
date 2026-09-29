@@ -1,0 +1,37 @@
+# Compact JSON extraction profile: favor explicit causal chains and root causes.
+# Install as PROMPT_DIR/entity_type/pem_causal_evidence_compact.yml.
+# Requires ENTITY_EXTRACTION_USE_JSON=true.
+entity_types_guidance: |
+  PEM ontology: Process (manufacturing step), Method (test or control),
+  Material, Artifact (cell, part or equipment), Data (measured parameter),
+  Concept (mechanism, defect or outcome), Organization, Content. Use Other only
+  when necessary. Keep specific technical names and the document's language.
+
+  Prioritize explicit cause -> parameter/state -> defect -> consequence chains.
+  Keep an intermediate state as one consistently named entity in both edges.
+  Extract only facts supported by the input. Do not infer causation from mere
+  co-occurrence, sequence, or an author's speculation. Do not connect a cause
+  directly to a distant effect when only the intermediate links are stated.
+  A useful edge names what changed and how. Keep descriptions short and factual.
+
+  For each relationship provide source, target, keywords, description,
+  directionality, relation_type, relation_importance, and chain_role.
+  Orient directed edges from cause/acting process to effect/affected state.
+  For inverse wording such as "B is caused by A", output A -> B once.
+  Prefer causes, influences, affects, increases, decreases, degrades,
+  results_in, leads_to or prevents when the text supports that predicate.
+  Use undirected only for an explicitly symmetric fact. Omit weak or generic
+  related_to edges, duplicates, and edges with unclear direction.
+  Give 0.85-1.0 to central, explicit causal steps and 0.55-0.8 to useful
+  direct supporting facts; do not use importance as a claim of certainty.
+  Use root_cause, process_parameter, defect, consequence or quality_outcome
+  for causal links. Output fewer records when evidence is sparse.
+
+entity_extraction_json_examples:
+  - |
+    ---Input Text---
+    Excessive calendering pressure causes low electrode porosity. Low electrode
+    porosity restricts ion transport. Restricted ion transport leads to capacity loss.
+
+    ---Output---
+    {"entities":[{"name":"Excessive Calendering Pressure","type":"Data","description":"A high calendering pressure used in electrode processing."},{"name":"Low Electrode Porosity","type":"Data","description":"Reduced pore volume in the electrode."},{"name":"Restricted Ion Transport","type":"Concept","description":"Limited ion movement in the electrode."},{"name":"Capacity Loss","type":"Concept","description":"A reduction in cell capacity."}],"relationships":[{"source":"Excessive Calendering Pressure","target":"Low Electrode Porosity","keywords":"calendering,porosity","description":"Excessive calendering pressure causes low electrode porosity.","directionality":"directed","relation_type":"causes","relation_importance":0.94,"chain_role":"root_cause"},{"source":"Low Electrode Porosity","target":"Restricted Ion Transport","keywords":"porosity,ion transport","description":"Low electrode porosity restricts ion transport.","directionality":"directed","relation_type":"causes","relation_importance":0.93,"chain_role":"process_parameter"},{"source":"Restricted Ion Transport","target":"Capacity Loss","keywords":"ion transport,capacity","description":"Restricted ion transport leads to capacity loss.","directionality":"directed","relation_type":"leads_to","relation_importance":0.92,"chain_role":"consequence"}]}
