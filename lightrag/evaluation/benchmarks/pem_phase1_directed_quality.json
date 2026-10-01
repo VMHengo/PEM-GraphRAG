@@ -2,6 +2,7 @@
   "id": "pem_phase1_directed_quality",
   "name": "PEM Phase 1 Directed Relationship Quality",
   "description": "Checks whether PEM GraphRAG extracts meaningful directed production, causal, and root-cause relationships with useful metadata.",
+  "benchmark_tier": "fixture",
   "default_mode": "mix",
   "cases": [
     {

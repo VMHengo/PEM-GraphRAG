@@ -166,13 +166,14 @@ export default function PromptExperimentManager({ benchmarks }: Props) {
   }
 
   const calculateEstimate = async () => {
-    if (!config?.enabled || selectedDocumentIds.length === 0 || selectedProfileFiles.length === 0) return
+    if (!config?.enabled || !benchmarkId || selectedDocumentIds.length === 0 || selectedProfileFiles.length === 0) return
     setIsSubmitting(true)
     try {
       const response = await estimatePromptExperiment({
         document_ids: selectedDocumentIds,
         profile_files: selectedProfileFiles,
-        optimization_mode: optimizationMode
+        optimization_mode: optimizationMode,
+        benchmark_id: benchmarkId
       })
       setEstimate(response)
       toast.success('Extraction estimate calculated')
@@ -267,9 +268,9 @@ export default function PromptExperimentManager({ benchmarks }: Props) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-sm font-medium" htmlFor="prompt-experiment-benchmark">Benchmark</label>
-                  <Select value={benchmarkId} onValueChange={setBenchmarkId}>
+                  <Select value={benchmarkId} onValueChange={(value) => { setBenchmarkId(value); setEstimate(null) }}>
                     <SelectTrigger id="prompt-experiment-benchmark"><SelectValue placeholder="Select benchmark" /></SelectTrigger>
-                    <SelectContent>{benchmarks.map((benchmark) => <SelectItem key={benchmark.id} value={benchmark.id}>{benchmark.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{benchmarks.map((benchmark) => <SelectItem key={benchmark.id} value={benchmark.id}>[{benchmark.tier || 'custom'}] {benchmark.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
@@ -318,14 +319,18 @@ export default function PromptExperimentManager({ benchmarks }: Props) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-t pt-4">
-              <Button variant="outline" onClick={() => void calculateEstimate()} disabled={isSubmitting || selectedDocumentIds.length === 0 || selectedProfileFiles.length === 0}>
+              <Button variant="outline" onClick={() => void calculateEstimate()} disabled={isSubmitting || !benchmarkId || selectedDocumentIds.length === 0 || selectedProfileFiles.length === 0}>
                 Calculate estimate
               </Button>
-              <Button onClick={() => void startExperiment()} disabled={isSubmitting || !estimate || !title.trim() || !benchmarkId}>
+              <Button onClick={() => void startExperiment()} disabled={isSubmitting || activeExperiment || !estimate || estimate.benchmark_preflight?.compatible === false || !title.trim() || !benchmarkId}>
                 <PlayIcon /> Start isolated comparison
               </Button>
               {estimate && <span className="text-sm"><strong>{formatUsd(estimate.estimated_cost_usd)}</strong> estimated extraction cost, {estimate.estimated_llm_calls} calls, {estimate.selected_chunks} selected chunks.</span>}
             </div>
+            {estimate?.benchmark_preflight && <div className={`rounded-md border p-3 text-sm ${estimate.benchmark_preflight.compatible ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-300' : 'border-amber-500/40 bg-amber-500/5 text-amber-300'}`}>
+              {estimate.benchmark_preflight.message}
+              {!estimate.benchmark_preflight.compatible && <div className="mt-1 text-xs">Choose the missing source documents or a benchmark that matches this corpus before starting.</div>}
+            </div>}
             {estimate && <div className="overflow-x-auto rounded-md border">
               <table className="w-full min-w-[620px] text-left text-sm">
                 <thead className="text-muted-foreground border-b text-xs uppercase"><tr><th className="px-3 py-2">Profile</th><th className="px-3 py-2">Prompt tokens</th><th className="px-3 py-2">Calls</th><th className="px-3 py-2">Input tokens</th><th className="px-3 py-2">Estimate</th></tr></thead>
@@ -355,9 +360,9 @@ export default function PromptExperimentManager({ benchmarks }: Props) {
             {selectedExperiment.note && <p className="text-muted-foreground text-sm">{selectedExperiment.note}</p>}
             {selectedExperiment.error && <p className="text-sm text-red-400">{selectedExperiment.error}</p>}
             <div className="overflow-x-auto rounded-md border">
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="text-muted-foreground border-b text-xs uppercase"><tr><th className="px-3 py-2">Profile</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Overall</th><th className="px-3 py-2">Graph</th><th className="px-3 py-2">Metadata</th><th className="px-3 py-2">Retrieval</th><th className="px-3 py-2">Directed</th><th className="px-3 py-2">Action</th></tr></thead>
-                <tbody>{selectedExperiment.candidates.map((candidate) => <tr key={candidate.profile_file} className="border-b last:border-0"><td className="px-3 py-2"><div>{candidate.profile_file}</div>{candidate.error && <div className="mt-1 max-w-[420px] whitespace-normal text-xs text-red-400">{candidate.error}</div>}</td><td className={`px-3 py-2 capitalize ${statusTone[candidate.status]}`}>{candidate.status}</td><td className="px-3 py-2">{formatScore(candidate.scores.overall)}</td><td className="px-3 py-2">{formatScore(candidate.scores.graph)}</td><td className="px-3 py-2">{formatScore(candidate.scores.metadata)}</td><td className="px-3 py-2">{formatScore(candidate.scores.retrieval)}</td><td className="px-3 py-2">{formatScore(candidate.scores.directed)}</td><td className="px-3 py-2">{config?.promotion_enabled && selectedExperiment.optimization_mode === 'final' && candidate.status === 'completed' && !selectedExperiment.promotion ? <Button variant="outline" size="sm" onClick={() => void promoteCandidate(candidate.profile_file)} disabled={isSubmitting}>Promote</Button> : '-'}</td></tr>)}</tbody>
+              <table className="w-full min-w-[840px] text-left text-sm">
+                <thead className="text-muted-foreground border-b text-xs uppercase"><tr><th className="px-3 py-2">Profile</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Overall</th><th className="px-3 py-2">Graph</th><th className="px-3 py-2">Metadata</th><th className="px-3 py-2">Retrieval</th><th className="px-3 py-2">Directed</th><th className="px-3 py-2">Directed exact</th><th className="px-3 py-2">Action</th></tr></thead>
+                <tbody>{selectedExperiment.candidates.map((candidate) => <tr key={candidate.profile_file} className="border-b last:border-0"><td className="px-3 py-2"><div>{candidate.profile_file}</div>{candidate.error && <div className="mt-1 max-w-[420px] whitespace-normal text-xs text-red-400">{candidate.error}</div>}</td><td className={`px-3 py-2 capitalize ${statusTone[candidate.status]}`}>{candidate.status}</td><td className="px-3 py-2">{formatScore(candidate.scores.overall)}</td><td className="px-3 py-2">{formatScore(candidate.scores.graph)}</td><td className="px-3 py-2">{formatScore(candidate.scores.metadata)}</td><td className="px-3 py-2">{formatScore(candidate.scores.retrieval)}</td><td className="px-3 py-2">{formatScore(candidate.scores.directed)}</td><td className="px-3 py-2">{formatScore(candidate.scores.directed_exact)}</td><td className="px-3 py-2">{config?.promotion_enabled && selectedExperiment.optimization_mode === 'final' && candidate.status === 'completed' && !selectedExperiment.promotion ? <Button variant="outline" size="sm" onClick={() => void promoteCandidate(candidate.profile_file)} disabled={isSubmitting}>Promote</Button> : '-'}</td></tr>)}</tbody>
               </table>
             </div>
             {selectedExperiment.promotion && <p className="text-sm text-emerald-400">Promoted {selectedExperiment.promotion.profile_file}. Non-selected documents are now marked outdated by the new extraction revision.</p>}

@@ -45,6 +45,7 @@ class BenchmarkListItem(BaseModel):
     name: str
     description: str
     case_count: int
+    tier: str = "custom"
 
 
 class BenchmarkListResponse(BaseModel):
@@ -114,6 +115,7 @@ class PromptExperimentEstimateRequest(BaseModel):
     document_ids: list[str] = Field(min_length=1, max_length=20)
     profile_files: list[str] = Field(min_length=1, max_length=5)
     optimization_mode: Literal["screening", "validation", "final"] = "screening"
+    benchmark_id: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class PromptExperimentStartRequest(PromptExperimentEstimateRequest):
@@ -193,6 +195,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                         name=ref.name,
                         description=ref.description,
                         case_count=ref.case_count,
+                        tier=ref.tier,
                     )
                     for ref in refs
                 ]
@@ -376,6 +379,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                 document_ids=request.document_ids,
                 profile_files=request.profile_files,
                 optimization_mode=request.optimization_mode,
+                benchmark_id=request.benchmark_id,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

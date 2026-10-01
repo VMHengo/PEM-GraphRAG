@@ -18,6 +18,7 @@ import unicodedata
 from lightrag.adaptive_retrieval import RetrievalRoute
 from lightrag.base import QueryParam
 from lightrag.constants import GRAPH_FIELD_SEP
+from lightrag.relation_ontology import canonical_relation_type
 
 RelationDirectionality = Literal["directed", "undirected", "unknown"]
 EdgeTraversalDirection = Literal["both", "in", "out"]
@@ -168,13 +169,7 @@ def normalize_directionality(value: object) -> RelationDirectionality:
 def normalize_relation_type(value: object, *, keywords: object = None) -> str:
     """Return a canonical predicate, using keywords for old relationship rows."""
 
-    candidates = (value, keywords)
-    for candidate in candidates:
-        for relation_part in re.split(r"[,;|]", str(candidate or "")):
-            relation_type = _slugify(relation_part)
-            if relation_type:
-                return _RELATION_TYPE_ALIASES.get(relation_type, relation_type)
-    return "related_to"
+    return canonical_relation_type(value, keywords=keywords)
 
 
 def normalize_directed_edge(record: Mapping[str, Any]) -> DirectedEdge | None:

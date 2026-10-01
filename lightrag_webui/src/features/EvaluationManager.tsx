@@ -58,10 +58,12 @@ const metricDescriptions: Record<string, string> = {
   Retrieval:
     'Average of expected-content coverage and expected-source coverage in the retrieved context or generated answer.',
   Directed:
-    'Quality of expected multi-hop paths for directed, combined, and auto retrieval strategies. Normal retrieval is shown as a regression comparison.',
+    'Semantic directed-path quality. It gives partial credit for an ordered chain with compatible predicates, correct direction, continuity, and evidence; it is the score used in Overall.',
+  'Directed Exact':
+    'Strict directed-path success rate. It only counts a path when every expected node, predicate, direction, and required citation matches exactly. It is diagnostic and does not change Overall.',
   Entities: 'Share of expected entities that could be found in the current graph.',
   Relations:
-    'Share of expected source, relation type, target, and direction combinations that match an extracted graph edge.',
+    'Semantic match of expected source, relation type, target, and direction. Exact predicate and endpoint matches score 100; reviewed aliases and related causal predicates can receive partial credit.',
   Content:
     'Share of required terms found in the retrieved context or generated answer for this benchmark case.',
   directionality: 'Share of graph edges with a direction other than unknown.',
@@ -70,7 +72,7 @@ const metricDescriptions: Record<string, string> = {
   'chain role': 'Share of graph edges with a chain role other than other.',
   'specific relation type': 'Share of graph edges with a non-generic relation type.',
   Strategy:
-    'Share of expected directed-path checks passed by this retrieval strategy. It evaluates path direction, hops, relation types, and citations where configured.'
+    'Semantic score for this retrieval strategy. Exact chain success is shown separately, so a near-miss does not look identical to a completely absent path.'
 }
 
 const scoreTone = (score: number | null | undefined) => {
@@ -228,8 +230,8 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
                       key={`${graphCase.id}-relation-${index}`}
                       className="rounded border px-3 py-2 text-sm"
                     >
-                      <div className={check.passed ? 'text-emerald-400' : 'text-red-400'}>
-                        {check.passed ? 'Found' : 'Missing'}
+                      <div className={check.passed ? 'text-emerald-400' : (check.score || 0) > 0 ? 'text-amber-400' : 'text-red-400'}>
+                        {check.passed ? 'Exact' : (check.score || 0) > 0 ? `Partial ${formatScore(check.score)}` : 'Missing'}
                       </div>
                       <div className="text-muted-foreground mt-1">
                         {check.expected?.source} - {check.expected?.relation_type} -{' '}
@@ -277,12 +279,15 @@ function DirectedRetrievalQuality({ result }: { result: EvaluationRunResult }) {
                 description={metricDescriptions.Strategy}
                 className="text-muted-foreground text-xs font-medium uppercase"
               />
-              <div className={`mt-1 text-xl font-semibold ${scoreTone(strategySummary.path_score)}`}>
-                {formatScore(strategySummary.path_score)}
+              <div className={`mt-1 text-xl font-semibold ${scoreTone(strategySummary.semantic_path_score ?? strategySummary.path_score)}`}>
+                {formatScore(strategySummary.semantic_path_score ?? strategySummary.path_score)}
               </div>
               <div className="text-muted-foreground mt-1 text-xs">
                 {strategySummary.successful_runs}/{strategySummary.runs} successful
               </div>
+              {strategySummary.exact_path_success_rate != null && <div className="text-muted-foreground mt-1 text-xs">
+                exact {formatScore(strategySummary.exact_path_success_rate)}
+              </div>}
             </div>
           ))}
         </div>
@@ -301,6 +306,9 @@ function DirectedRetrievalQuality({ result }: { result: EvaluationRunResult }) {
                     <div className="text-muted-foreground mt-1 text-xs">
                       {strategy.path_status || '-'}; {strategy.path_count || 0} paths
                     </div>
+                    {strategy.exact_passed != null && <div className="text-muted-foreground mt-1 text-xs">
+                      exact {strategy.exact_passed ? 'passed' : 'not reached'}
+                    </div>}
                   </div>
                 ))}
               </div>
@@ -716,7 +724,7 @@ export default function EvaluationManager() {
                 <SelectContent>
                   {benchmarks.map((benchmark) => (
                     <SelectItem key={benchmark.id} value={benchmark.id}>
-                      {benchmark.name}
+                      [{benchmark.tier || 'custom'}] {benchmark.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -754,6 +762,10 @@ export default function EvaluationManager() {
             <div className="text-sm">
               <span className="text-muted-foreground">Cases:</span>{' '}
               {activeBenchmark?.case_count ?? 0}
+            </div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Tier:</span>{' '}
+              {activeBenchmark?.tier || 'custom'}
             </div>
             <div className="text-sm">
               <span className="text-muted-foreground">Selected mode:</span>{' '}
@@ -812,12 +824,13 @@ export default function EvaluationManager() {
 
         {result && (
           <>
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
               <ScoreTile label="Overall" score={result.scores.overall} detail={result.run.mode} />
               <ScoreTile label="Graph" score={result.scores.graph} />
               <ScoreTile label="Metadata" score={result.scores.metadata} />
               <ScoreTile label="Retrieval" score={result.scores.retrieval} />
               <ScoreTile label="Directed" score={result.scores.directed} />
+              <ScoreTile label="Directed Exact" score={result.scores.directed_exact} />
             </div>
 
             <Card className="rounded-md">

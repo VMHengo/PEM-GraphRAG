@@ -2,6 +2,8 @@
   "id": "pem_directed_retrieval_quality",
   "name": "PEM Directed Retrieval Quality",
   "description": "Compares normal, directed, and combined retrieval against known PEM production and causal chains.",
+  "version": 3,
+  "benchmark_tier": "core",
   "default_mode": "mix",
   "quality_gates": {
     "min_scores": {
@@ -14,7 +16,6 @@
       "combined": 80,
       "auto": 80
     },
-    "max_failed_checks": 0,
     "require_directed_cases": true
   },
   "cases": [

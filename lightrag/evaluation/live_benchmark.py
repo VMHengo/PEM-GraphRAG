@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from lightrag.base import QueryParam
+from lightrag.evaluation.semantic_matching import (
+    path_match as semantic_path_match,
+    relation_match as semantic_relation_match,
+    text_match as semantic_text_match,
+)
+from lightrag.relation_ontology import canonical_relation_type
 from lightrag.utils import logger
 
 
@@ -39,6 +45,7 @@ class BenchmarkRef:
     description: str
     path: Path
     case_count: int
+    tier: str = "custom"
 
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -145,6 +152,7 @@ def list_benchmarks(working_dir: str | None = None) -> list[BenchmarkRef]:
                         len(_as_list(benchmark.get("cases")))
                         + len(_as_list(benchmark.get("directed_cases")))
                     ),
+                    tier=str(benchmark.get("benchmark_tier") or "custom"),
                 ),
             )
     return sorted(refs.values(), key=lambda item: item.id)
@@ -158,6 +166,51 @@ def load_benchmark(benchmark_id: str, working_dir: str | None = None) -> dict[st
             benchmark["path"] = str(ref.path)
             return benchmark
     raise FileNotFoundError(f"Benchmark '{benchmark_id}' was not found")
+
+
+def benchmark_document_preflight(
+    benchmark: dict[str, Any], selected_file_paths: list[str]
+) -> dict[str, Any]:
+    """Report whether a selected corpus can satisfy a benchmark's document scope.
+
+    This does not judge document contents.  It prevents a deceptively low
+    prompt-comparison score when a benchmark explicitly expects source files
+    that are not part of the selected candidate corpus.
+    """
+
+    required: list[str] = []
+    for scoped in _as_list(benchmark.get("document_scope")):
+        if isinstance(scoped, dict) and scoped.get("file"):
+            required.append(str(scoped["file"]))
+    for case in [*_as_list(benchmark.get("cases")), *_directed_cases(benchmark)]:
+        if not isinstance(case, dict):
+            continue
+        required.extend(str(value) for value in _as_list(case.get("expected_documents")))
+        for path in _as_list(case.get("expected_directed_paths")):
+            if isinstance(path, dict):
+                required.extend(
+                    str(value) for value in _as_list(path.get("source_documents"))
+                )
+
+    unique_required = list(dict.fromkeys(value for value in required if value.strip()))
+    selected = [value for value in selected_file_paths if value.strip()]
+    missing = [
+        expected
+        for expected in unique_required
+        if not any(term_matches(expected, selected_path) for selected_path in selected)
+    ]
+    return {
+        "compatible": not missing,
+        "selected_documents": selected,
+        "required_documents": unique_required,
+        "missing_documents": missing,
+        "message": (
+            "Selected documents cover the benchmark's declared source scope."
+            if not missing
+            else "Selected documents are missing benchmark source files: "
+            + ", ".join(missing)
+        ),
+    }
 
 
 def _node_name(node: dict[str, Any]) -> str:
@@ -177,7 +230,7 @@ def _edge_target(edge: dict[str, Any]) -> str:
 
 
 def _edge_relation_type(edge: dict[str, Any]) -> str:
-    return canonical_text(edge.get("relation_type") or edge.get("keywords") or "")
+    return canonical_relation_type(edge.get("relation_type"), keywords=edge.get("keywords"))
 
 
 def _edge_directionality(edge: dict[str, Any]) -> str:
@@ -199,28 +252,21 @@ def _find_relation(
     expected: dict[str, Any],
     edges: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    expected_source = expected.get("source")
-    expected_target = expected.get("target")
-    expected_type = canonical_text(expected.get("relation_type"))
-    expected_directionality = canonical_text(expected.get("directionality"))
-
     for edge in edges:
-        source_match = (
-            not expected_source or term_matches(expected_source, _edge_source(edge))
-        )
-        target_match = (
-            not expected_target or term_matches(expected_target, _edge_target(edge))
-        )
-        type_match = (
-            not expected_type or expected_type == _edge_relation_type(edge)
-        )
-        direction_match = (
-            not expected_directionality
-            or expected_directionality == _edge_directionality(edge)
-        )
-        if source_match and target_match and type_match and direction_match:
+        if semantic_relation_match(expected, edge)["exact"]:
             return edge
     return None
+
+
+def _best_relation_match(
+    expected: dict[str, Any], edges: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Return the best semantic candidate while retaining strict exactness."""
+
+    candidates = [semantic_relation_match(expected, edge) for edge in edges]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda candidate: (candidate["score"], candidate["exact"]))
 
 
 def _metadata_coverage(edges: list[dict[str, Any]]) -> dict[str, Any]:
@@ -289,6 +335,8 @@ def score_graph_cases(
     results: list[dict[str, Any]] = []
     entity_scores: list[float] = []
     relation_scores: list[float] = []
+    entity_exact_scores: list[float] = []
+    relation_exact_scores: list[float] = []
 
     for case in _as_list(benchmark.get("cases")):
         case_id = str(case.get("id") or case.get("question") or "case")
@@ -299,43 +347,58 @@ def score_graph_cases(
         relation_checks: list[dict[str, Any]] = []
 
         for entity in expected_entities:
-            found = _find_entity(entity, nodes)
+            candidates = [semantic_text_match(entity, _node_name(node)) for node in nodes]
+            matched = max(candidates, key=lambda candidate: candidate.score) if candidates else None
             entity_checks.append(
                 {
-                    "expected": str(entity),
-                    "passed": found is not None,
-                    "matched": _node_name(found) if found else None,
+                    "expected": entity,
+                    "passed": bool(matched and matched.exact),
+                    "score": _format_percent(matched.score) if matched else 0.0,
+                    "match_reason": matched.reason if matched else "no_nodes",
+                    "matched": matched.actual if matched and matched.score else None,
                 }
             )
 
         for relation in expected_relations:
             if not isinstance(relation, dict):
                 continue
-            found = _find_relation(relation, edges)
+            match = _best_relation_match(relation, edges)
             relation_checks.append(
                 {
                     "expected": relation,
-                    "passed": found is not None,
-                    "matched": {
-                        "source": _edge_source(found),
-                        "relation_type": found.get("relation_type"),
-                        "target": _edge_target(found),
-                        "directionality": found.get("directionality"),
-                        "relation_importance": found.get("relation_importance"),
-                        "chain_role": found.get("chain_role"),
-                        "description": _edge_description(found),
+                    "passed": bool(match and match["exact"]),
+                    "score": _format_percent(match["score"]) if match else 0.0,
+                    "components": {
+                        "source": match["source"]["score"],
+                        "target": match["target"]["score"],
+                        "predicate": match["predicate"]["score"],
+                        "direction": match["direction_score"],
                     }
-                    if found
+                    if match
                     else None,
+                    "match_reason": match["predicate"]["reason"] if match else "no_edges",
+                    "matched": match["matched"] if match and match["score"] else None,
                 }
             )
 
         entity_score = (
-            sum(1 for check in entity_checks if check["passed"]) / len(entity_checks)
+            sum(_safe_float(check["score"]) / 100 for check in entity_checks)
+            / len(entity_checks)
             if entity_checks
             else None
         )
         relation_score = (
+            sum(_safe_float(check["score"]) / 100 for check in relation_checks)
+            / len(relation_checks)
+            if relation_checks
+            else None
+        )
+        entity_exact_score = (
+            sum(1 for check in entity_checks if check["passed"]) / len(entity_checks)
+            if entity_checks
+            else None
+        )
+        relation_exact_score = (
             sum(1 for check in relation_checks if check["passed"])
             / len(relation_checks)
             if relation_checks
@@ -346,6 +409,10 @@ def score_graph_cases(
             entity_scores.append(entity_score)
         if relation_score is not None:
             relation_scores.append(relation_score)
+        if entity_exact_score is not None:
+            entity_exact_scores.append(entity_exact_score)
+        if relation_exact_score is not None:
+            relation_exact_scores.append(relation_exact_score)
 
         results.append(
             {
@@ -356,6 +423,12 @@ def score_graph_cases(
                 else None,
                 "relation_score": _format_percent(relation_score)
                 if relation_score is not None
+                else None,
+                "entity_exact_score": _format_percent(entity_exact_score)
+                if entity_exact_score is not None
+                else None,
+                "relation_exact_score": _format_percent(relation_exact_score)
+                if relation_exact_score is not None
                 else None,
                 "entity_checks": entity_checks,
                 "relation_checks": relation_checks,
@@ -368,6 +441,16 @@ def score_graph_cases(
         else None,
         "relation_score": _format_percent(sum(relation_scores) / len(relation_scores))
         if relation_scores
+        else None,
+        "entity_exact_score": _format_percent(
+            sum(entity_exact_scores) / len(entity_exact_scores)
+        )
+        if entity_exact_scores
+        else None,
+        "relation_exact_score": _format_percent(
+            sum(relation_exact_scores) / len(relation_exact_scores)
+        )
+        if relation_exact_scores
         else None,
         "metadata_coverage": {
             key: _format_percent(value) if isinstance(value, float) else value
@@ -652,11 +735,25 @@ async def score_directed_retrieval_cases(
 
     cases = _directed_cases(benchmark)
     results: list[dict[str, Any]] = []
-    strategy_checks: dict[DirectedStrategy, list[bool]] = {
+    strategy_semantic_scores: dict[DirectedStrategy, list[float]] = {
+        strategy: [] for strategy in _DIRECTED_STRATEGIES
+    }
+    strategy_exact_scores: dict[DirectedStrategy, list[bool]] = {
         strategy: [] for strategy in _DIRECTED_STRATEGIES
     }
     strategy_successes: dict[DirectedStrategy, int] = {
         strategy: 0 for strategy in _DIRECTED_STRATEGIES
+    }
+    strategy_components: dict[DirectedStrategy, dict[str, list[float]]] = {
+        strategy: {
+            "edge_recall": [],
+            "predicate_score": [],
+            "direction_accuracy": [],
+            "continuity_score": [],
+            "citation_coverage": [],
+            "routing_score": [],
+        }
+        for strategy in _DIRECTED_STRATEGIES
     }
 
     for case in cases:
@@ -706,6 +803,19 @@ async def score_directed_retrieval_cases(
                         ),
                     }
                 )
+                semantic_score = (
+                    sum(1 for check in checks if check["passed"]) / len(checks)
+                    if checks
+                    else 0.0
+                )
+                components = {
+                    "edge_recall": semantic_score,
+                    "predicate_score": semantic_score,
+                    "direction_accuracy": semantic_score,
+                    "continuity_score": semantic_score,
+                    "citation_coverage": semantic_score,
+                    "routing_score": semantic_score,
+                }
             else:
                 if strategy == "auto":
                     expected_auto_strategy = str(
@@ -740,31 +850,126 @@ async def score_directed_retrieval_cases(
                         "passed": diagnostics.get("status") == "completed",
                     }
                 )
+                path_results: list[dict[str, Any]] = []
                 for expected_path in expected_paths:
-                    matched_path = None
-                    path_checks: list[dict[str, Any]] = []
+                    best_actual = None
+                    best_partial: dict[str, Any] | None = None
+                    strict_actual = None
+                    strict_checks: list[dict[str, Any]] = []
                     for actual_path in paths:
-                        passed, candidate_checks = _directed_path_matches(
+                        partial = semantic_path_match(
+                            expected_path,
+                            actual_path,
+                            traversal_direction=str(
+                                case.get("expected_edge_direction") or "both"
+                            ),
+                        )
+                        if best_partial is None or partial["score"] > best_partial["score"]:
+                            best_partial = partial
+                            best_actual = actual_path
+                        strict_passed, candidate_checks = _directed_path_matches(
                             expected_path, actual_path
                         )
-                        if passed:
-                            matched_path = actual_path
-                            path_checks = candidate_checks
-                            break
+                        if strict_passed:
+                            strict_actual = actual_path
+                            strict_checks = candidate_checks
+                    partial = best_partial or {
+                        "score": 0.0,
+                        "edge_recall": 0.0,
+                        "predicate_score": 0.0,
+                        "direction_accuracy": 0.0,
+                        "continuity_score": 0.0,
+                        "citation_coverage": 0.0,
+                        "edge_matches": [],
+                    }
+                    path_results.append(
+                        {
+                            "expected": expected_path,
+                            "actual": best_actual,
+                            "strict_actual": strict_actual,
+                            "passed": strict_actual is not None,
+                            "partial": partial,
+                            "path_checks": strict_checks,
+                        }
+                    )
                     checks.append(
                         {
                             "kind": "expected_path",
                             "expected": expected_path,
-                            "actual": matched_path,
-                            "passed": matched_path is not None,
-                            "path_checks": path_checks,
+                            "actual": strict_actual,
+                            "passed": strict_actual is not None,
+                            "score": _format_percent(_safe_float(partial.get("score"))),
+                            "partial": partial,
+                            "path_checks": strict_checks,
                         }
                     )
 
+                requirement = str(case.get("path_requirement") or "all").lower()
+                path_scores = [
+                    _safe_float(path_result["partial"].get("score"))
+                    for path_result in path_results
+                ]
+                exact_paths = [bool(path_result["passed"]) for path_result in path_results]
+                if requirement == "any":
+                    path_semantic = max(path_scores, default=0.0)
+                    exact_path_passed = any(exact_paths)
+                elif requirement == "at_least":
+                    required_count = max(1, int(case.get("min_matching_paths") or 1))
+                    selected = sorted(path_scores, reverse=True)[:required_count]
+                    path_semantic = sum(selected) / required_count if selected else 0.0
+                    exact_path_passed = sum(exact_paths) >= required_count
+                else:
+                    requirement = "all"
+                    path_semantic = sum(path_scores) / len(path_scores) if path_scores else 0.0
+                    exact_path_passed = all(exact_paths)
+
+                routing_checks = [
+                    check
+                    for check in checks
+                    if check["kind"] != "expected_path"
+                ]
+                routing_score = (
+                    sum(1 for check in routing_checks if check["passed"])
+                    / len(routing_checks)
+                    if routing_checks
+                    else 1.0
+                )
+                semantic_score = 0.85 * path_semantic + 0.15 * routing_score
+                components = {
+                    component: (
+                        sum(
+                            _safe_float(path_result["partial"].get(component))
+                            for path_result in path_results
+                        )
+                        / len(path_results)
+                        if path_results
+                        else 0.0
+                    )
+                    for component in (
+                        "edge_recall",
+                        "predicate_score",
+                        "direction_accuracy",
+                        "continuity_score",
+                        "citation_coverage",
+                    )
+                }
+                components["routing_score"] = routing_score
+                checks.append(
+                    {
+                        "kind": "path_requirement",
+                        "expected": requirement,
+                        "actual": sum(exact_paths),
+                        "passed": exact_path_passed,
+                    }
+                )
+
             passed = all(check["passed"] for check in checks)
-            strategy_checks[strategy].append(passed)
+            strategy_exact_scores[strategy].append(passed)
+            strategy_semantic_scores[strategy].append(semantic_score)
             if status == "success":
                 strategy_successes[strategy] += 1
+            for name, value in components.items():
+                strategy_components[strategy][name].append(value)
             strategy_results.append(
                 {
                     "strategy": strategy,
@@ -774,11 +979,11 @@ async def score_directed_retrieval_cases(
                     "path_count": diagnostics.get("path_count", len(paths)),
                     "paths": paths,
                     "checks": checks,
-                    "score": _format_percent(
-                        sum(1 for check in checks if check["passed"]) / len(checks)
-                    )
-                    if checks
-                    else None,
+                    "score": _format_percent(semantic_score),
+                    "exact_passed": passed,
+                    "components": {
+                        name: _format_percent(value) for name, value in components.items()
+                    },
                 }
             )
 
@@ -792,12 +997,23 @@ async def score_directed_retrieval_cases(
 
     strategy_summary: dict[str, dict[str, Any]] = {}
     for strategy in _DIRECTED_STRATEGIES:
-        checks = strategy_checks[strategy]
-        score = sum(checks) / len(checks) if checks else None
+        semantic_scores = strategy_semantic_scores[strategy]
+        exact_scores = strategy_exact_scores[strategy]
+        score = sum(semantic_scores) / len(semantic_scores) if semantic_scores else None
         strategy_summary[strategy] = {
-            "runs": len(checks),
+            "runs": len(semantic_scores),
             "successful_runs": strategy_successes[strategy],
             "path_score": _format_percent(score) if score is not None else None,
+            "semantic_path_score": _format_percent(score) if score is not None else None,
+            "exact_path_success_rate": _format_percent(
+                sum(exact_scores) / len(exact_scores)
+            )
+            if exact_scores
+            else None,
+            "components": {
+                name: _format_percent(sum(values) / len(values)) if values else None
+                for name, values in strategy_components[strategy].items()
+            },
         }
 
     directed_scores = [
@@ -805,11 +1021,21 @@ async def score_directed_retrieval_cases(
         for strategy in ("directed", "combined", "auto")
         if strategy_summary[strategy]["path_score"] is not None
     ]
+    directed_exact_scores = [
+        _safe_float(strategy_summary[strategy]["exact_path_success_rate"]) / 100
+        for strategy in ("directed", "combined", "auto")
+        if strategy_summary[strategy]["exact_path_success_rate"] is not None
+    ]
     summary = {
         "cases": len(results),
         "strategies": strategy_summary,
         "score": _format_percent(sum(directed_scores) / len(directed_scores))
         if directed_scores
+        else None,
+        "exact_path_success_rate": _format_percent(
+            sum(directed_exact_scores) / len(directed_exact_scores)
+        )
+        if directed_exact_scores
         else None,
     }
     return results, summary
@@ -908,6 +1134,15 @@ def evaluate_quality_gates(
         configured_gates.get("min_directed_strategy_scores"),
         directed_strategy_scores,
     )
+    directed_exact_strategy_scores = {
+        str(name): _as_mapping(summary).get("exact_path_success_rate")
+        for name, summary in _as_mapping(directed_summary.get("strategies")).items()
+    }
+    add_minimum_checks(
+        "min_directed_exact_strategy_score",
+        configured_gates.get("min_directed_exact_strategy_scores"),
+        directed_exact_strategy_scores,
+    )
 
     if "max_failed_checks" in configured_gates:
         maximum = _numeric_gate_value(configured_gates.get("max_failed_checks"))
@@ -951,9 +1186,12 @@ def _failed_checks(
         for check in case.get("relation_checks", []):
             if not check.get("passed"):
                 rel = check.get("expected") or {}
+                score = _safe_float(check.get("score"))
+                status = "partial relation" if score > 0 else "missing relation"
                 failures.append(
-                    f"{case['id']}: missing relation "
+                    f"{case['id']}: {status} "
                     f"{rel.get('source')} -> {rel.get('relation_type')} -> {rel.get('target')}"
+                    + (f" ({score:.1f}%)" if score > 0 else "")
                 )
     for case in query_results:
         if case.get("status") != "success":
@@ -972,9 +1210,15 @@ def _failed_checks(
         for strategy in case.get("strategies", []):
             for check in strategy.get("checks", []):
                 if not check.get("passed"):
+                    partial_score = _safe_float(check.get("score"))
+                    suffix = (
+                        f" (partial {partial_score:.1f}%)"
+                        if check.get("kind") == "expected_path" and partial_score > 0
+                        else ""
+                    )
                     failures.append(
                         f"{case['id']} ({strategy['strategy']}): "
-                        f"directed check failed: {check.get('kind')}"
+                        f"directed check failed: {check.get('kind')}{suffix}"
                     )
     return failures
 
@@ -1013,6 +1257,7 @@ async def run_live_benchmark(
         "cases": 0,
         "strategies": {},
         "score": None,
+        "exact_path_success_rate": None,
     }
     if run_queries:
         query_results, query_summary = await score_query_cases(
@@ -1070,6 +1315,11 @@ async def run_live_benchmark(
         if directed_summary.get("score") is not None
         else None
     )
+    directed_exact_score = (
+        _safe_float(directed_summary["exact_path_success_rate"]) / 100
+        if directed_summary.get("exact_path_success_rate") is not None
+        else None
+    )
 
     overall_components: list[tuple[float | None, float]] = [
         (graph_score, 45),
@@ -1079,9 +1329,9 @@ async def run_live_benchmark(
     if directed_score is not None:
         overall_components = [
             (graph_score, 35),
-            (metadata_score, 20),
+            (metadata_score, 10),
             (retrieval_score, 20 if run_queries else 0),
-            (directed_score, 25),
+            (directed_score, 35),
         ]
 
     overall = _average_available(overall_components)
@@ -1102,6 +1352,9 @@ async def run_live_benchmark(
         else None,
         "directed": _format_percent(directed_score)
         if directed_score is not None
+        else None,
+        "directed_exact": _format_percent(directed_exact_score)
+        if directed_exact_score is not None
         else None,
     }
     quality_gates = evaluate_quality_gates(

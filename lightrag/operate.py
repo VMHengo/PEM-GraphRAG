@@ -57,6 +57,7 @@ from lightrag.base import (
 )
 from lightrag.adaptive_retrieval import route_retrieval_query
 from lightrag.directed_retrieval import DirectedPath, find_directed_paths
+from lightrag.relation_ontology import canonicalize_relation
 from lightrag.relation_identity import (
     legacy_relation_vdb_ids,
     make_directional_relation_chunk_key,
@@ -1078,16 +1079,26 @@ def _build_relationship_metadata(
     normalized_relation_type = _slugify_relationship_value(
         relation_type, _fallback_relation_type_from_keywords(keywords)
     )
+    semantic_source, semantic_target, canonical_relation_type, inverse_normalized = (
+        canonicalize_relation(
+            source,
+            target,
+            normalized_relation_type,
+            keywords=keywords,
+        )
+    )
     metadata = {
         "directionality": _normalize_relationship_directionality(directionality),
-        "relation_type": normalized_relation_type,
+        "relation_type": canonical_relation_type,
         "relation_importance": _normalize_relationship_importance(
             relation_importance
         ),
         "chain_role": _normalize_chain_role(chain_role),
-        "semantic_src_id": source,
-        "semantic_tgt_id": target,
+        "semantic_src_id": semantic_source,
+        "semantic_tgt_id": semantic_target,
     }
+    if inverse_normalized:
+        metadata["relation_inverse_normalized"] = True
 
     confidence = _normalize_optional_relationship_confidence(direction_confidence)
     if confidence is not None:

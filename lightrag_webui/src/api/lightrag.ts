@@ -307,6 +307,7 @@ export type EvaluationBenchmarkListItem = {
   name: string
   description: string
   case_count: number
+  tier?: 'fixture' | 'core' | 'stress' | 'custom' | string
 }
 
 export type EvaluationBenchmarkListResponse = {
@@ -345,6 +346,7 @@ export type EvaluationRunSummary = {
     metadata: number | null
     retrieval: number | null
     directed: number | null
+    directed_exact?: number | null
   }>
   quality_gates_passed?: boolean | null
   failed_check_count: number
@@ -407,6 +409,13 @@ export type PromptExperimentEstimate = {
   estimated_input_tokens: number
   estimated_output_tokens: number
   estimated_cost_usd: number
+  benchmark_preflight?: {
+    compatible: boolean
+    selected_documents: string[]
+    required_documents: string[]
+    missing_documents: string[]
+    message: string
+  } | null
   notes: string[]
 }
 
@@ -501,6 +510,7 @@ export type EvaluationRunResult = {
     metadata: number | null
     retrieval: number | null
     directed?: number | null
+    directed_exact?: number | null
   }
   summary: {
     nodes: number
@@ -519,12 +529,16 @@ export type EvaluationRunResult = {
     directed?: {
       cases: number
       score: number | null
+      exact_path_success_rate?: number | null
       strategies: Record<
         string,
         {
           runs: number
           successful_runs: number
           path_score: number | null
+          semantic_path_score?: number | null
+          exact_path_success_rate?: number | null
+          components?: Record<string, number | null>
         }
       >
     }
@@ -985,7 +999,7 @@ export const getPromptExperimentConfig = async (): Promise<PromptExperimentConfi
 }
 
 export const estimatePromptExperiment = async (
-  request: Pick<PromptExperimentRequest, 'document_ids' | 'profile_files' | 'optimization_mode'>
+  request: Pick<PromptExperimentRequest, 'document_ids' | 'profile_files' | 'optimization_mode' | 'benchmark_id'>
 ): Promise<PromptExperimentEstimate> => {
   const response = await axiosInstance.post('/evaluation/prompt-experiments/estimate', request)
   return response.data

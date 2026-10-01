@@ -3,6 +3,7 @@
   "name": "PEM Three-Document Multi-Hop Quality",
   "description": "A demanding, evidence-audited benchmark for meaningful directed multi-hop retrieval across three PEM/VDMA battery-production guides. It evaluates causal depth, root-cause direction, production order, cross-document synthesis, terminology disambiguation, source grounding, and whether intermediate mechanisms survive extraction and retrieval.",
   "version": 2,
+  "benchmark_tier": "stress",
   "default_mode": "mix",
   "document_scope": [
     {

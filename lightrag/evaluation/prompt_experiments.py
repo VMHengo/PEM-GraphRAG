@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Mapping
 
 from lightrag.base import DocProcessingStatus, DocStatus
-from lightrag.evaluation.live_benchmark import load_benchmark, run_live_benchmark
+from lightrag.evaluation.live_benchmark import (
+    benchmark_document_preflight,
+    load_benchmark,
+    run_live_benchmark,
+)
 from lightrag.llm_roles import RoleLLMConfig
 from lightrag.prompt import (
     get_entity_type_prompt_dir,
@@ -404,6 +408,7 @@ async def estimate_prompt_experiment(
     document_ids: list[str],
     profile_files: list[str],
     optimization_mode: PromptExperimentMode,
+    benchmark_id: str | None = None,
 ) -> dict[str, Any]:
     """Return a provider-independent extraction estimate before execution."""
 
@@ -413,6 +418,13 @@ async def estimate_prompt_experiment(
     documents = await _load_source_documents(
         rag, document_ids, sample_limit=settings["sample_limit"]
     )
+    benchmark_preflight = None
+    if benchmark_id:
+        benchmark = load_benchmark(benchmark_id, getattr(rag, "working_dir", None))
+        benchmark_preflight = benchmark_document_preflight(
+            benchmark,
+            [str(document.get("file_path") or "") for document in documents],
+        )
     per_profile: list[dict[str, Any]] = []
     for profile_file in profile_files:
         profile = load_entity_extraction_prompt_profile(
@@ -438,6 +450,7 @@ async def estimate_prompt_experiment(
         "estimated_input_tokens": sum(item["estimated_input_tokens"] for item in per_profile),
         "estimated_output_tokens": sum(item["estimated_output_tokens"] for item in per_profile),
         "estimated_cost_usd": round(sum(item["estimated_cost_usd"] for item in per_profile), 4),
+        "benchmark_preflight": benchmark_preflight,
         "notes": [
             "The estimate covers extraction calls only. Retrieval benchmark keyword and answer calls are not included.",
             "Screening uses a per-document chunk sample and cannot be promoted.",
@@ -625,7 +638,15 @@ async def create_prompt_experiment(
         document_ids=document_ids,
         profile_files=profile_files,
         optimization_mode=optimization_mode,
+        benchmark_id=benchmark_id,
     )
+    preflight = estimate.get("benchmark_preflight") or {}
+    if preflight and not preflight.get("compatible"):
+        missing = ", ".join(str(item) for item in preflight.get("missing_documents") or [])
+        raise ValueError(
+            "Selected documents do not cover the benchmark source scope. "
+            f"Missing: {missing}"
+        )
     settings = _mode_settings(rag, optimization_mode)
     if benchmark_mode is not None and optimization_mode == "final":
         settings["benchmark_mode"] = benchmark_mode
