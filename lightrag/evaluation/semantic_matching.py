@@ -11,7 +11,8 @@ from lightrag.relation_ontology import canonical_relation_type, predicate_simila
 
 def canonical_text(value: object) -> str:
     return " ".join(
-        part for part in "".join(
+        part
+        for part in "".join(
             char.lower() if char.isalnum() else " " for char in str(value or "")
         ).split()
         if part
@@ -39,7 +40,9 @@ class TextMatch:
     reason: str
 
 
-def text_match(expected: object, actual: object, *, aliases: object = None) -> TextMatch:
+def text_match(
+    expected: object, actual: object, *, aliases: object = None
+) -> TextMatch:
     """Score names using explicit aliases, then a conservative token overlap."""
 
     expected_text, embedded_aliases = _expected_value(expected)
@@ -66,7 +69,13 @@ def text_match(expected: object, actual: object, *, aliases: object = None) -> T
         f1 = (2 * overlap) / (len(expected_tokens) + len(actual_tokens))
         if f1 >= 0.5:
             best = max(best, round(0.35 + 0.5 * f1, 4))
-    return TextMatch(best, False, expected_text, str(actual or ""), "token_overlap" if best else "no_match")
+    return TextMatch(
+        best,
+        False,
+        expected_text,
+        str(actual or ""),
+        "token_overlap" if best else "no_match",
+    )
 
 
 def _edge_value(edge: Mapping[str, Any], *keys: str) -> str:
@@ -83,16 +92,31 @@ def edge_semantics(edge: Mapping[str, Any]) -> tuple[str, str, str]:
     return (
         _edge_value(edge, "semantic_src_id", "source", "src_id"),
         _edge_value(edge, "semantic_tgt_id", "target", "tgt_id"),
-        canonical_relation_type(edge.get("relation_type"), keywords=edge.get("keywords")),
+        canonical_relation_type(
+            edge.get("relation_type"), keywords=edge.get("keywords")
+        ),
     )
 
 
-def relation_match(expected: Mapping[str, Any], edge: Mapping[str, Any]) -> dict[str, Any]:
-    """Return exact and semantic relation scores with component diagnostics."""
+def relation_match(
+    expected: Mapping[str, Any], edge: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return an endpoint-gated semantic relation score and diagnostics.
+
+    A matching predicate is not meaningful on its own: a graph may contain
+    hundreds of ``causes`` edges whose endpoints have nothing to do with the
+    expected mechanism. Both endpoints therefore bound the semantic score.
+    Explicit benchmark aliases still receive full credit and reviewed predicate
+    alternatives can receive weighted partial credit.
+    """
 
     source, target, relation_type = edge_semantics(edge)
-    source_match = text_match(expected.get("source"), source, aliases=expected.get("source_aliases"))
-    target_match = text_match(expected.get("target"), target, aliases=expected.get("target_aliases"))
+    source_match = text_match(
+        expected.get("source"), source, aliases=expected.get("source_aliases")
+    )
+    target_match = text_match(
+        expected.get("target"), target, aliases=expected.get("target_aliases")
+    )
     expected_type = expected.get("relation_type") or ""
     predicate = predicate_similarity(
         expected_type,
@@ -101,9 +125,19 @@ def relation_match(expected: Mapping[str, Any], edge: Mapping[str, Any]) -> dict
     )
     expected_direction = canonical_text(expected.get("directionality"))
     actual_direction = canonical_text(edge.get("directionality") or "unknown")
-    direction_score = 1.0 if not expected_direction else float(expected_direction == actual_direction)
-    endpoint_score = (source_match.score + target_match.score) / 2
-    score = 0.5 * endpoint_score + 0.4 * predicate.score + 0.1 * direction_score
+    direction_score = (
+        1.0 if not expected_direction else float(expected_direction == actual_direction)
+    )
+    # ``min`` is deliberate. A wrong source or target must not be compensated
+    # by a correct predicate label or a populated directionality field.
+    endpoint_score = min(source_match.score, target_match.score)
+    endpoint_average = (source_match.score + target_match.score) / 2
+    score = endpoint_score * predicate.score * direction_score
+    # This is only used to pick the most useful diagnostic candidate when no
+    # graph edge receives score. It is never surfaced as benchmark credit.
+    diagnostic_score = (
+        0.55 * endpoint_average + 0.35 * predicate.score + 0.10 * direction_score
+    )
     exact = (
         source_match.exact
         and target_match.exact
@@ -117,6 +151,9 @@ def relation_match(expected: Mapping[str, Any], edge: Mapping[str, Any]) -> dict
         "target": target_match.__dict__,
         "predicate": predicate.__dict__,
         "direction_score": direction_score,
+        "endpoint_score": round(endpoint_score, 4),
+        "endpoint_average": round(endpoint_average, 4),
+        "diagnostic_score": round(diagnostic_score, 4),
         "matched": {
             "source": source,
             "relation_type": relation_type,
@@ -131,12 +168,20 @@ def relation_match(expected: Mapping[str, Any], edge: Mapping[str, Any]) -> dict
 
 def _path_nodes(expected: Mapping[str, Any]) -> list[object]:
     nodes = expected.get("traversal_nodes") or expected.get("nodes") or []
-    return list(nodes) if isinstance(nodes, Sequence) and not isinstance(nodes, str) else []
+    return (
+        list(nodes)
+        if isinstance(nodes, Sequence) and not isinstance(nodes, str)
+        else []
+    )
 
 
 def _path_types(expected: Mapping[str, Any]) -> list[object]:
     value = expected.get("relation_types") or []
-    return list(value) if isinstance(value, Sequence) and not isinstance(value, str) else []
+    return (
+        list(value)
+        if isinstance(value, Sequence) and not isinstance(value, str)
+        else []
+    )
 
 
 def _path_accepted_types(expected: Mapping[str, Any], index: int) -> object:
@@ -153,7 +198,10 @@ def _documents_score(expected: Mapping[str, Any], actual: Mapping[str, Any]) -> 
     if not expected_documents:
         return 1.0
     matches = [
-        any(text_match(document, candidate).score >= 0.85 for candidate in actual_documents)
+        any(
+            text_match(document, candidate).score >= 0.85
+            for candidate in actual_documents
+        )
         for document in expected_documents
     ]
     return sum(matches) / len(matches)
@@ -165,12 +213,19 @@ def path_match(
     *,
     traversal_direction: str = "both",
 ) -> dict[str, Any]:
-    """Score a diagnostic path edge-by-edge while preserving strict exactness."""
+    """Score a diagnostic path edge-by-edge while preserving strict exactness.
+
+    The number of semantically matched hops is the ceiling for the score. A
+    complete route, evidence reference, or correct router selection cannot
+    turn an unrelated path into a partially correct causal chain.
+    """
 
     expected_nodes = _path_nodes(expected)
     expected_types = _path_types(expected)
     actual_nodes = list(actual.get("nodes") or [])
-    actual_edges = [edge for edge in actual.get("edges") or [] if isinstance(edge, Mapping)]
+    actual_edges = [
+        edge for edge in actual.get("edges") or [] if isinstance(edge, Mapping)
+    ]
     expected_edges = min(len(expected_types), max(0, len(expected_nodes) - 1))
     if expected_edges == 0:
         return {
@@ -239,13 +294,17 @@ def path_match(
                 semantic_type,
                 accepted_relation_types=_path_accepted_types(expected, index),
             )
-            edge_score = 0.3 * source.score + 0.3 * target.score + 0.4 * predicate.score
+            endpoint_score = min(source.score, target.score)
+            endpoint_average = (source.score + target.score) / 2
+            edge_score = endpoint_score * predicate.score
             candidate = {
                 "expected_index": index,
                 "actual_index": actual_index,
                 "score": round(edge_score, 4),
                 "source_score": source.score,
                 "target_score": target.score,
+                "endpoint_score": round(endpoint_score, 4),
+                "endpoint_average": round(endpoint_average, 4),
                 "predicate_score": predicate.score,
                 "predicate_exact": predicate.exact,
                 "actual": {
@@ -256,33 +315,49 @@ def path_match(
                     "relation_type": semantic_type,
                 },
             }
-            if best is None or candidate["score"] > best["score"]:
+            if best is None or (
+                candidate["score"],
+                candidate["endpoint_score"],
+                candidate["endpoint_average"],
+                candidate["predicate_score"],
+            ) > (
+                best["score"],
+                best["endpoint_score"],
+                best["endpoint_average"],
+                best["predicate_score"],
+            ):
                 best, best_index = candidate, actual_index
-        if best is None:
-            matches.append({"expected_index": index, "score": 0.0, "predicate_score": 0.0})
+        if best is None or best["score"] <= 0:
+            matches.append(
+                {"expected_index": index, "score": 0.0, "predicate_score": 0.0}
+            )
         else:
             matches.append(best)
             cursor = best_index + 1
 
     edge_recall = sum(float(item["score"]) for item in matches) / expected_edges
-    predicate_score = sum(float(item.get("predicate_score", 0.0)) for item in matches) / expected_edges
-    actual_indices = [item.get("actual_index") for item in matches if item.get("actual_index") is not None]
-    continuity_score = (
-        1.0
-        if expected_edges == 1 and actual_indices
-        else (
-            sum(
-                1
-                for left, right in zip(actual_indices, actual_indices[1:])
-                if right == left + 1
-            )
-            / max(1, expected_edges - 1)
-            if len(actual_indices) >= 2
-            else 0.0
-        )
+    predicate_score = (
+        sum(float(item.get("predicate_score", 0.0)) for item in matches)
+        / expected_edges
     )
+    matched_edges = [item for item in matches if float(item.get("score", 0.0)) > 0]
+    actual_indices = [
+        item.get("actual_index")
+        for item in matched_edges
+        if item.get("actual_index") is not None
+    ]
+    if not matched_edges:
+        continuity_score = 0.0
+    elif len(matched_edges) == 1:
+        continuity_score = 1.0
+    else:
+        continuity_score = sum(
+            1
+            for left, right in zip(actual_indices, actual_indices[1:])
+            if right == left + 1
+        ) / max(1, len(actual_indices) - 1)
     direction_scores: list[float] = []
-    for item in matches:
+    for item in matched_edges:
         matched_edge = item.get("actual") or {}
         semantic_source = canonical_text(matched_edge.get("source"))
         semantic_target = canonical_text(matched_edge.get("target"))
@@ -295,29 +370,54 @@ def path_match(
             direction_scores.append(1.0)
         elif traversal_direction == "out":
             direction_scores.append(
-                float(semantic_source == traversal_source and semantic_target == traversal_target)
+                float(
+                    semantic_source == traversal_source
+                    and semantic_target == traversal_target
+                )
             )
         elif traversal_direction == "in":
             direction_scores.append(
-                float(semantic_source == traversal_target and semantic_target == traversal_source)
+                float(
+                    semantic_source == traversal_target
+                    and semantic_target == traversal_source
+                )
             )
         else:
             direction_scores.append(
                 float(
-                    (semantic_source == traversal_source and semantic_target == traversal_target)
-                    or (semantic_source == traversal_target and semantic_target == traversal_source)
+                    (
+                        semantic_source == traversal_source
+                        and semantic_target == traversal_target
+                    )
+                    or (
+                        semantic_source == traversal_target
+                        and semantic_target == traversal_source
+                    )
                 )
             )
-    direction_accuracy = sum(direction_scores) / len(direction_scores) if direction_scores else 0.0
+    direction_accuracy = (
+        sum(direction_scores) / len(direction_scores) if direction_scores else 0.0
+    )
     document_coverage = _documents_score(expected, actual)
     citation_coverage = (
         1.0
         if not expected.get("require_citations")
-        else float(bool([item for item in actual.get("reference_ids") or [] if str(item).strip()]))
+        else float(
+            bool(
+                [
+                    item
+                    for item in actual.get("reference_ids") or []
+                    if str(item).strip()
+                ]
+            )
+        )
     )
     evidence_coverage = (document_coverage + citation_coverage) / 2
-    score = (
-        0.55 * edge_recall
+    # Evidence and route shape qualify matched hops. They cannot add credit to
+    # a path with no matching mechanism, and no partial path can exceed the
+    # fraction of its expected hops that actually matched.
+    score = edge_recall * (
+        0.55
         + 0.15 * continuity_score
         + 0.15 * direction_accuracy
         + 0.15 * evidence_coverage

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from lightrag.evaluation.live_benchmark import (
+    _resolve_scoring_model,
     _directed_path_matches,
     evaluate_quality_gates,
     list_benchmarks,
@@ -83,6 +84,7 @@ def test_graph_case_scores_directed_relation_metadata():
     nodes = [
         {"entity_id": "Electrode Stacking"},
         {"entity_id": "Electrode Thickness"},
+        {"entity_id": "Insufficient Electrode Thickness"},
         {"entity_id": "Coating Defect"},
     ]
     edges = [
@@ -115,6 +117,60 @@ def test_graph_case_scores_directed_relation_metadata():
     assert summary["metadata_coverage"]["directionality"] == 100.0
     assert summary["metadata_coverage"]["relation_type"] == 100.0
     assert summary["metadata_coverage"]["chain_role"] == 100.0
+
+
+def test_graph_cases_derive_required_entities_from_relation_endpoints():
+    results, summary = score_graph_cases(
+        {
+            "cases": [
+                {
+                    "id": "derived-intermediate",
+                    "expected_entities": ["Electrolyte decomposition"],
+                    "expected_relations": [
+                        {
+                            "source": "Electrolyte decomposition",
+                            "relation_type": "causes",
+                            "target": "Gas generation",
+                            "directionality": "directed",
+                        }
+                    ],
+                }
+            ]
+        },
+        [{"entity_id": "Electrolyte decomposition"}],
+        [
+            {
+                "semantic_src_id": "Electrolyte decomposition",
+                "semantic_tgt_id": "Gas generation",
+                "relation_type": "causes",
+                "directionality": "directed",
+            }
+        ],
+    )
+
+    assert results[0]["entity_score"] == 50.0
+    assert summary["entity_score"] == 50.0
+
+
+def test_overall_scoring_profiles_exclude_metadata_credit():
+    core = _resolve_scoring_model(
+        {"scoring": {"profile": "core"}},
+        run_queries=True,
+        directed_score=None,
+    )
+    directed = _resolve_scoring_model(
+        {"scoring": {"profile": "directed"}},
+        run_queries=True,
+        directed_score=0.5,
+    )
+
+    assert core["overall_weights"] == {"graph": 80.0, "retrieval": 20.0}
+    assert directed["overall_weights"] == {
+        "graph": 35.0,
+        "retrieval": 15.0,
+        "directed": 50.0,
+    }
+    assert "metadata" not in core["overall_weights"]
 
 
 def test_benchmark_discovery_uses_working_dir_data_folder(tmp_path, monkeypatch):
@@ -174,7 +230,9 @@ class _DirectedFakeRag(_FakeRag):
     async def aquery_llm(self, query, param):
         self.strategies.append(param.retrieval_strategy)
         effective_strategy = (
-            "combined" if param.retrieval_strategy == "auto" else param.retrieval_strategy
+            "combined"
+            if param.retrieval_strategy == "auto"
+            else param.retrieval_strategy
         )
         diagnostics = {
             "status": "skipped",
@@ -306,8 +364,12 @@ def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
     assert result["scores"]["directed"] == 100.0
     assert result["run"]["directed_path_checks_enabled"] is True
     assert result["summary"]["directed"]["strategies"]["normal"]["path_score"] == 100.0
-    assert result["summary"]["directed"]["strategies"]["directed"]["path_score"] == 100.0
-    assert result["summary"]["directed"]["strategies"]["combined"]["path_score"] == 100.0
+    assert (
+        result["summary"]["directed"]["strategies"]["directed"]["path_score"] == 100.0
+    )
+    assert (
+        result["summary"]["directed"]["strategies"]["combined"]["path_score"] == 100.0
+    )
     assert result["summary"]["directed"]["strategies"]["auto"]["path_score"] == 100.0
     assert result["quality_gates"]["configured"] is True
     assert result["quality_gates"]["passed"] is True

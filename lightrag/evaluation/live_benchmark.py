@@ -37,6 +37,13 @@ _DIRECTED_STRATEGIES: tuple[DirectedStrategy, ...] = (
     "auto",
 )
 
+_SCORING_VERSION = "2.0.0"
+_SCORING_PROFILES: dict[str, dict[str, float]] = {
+    "graph_only": {"graph": 100.0},
+    "core": {"graph": 80.0, "retrieval": 20.0},
+    "directed": {"graph": 35.0, "retrieval": 15.0, "directed": 50.0},
+}
+
 
 @dataclass(frozen=True)
 class BenchmarkRef:
@@ -185,7 +192,9 @@ def benchmark_document_preflight(
     for case in [*_as_list(benchmark.get("cases")), *_directed_cases(benchmark)]:
         if not isinstance(case, dict):
             continue
-        required.extend(str(value) for value in _as_list(case.get("expected_documents")))
+        required.extend(
+            str(value) for value in _as_list(case.get("expected_documents"))
+        )
         for path in _as_list(case.get("expected_directed_paths")):
             if isinstance(path, dict):
                 required.extend(
@@ -230,7 +239,9 @@ def _edge_target(edge: dict[str, Any]) -> str:
 
 
 def _edge_relation_type(edge: dict[str, Any]) -> str:
-    return canonical_relation_type(edge.get("relation_type"), keywords=edge.get("keywords"))
+    return canonical_relation_type(
+        edge.get("relation_type"), keywords=edge.get("keywords")
+    )
 
 
 def _edge_directionality(edge: dict[str, Any]) -> str:
@@ -258,6 +269,40 @@ def _find_relation(
     return None
 
 
+def _entity_key(value: Any) -> str:
+    if isinstance(value, dict):
+        value = value.get("name") or value.get("value") or value.get("entity") or ""
+    return canonical_text(value)
+
+
+def _case_expected_entities(case: dict[str, Any]) -> list[Any]:
+    """Return declared entities plus every node required by the case structure.
+
+    A relation or path cannot be considered correct when one of its endpoints
+    is absent. Deriving these entities prevents a benchmark author from
+    accidentally omitting an essential intermediate node from ``expected_entities``.
+    """
+
+    values: list[Any] = []
+    values.extend(_as_list(case.get("expected_entities")))
+    for relation in _as_list(case.get("expected_relations")):
+        if isinstance(relation, dict):
+            values.extend((relation.get("source"), relation.get("target")))
+    for path in _as_list(case.get("expected_directed_paths")):
+        if not isinstance(path, dict):
+            continue
+        values.extend(_as_list(path.get("traversal_nodes") or path.get("nodes")))
+
+    result: list[Any] = []
+    seen: set[str] = set()
+    for value in values:
+        key = _entity_key(value)
+        if key and key not in seen:
+            result.append(value)
+            seen.add(key)
+    return result
+
+
 def _best_relation_match(
     expected: dict[str, Any], edges: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
@@ -266,7 +311,15 @@ def _best_relation_match(
     candidates = [semantic_relation_match(expected, edge) for edge in edges]
     if not candidates:
         return None
-    return max(candidates, key=lambda candidate: (candidate["score"], candidate["exact"]))
+    return max(
+        candidates,
+        key=lambda candidate: (
+            candidate["score"],
+            candidate.get("endpoint_score", 0.0),
+            candidate.get("diagnostic_score", 0.0),
+            candidate["exact"],
+        ),
+    )
 
 
 def _metadata_coverage(edges: list[dict[str, Any]]) -> dict[str, Any]:
@@ -340,15 +393,21 @@ def score_graph_cases(
 
     for case in _as_list(benchmark.get("cases")):
         case_id = str(case.get("id") or case.get("question") or "case")
-        expected_entities = _as_list(case.get("expected_entities"))
+        expected_entities = _case_expected_entities(case)
         expected_relations = _as_list(case.get("expected_relations"))
 
         entity_checks: list[dict[str, Any]] = []
         relation_checks: list[dict[str, Any]] = []
 
         for entity in expected_entities:
-            candidates = [semantic_text_match(entity, _node_name(node)) for node in nodes]
-            matched = max(candidates, key=lambda candidate: candidate.score) if candidates else None
+            candidates = [
+                semantic_text_match(entity, _node_name(node)) for node in nodes
+            ]
+            matched = (
+                max(candidates, key=lambda candidate: candidate.score)
+                if candidates
+                else None
+            )
             entity_checks.append(
                 {
                     "expected": entity,
@@ -376,7 +435,9 @@ def score_graph_cases(
                     }
                     if match
                     else None,
-                    "match_reason": match["predicate"]["reason"] if match else "no_edges",
+                    "match_reason": match["predicate"]["reason"]
+                    if match
+                    else "no_edges",
                     "matched": match["matched"] if match and match["score"] else None,
                 }
             )
@@ -531,7 +592,10 @@ async def score_query_cases(
         )
         expected_documents = _as_list(case.get("expected_documents"))
         reference_checks = [
-            {"expected": str(document), "passed": _reference_matches(document, references)}
+            {
+                "expected": str(document),
+                "passed": _reference_matches(document, references),
+            }
             for document in expected_documents
         ]
 
@@ -580,7 +644,9 @@ async def score_query_cases(
         "content_score": _format_percent(sum(content_scores) / len(content_scores))
         if content_scores
         else None,
-        "reference_score": _format_percent(sum(reference_scores) / len(reference_scores))
+        "reference_score": _format_percent(
+            sum(reference_scores) / len(reference_scores)
+        )
         if reference_scores
         else None,
     }
@@ -661,9 +727,7 @@ def _directed_path_matches(
     """Score a path by order, predicate sequence, and optional provenance."""
 
     checks: list[dict[str, Any]] = []
-    expected_nodes = _as_list(
-        expected.get("traversal_nodes") or expected.get("nodes")
-    )
+    expected_nodes = _as_list(expected.get("traversal_nodes") or expected.get("nodes"))
     actual_nodes = _as_list(actual.get("nodes"))
     checks.append(
         {
@@ -864,7 +928,10 @@ async def score_directed_retrieval_cases(
                                 case.get("expected_edge_direction") or "both"
                             ),
                         )
-                        if best_partial is None or partial["score"] > best_partial["score"]:
+                        if (
+                            best_partial is None
+                            or partial["score"] > best_partial["score"]
+                        ):
                             best_partial = partial
                             best_actual = actual_path
                         strict_passed, candidate_checks = _directed_path_matches(
@@ -909,7 +976,9 @@ async def score_directed_retrieval_cases(
                     _safe_float(path_result["partial"].get("score"))
                     for path_result in path_results
                 ]
-                exact_paths = [bool(path_result["passed"]) for path_result in path_results]
+                exact_paths = [
+                    bool(path_result["passed"]) for path_result in path_results
+                ]
                 if requirement == "any":
                     path_semantic = max(path_scores, default=0.0)
                     exact_path_passed = any(exact_paths)
@@ -920,13 +989,13 @@ async def score_directed_retrieval_cases(
                     exact_path_passed = sum(exact_paths) >= required_count
                 else:
                     requirement = "all"
-                    path_semantic = sum(path_scores) / len(path_scores) if path_scores else 0.0
+                    path_semantic = (
+                        sum(path_scores) / len(path_scores) if path_scores else 0.0
+                    )
                     exact_path_passed = all(exact_paths)
 
                 routing_checks = [
-                    check
-                    for check in checks
-                    if check["kind"] != "expected_path"
+                    check for check in checks if check["kind"] != "expected_path"
                 ]
                 routing_score = (
                     sum(1 for check in routing_checks if check["passed"])
@@ -934,7 +1003,10 @@ async def score_directed_retrieval_cases(
                     if routing_checks
                     else 1.0
                 )
-                semantic_score = 0.85 * path_semantic + 0.15 * routing_score
+                # Routing is useful only when it returns a semantically
+                # relevant path. A correctly classified request must not earn
+                # directed-retrieval credit on its own.
+                semantic_score = path_semantic * (0.85 + 0.15 * routing_score)
                 components = {
                     component: (
                         sum(
@@ -982,7 +1054,8 @@ async def score_directed_retrieval_cases(
                     "score": _format_percent(semantic_score),
                     "exact_passed": passed,
                     "components": {
-                        name: _format_percent(value) for name, value in components.items()
+                        name: _format_percent(value)
+                        for name, value in components.items()
                     },
                 }
             )
@@ -1004,7 +1077,9 @@ async def score_directed_retrieval_cases(
             "runs": len(semantic_scores),
             "successful_runs": strategy_successes[strategy],
             "path_score": _format_percent(score) if score is not None else None,
-            "semantic_path_score": _format_percent(score) if score is not None else None,
+            "semantic_path_score": _format_percent(score)
+            if score is not None
+            else None,
             "exact_path_success_rate": _format_percent(
                 sum(exact_scores) / len(exact_scores)
             )
@@ -1052,6 +1127,53 @@ def _average_available(scores: list[tuple[float | None, float]]) -> float | None
     if total_weight == 0:
         return None
     return weighted_sum / total_weight
+
+
+def _resolve_scoring_model(
+    benchmark: dict[str, Any],
+    *,
+    run_queries: bool,
+    directed_score: float | None,
+) -> dict[str, Any]:
+    """Resolve a versioned Overall-score profile for one benchmark run.
+
+    Metadata is intentionally excluded from Overall. It remains available as a
+    diagnostic and quality gate because field completeness does not establish
+    that a graph claim is correct.
+    """
+
+    configured = _as_mapping(benchmark.get("scoring"))
+    requested_profile = str(configured.get("profile") or "auto").strip().lower()
+    configured_weights = _as_mapping(configured.get("overall_weights"))
+
+    if not run_queries:
+        profile = "graph_only"
+        weights = dict(_SCORING_PROFILES[profile])
+    elif configured_weights:
+        weights = {
+            name: weight
+            for name, raw_weight in configured_weights.items()
+            if name in {"graph", "retrieval", "directed"}
+            if (weight := _safe_float(raw_weight)) > 0
+        }
+        profile = "custom" if weights else "core"
+        if not weights:
+            weights = dict(_SCORING_PROFILES[profile])
+    else:
+        profile = requested_profile
+        if profile not in _SCORING_PROFILES:
+            profile = "directed" if directed_score is not None else "core"
+        if profile == "directed" and directed_score is None:
+            profile = "core"
+        weights = dict(_SCORING_PROFILES[profile])
+
+    return {
+        "version": _SCORING_VERSION,
+        "profile": profile,
+        "configured_profile": requested_profile,
+        "overall_weights": weights,
+        "metadata_role": "diagnostic_and_quality_gate",
+    }
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
@@ -1115,7 +1237,9 @@ def evaluate_quality_gates(
                     "kind": f"{kind_prefix}:{name}",
                     "expected": minimum,
                     "actual": actual,
-                    "passed": minimum is not None and actual is not None and actual >= minimum,
+                    "passed": minimum is not None
+                    and actual is not None
+                    and actual >= minimum,
                 }
             )
 
@@ -1290,7 +1414,7 @@ async def run_live_benchmark(
                 _safe_float(graph_summary.get("relation_score")) / 100
                 if graph_summary.get("relation_score") is not None
                 else None,
-                2,
+                1,
             ),
         ]
     )
@@ -1321,18 +1445,30 @@ async def run_live_benchmark(
         else None
     )
 
-    overall_components: list[tuple[float | None, float]] = [
-        (graph_score, 45),
-        (metadata_score, 25),
-        (retrieval_score, 30 if run_queries else 0),
+    scoring = _resolve_scoring_model(
+        benchmark,
+        run_queries=run_queries,
+        directed_score=directed_score,
+    )
+    score_values = {
+        "graph": graph_score,
+        "retrieval": retrieval_score if run_queries else None,
+        "directed": directed_score,
+    }
+    overall_components = [
+        (score_values[name], weight)
+        for name, weight in scoring["overall_weights"].items()
     ]
-    if directed_score is not None:
-        overall_components = [
-            (graph_score, 35),
-            (metadata_score, 10),
-            (retrieval_score, 20 if run_queries else 0),
-            (directed_score, 35),
-        ]
+    active_weight = sum(
+        weight
+        for name, weight in scoring["overall_weights"].items()
+        if score_values.get(name) is not None
+    )
+    scoring["effective_overall_weights"] = {
+        name: _format_percent(weight / active_weight)
+        for name, weight in scoring["overall_weights"].items()
+        if score_values.get(name) is not None and active_weight > 0
+    }
 
     overall = _average_available(overall_components)
 
@@ -1387,6 +1523,7 @@ async def run_live_benchmark(
             "directed_path_checks_enabled": bool(directed_results),
         },
         "scores": scores,
+        "scoring": scoring,
         "summary": {
             "nodes": len(nodes),
             "edges": len(edges),

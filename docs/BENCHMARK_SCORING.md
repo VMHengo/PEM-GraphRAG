@@ -15,26 +15,47 @@ does not lower Overall a second time.
 
 ## Score Components
 
-For a graph relation, semantic scoring weights source match (50% together with
-target), predicate compatibility (40%), and declared directionality (10%).
-The UI labels a result **Exact**, **Partial**, or **Missing**.
+For a graph relation, both endpoints form a hard semantic bound. The score is
+the lower endpoint match multiplied by predicate compatibility and declared
+directionality. A matching predicate therefore earns no credit when either
+source or target is unrelated. Explicit aliases still receive full endpoint
+credit; reviewed predicate alternatives may receive partial credit. The UI
+labels a result **Exact**, **Partial**, or **Missing** and shows the matched
+edge plus source, target, predicate, and direction components.
 
 For a directed path, each expected edge is matched in order.  The score is:
 
 | Component | Weight |
 | --- | ---: |
-| Edge recall (endpoint and predicate match) | 55% |
+| Endpoint-gated edge recall | 55% |
 | Consecutive-hop continuity | 15% |
 | Semantic edge orientation | 15% |
 | Declared source document / citation coverage | 15% |
 
-Routing and path-provider status contribute a further 15% at the retrieval
-strategy level.  Thus a useful two-hop prefix is visible as a partial result
-instead of becoming indistinguishable from no path at all.
+Continuity, orientation, citations, and routing qualify matching hops; they
+cannot create credit without a matching hop. A path with no matching mechanism
+scores zero. A two-hop prefix of a three-hop path can score at most 66.7%, and
+a one-hop prefix at most 33.3%, before any evidence or routing deficiency.
+Routing and path-provider status can reduce a path score by up to 15% at the
+retrieval-strategy level; they cannot raise a missing path above zero.
 
-The Overall weighting when directed checks are present is Graph 35%, Metadata
-10%, Retrieval 20%, and Directed semantic quality 35%.  If no directed checks
-run, weights are rebalanced as before.
+Graph combines entity coverage and relation quality at equal weight. Each case
+also derives required entities from relation endpoints and directed-path nodes,
+so an omitted intermediate cannot disappear from Entity Coverage.
+
+Metadata is a diagnostic and optional quality gate. It is excluded from
+Overall because populated fields do not prove a scientifically correct claim.
+The versioned Overall profiles are:
+
+| Profile | Graph | Retrieval | Directed |
+| --- | ---: | ---: | ---: |
+| `graph_only` | 100% | - | - |
+| `core` | 80% | 20% | - |
+| `directed` | 35% | 15% | 50% |
+
+Weights are rebalanced only across components that were actually evaluated.
+Every new result stores its scoring version, profile, configured weights, and
+effective weights. Historical results retain the calculation saved with them.
 
 ## Relation Ontology
 
@@ -72,6 +93,25 @@ Existing benchmark JSON remains valid.  A relation can now optionally declare:
 
 `accepted_relation_types` may be a list (full credit for each listed canonical
 predicate) or an object mapping predicate to a score from 0 to 1.
+
+A benchmark may select an Overall profile or define its own positive weights:
+
+```json
+{
+  "scoring": {"profile": "directed"}
+}
+```
+
+```json
+{
+  "scoring": {
+    "overall_weights": {"graph": 40, "retrieval": 10, "directed": 50}
+  }
+}
+```
+
+Use custom weights only when they are documented in the benchmark's notes and
+kept fixed during a comparison series.
 
 For an expected directed path, the same `accepted_relation_types` field can be
 one shared list/object or an array with one item per hop.  `node_aliases` maps a

@@ -512,6 +512,14 @@ export type EvaluationRunResult = {
     directed?: number | null
     directed_exact?: number | null
   }
+  scoring?: {
+    version: string
+    profile: string
+    configured_profile?: string
+    overall_weights: Record<string, number>
+    effective_overall_weights?: Record<string, number>
+    metadata_role: string
+  }
   summary: {
     nodes: number
     edges: number

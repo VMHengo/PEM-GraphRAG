@@ -58,7 +58,30 @@ def test_relation_alias_and_accepted_predicate_are_reported_as_semantic_match():
 
     assert match["exact"] is False
     assert match["predicate"]["score"] == 0.9
-    assert match["score"] > 0.9
+    assert match["score"] == 0.9
+
+
+def test_matching_predicate_cannot_compensate_for_a_wrong_endpoint():
+    match = relation_match(
+        {
+            "source": "Electrolyte decomposition",
+            "relation_type": "causes",
+            "target": "Gas generation",
+            "directionality": "directed",
+        },
+        {
+            "semantic_src_id": "Electrolyte decomposition",
+            "semantic_tgt_id": "Lithium plating",
+            "relation_type": "causes",
+            "directionality": "directed",
+        },
+    )
+
+    assert match["source"]["score"] == 1
+    assert match["target"]["score"] == 0
+    assert match["predicate"]["score"] == 1
+    assert match["direction_score"] == 1
+    assert match["score"] == 0
 
 
 def test_graph_case_keeps_exact_status_but_uses_partial_relation_score():
@@ -124,6 +147,49 @@ def test_path_score_awards_partial_credit_for_one_correct_hop():
     assert 0 < score["score"] < 1
     assert 0 < score["edge_recall"] < 1
     assert score["citation_coverage"] == 1
+
+
+def test_path_evidence_cannot_credit_an_unrelated_chain():
+    score = path_match(
+        {
+            "nodes": ["Electrolyte decomposition", "Gas generation", "Lithium plating"],
+            "relation_types": ["causes", "causes"],
+            "source_documents": ["aging.pdf"],
+            "require_citations": True,
+        },
+        {
+            "nodes": ["Aging", "Resistance", "Heat"],
+            "edges": [
+                {"source": "Aging", "target": "Resistance", "relation_type": "causes"},
+                {"source": "Resistance", "target": "Heat", "relation_type": "causes"},
+            ],
+            "file_paths": ["aging.pdf"],
+            "reference_ids": ["chunk-1"],
+        },
+    )
+
+    assert score["edge_recall"] == 0
+    assert score["score"] == 0
+
+
+def test_path_score_is_capped_by_the_fraction_of_matching_hops():
+    score = path_match(
+        {
+            "nodes": ["A", "B", "C", "D"],
+            "relation_types": ["causes", "causes", "causes"],
+        },
+        {
+            "nodes": ["A", "B", "C", "Wrong"],
+            "edges": [
+                {"source": "A", "target": "B", "relation_type": "causes"},
+                {"source": "B", "target": "C", "relation_type": "causes"},
+                {"source": "C", "target": "Wrong", "relation_type": "causes"},
+            ],
+        },
+    )
+
+    assert score["edge_recall"] == 0.6667
+    assert score["score"] <= score["edge_recall"]
 
 
 def test_inbound_path_uses_traversal_order_without_reversing_semantic_edges():

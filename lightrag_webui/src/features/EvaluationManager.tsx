@@ -50,13 +50,13 @@ const modeDescriptions: Record<EvaluationRunMode, string> = {
 
 const metricDescriptions: Record<string, string> = {
   Overall:
-    'Weighted aggregate of the available Graph, Metadata, Retrieval, and Directed checks. Weights are rebalanced when a score is not evaluated.',
+    'Weighted aggregate of Graph, Retrieval, and, where available, Directed path quality. Metadata is a diagnostic and quality gate, not Overall credit. Weights are rebalanced when a scored component is unavailable.',
   Graph:
-    'Expected entity and relation matches in the graph. Relation matches receive twice the weight of entity matches.',
+    'Equal-weighted entity coverage and relation quality. A relation receives credit only when both endpoints match; a matching predicate cannot compensate for a wrong entity.',
   Metadata:
-    'Completeness of directionality, relation type, relation importance, chain role, and specific relation types. It measures coverage, not domain correctness.',
+    'Completeness of directionality, relation type, relation importance, chain role, and specific relation types. It is a diagnostic and quality gate, not Overall credit.',
   Retrieval:
-    'Average of expected-content coverage and expected-source coverage in the retrieved context or generated answer.',
+    'Average of expected-term coverage and expected-source coverage in the retrieved context or generated answer. Terms and citations do not prove that the explanation is scientifically correct.',
   Directed:
     'Semantic directed-path quality. It gives partial credit for an ordered chain with compatible predicates, correct direction, continuity, and evidence; it is the score used in Overall.',
   'Directed Exact':
@@ -64,7 +64,7 @@ const metricDescriptions: Record<string, string> = {
   Entities: 'Share of expected entities that could be found in the current graph.',
   Relations:
     'Semantic match of expected source, relation type, target, and direction. Exact predicate and endpoint matches score 100; reviewed aliases and related causal predicates can receive partial credit.',
-  Content:
+  Terms:
     'Share of required terms found in the retrieved context or generated answer for this benchmark case.',
   directionality: 'Share of graph edges with a direction other than unknown.',
   'relation type': 'Share of graph edges with a populated relation type.',
@@ -92,6 +92,19 @@ const statusTone: Record<EvaluationRunSummary['status'], string> = {
 
 const formatScore = (score: number | null | undefined) =>
   score == null ? '-' : `${score.toFixed(1)}`
+
+const formatRawScore = (score: unknown) => {
+  const numeric = typeof score === 'number' ? score : Number(score)
+  return Number.isFinite(numeric) ? formatScore(numeric * 100) : '-'
+}
+
+const formatOverallWeights = (result: EvaluationRunResult) => {
+  const weights = result.scoring?.effective_overall_weights || result.scoring?.overall_weights
+  if (!weights) return result.run.mode
+  return Object.entries(weights)
+    .map(([name, weight]) => `${name} ${weight.toFixed(0)}%`)
+    .join(' · ')
+}
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '-'
@@ -190,12 +203,65 @@ function MetadataCoverage({ result }: { result: EvaluationRunResult }) {
   )
 }
 
-function CaseMetric({ label, score }: { label: 'Entities' | 'Relations' | 'Content'; score: number | null | undefined }) {
+function CaseMetric({ label, score }: { label: 'Entities' | 'Relations' | 'Terms'; score: number | null | undefined }) {
   return (
     <span className="inline-flex items-center gap-1">
       <MetricLabel label={label} description={metricDescriptions[label]} className="text-sm" />
       <span>{formatScore(score)}</span>
     </span>
+  )
+}
+
+function MatchStatus({ score, exact }: { score: number | null | undefined; exact?: boolean }) {
+  const tone = exact ? 'text-emerald-400' : (score || 0) > 0 ? 'text-amber-400' : 'text-red-400'
+  const label = exact ? 'Exact' : (score || 0) > 0 ? `Partial ${formatScore(score)}` : 'Missing'
+  return <span className={tone}>{label}</span>
+}
+
+function EntityChecks({ checks }: { checks: Array<Record<string, any>> }) {
+  if (checks.length === 0) return null
+  return (
+    <div>
+      <div className="text-muted-foreground mb-2 text-xs font-medium uppercase">Expected Entities</div>
+      <div className="space-y-2">
+        {checks.map((check, index) => (
+          <div key={`${check.expected}-${index}`} className="rounded border px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">{check.expected}</span>
+              <MatchStatus score={check.score} exact={check.passed} />
+            </div>
+            {check.matched && <div className="text-muted-foreground mt-1 text-xs">Matched: {check.matched}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RelationCheck({ check }: { check: Record<string, any> }) {
+  const components = check.components || {}
+  const matched = check.matched || {}
+  return (
+    <div className="rounded border px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <MatchStatus score={check.score} exact={check.passed} />
+        {check.match_reason && <span className="text-muted-foreground text-xs">{check.match_reason}</span>}
+      </div>
+      <div className="text-muted-foreground mt-1">
+        Expected: {check.expected?.source} - {check.expected?.relation_type} - {check.expected?.target}
+      </div>
+      {matched.source && (
+        <div className="text-muted-foreground mt-1">
+          Matched: {matched.source} - {matched.relation_type} - {matched.target}
+        </div>
+      )}
+      <div className="text-muted-foreground mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-4">
+        <span>Source {formatRawScore(components.source)}</span>
+        <span>Target {formatRawScore(components.target)}</span>
+        <span>Predicate {formatRawScore(components.predicate)}</span>
+        <span>Direction {formatRawScore(components.direction)}</span>
+      </div>
+    </div>
   )
 }
 
@@ -216,29 +282,21 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <CaseMetric label="Entities" score={graphCase.entity_score} />
                 <CaseMetric label="Relations" score={graphCase.relation_score} />
-                {queryCase && <CaseMetric label="Content" score={queryCase.content_score} />}
+                {queryCase && <CaseMetric label="Terms" score={queryCase.content_score} />}
               </div>
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
-              <div>
-                <div className="text-muted-foreground mb-2 text-xs font-medium uppercase">
-                  Expected Relations
-                </div>
-                <div className="space-y-2">
-                  {(graphCase.relation_checks || []).map((check: any, index: number) => (
-                    <div
-                      key={`${graphCase.id}-relation-${index}`}
-                      className="rounded border px-3 py-2 text-sm"
-                    >
-                      <div className={check.passed ? 'text-emerald-400' : (check.score || 0) > 0 ? 'text-amber-400' : 'text-red-400'}>
-                        {check.passed ? 'Exact' : (check.score || 0) > 0 ? `Partial ${formatScore(check.score)}` : 'Missing'}
-                      </div>
-                      <div className="text-muted-foreground mt-1">
-                        {check.expected?.source} - {check.expected?.relation_type} -{' '}
-                        {check.expected?.target}
-                      </div>
-                    </div>
-                  ))}
+              <div className="space-y-4">
+                <EntityChecks checks={graphCase.entity_checks || []} />
+                <div>
+                  <div className="text-muted-foreground mb-2 text-xs font-medium uppercase">
+                    Expected Relations
+                  </div>
+                  <div className="space-y-2">
+                    {(graphCase.relation_checks || []).map((check: any, index: number) => (
+                      <RelationCheck key={`${graphCase.id}-relation-${index}`} check={check} />
+                    ))}
+                  </div>
                 </div>
               </div>
               {queryCase && (
@@ -825,9 +883,9 @@ export default function EvaluationManager() {
         {result && (
           <>
             <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <ScoreTile label="Overall" score={result.scores.overall} detail={result.run.mode} />
-              <ScoreTile label="Graph" score={result.scores.graph} />
-              <ScoreTile label="Metadata" score={result.scores.metadata} />
+              <ScoreTile label="Overall" score={result.scores.overall} detail={formatOverallWeights(result)} />
+              <ScoreTile label="Graph" score={result.scores.graph} detail={`entities ${formatScore(result.summary.graph.entity_score)} · relations ${formatScore(result.summary.graph.relation_score)}`} />
+              <ScoreTile label="Metadata" score={result.scores.metadata} detail="diagnostic" />
               <ScoreTile label="Retrieval" score={result.scores.retrieval} />
               <ScoreTile label="Directed" score={result.scores.directed} />
               <ScoreTile label="Directed Exact" score={result.scores.directed_exact} />

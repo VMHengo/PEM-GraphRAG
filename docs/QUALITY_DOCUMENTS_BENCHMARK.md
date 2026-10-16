@@ -91,7 +91,8 @@ path to cite every paper.
 
 The runner reads these existing fields:
 
-- `expected_entities`: normalized name coverage.
+- `expected_entities`: normalized name coverage. Relation endpoints and path
+  nodes are added automatically so required intermediates cannot be omitted.
 - `expected_relations`: semantic endpoint/predicate/direction matches.
 - `source_aliases`, `target_aliases`: explicitly accepted endpoint names.
 - `accepted_relation_types`: full or weighted credit for reviewed alternatives.
@@ -113,15 +114,17 @@ Important interpretation limits:
 
 - Graph and directed scores are gold-coverage measures. They do not measure
   false-positive extraction precision over all graph edges.
-- Correct endpoints, ordering and evidence receive partial credit despite
-  predicate variation. Exact scores remain a separate diagnostic.
+- Explicit aliases and reviewed predicate alternatives can receive partial
+  credit. A wrong source or target receives no relation credit, and exact
+  scores remain a separate diagnostic.
 - Directionality and predicates such as `affects` do not encode whether an
   effect increases or decreases a quantity. Check sign in the description and
   answer. Aliases must not equate "error" with "accuracy" or "gradient" with
   "uniformity".
-- The current graph scorer can award component points to a wrong relation;
-  path scoring can award direction, continuity and citation points to a poorly
-  matched path. Inspect endpoint/edge recall, not just the aggregate.
+- Scoring version 2.0.0 derives required entities from relation endpoints and
+  path nodes. It gates relation credit on both endpoints and gates path
+  continuity, direction, citation, and router credit on matching hops.
+  Inspect endpoint/edge recall, not just the aggregate.
 - Strict exact-path diagnostics use the older matching code; explicit aliases
   and weighted alternatives primarily benefit the semantic score.
 - `must_include` is a lexical diagnostic. A paraphrase or translation can miss
@@ -133,7 +136,8 @@ Important interpretation limits:
 - `normal` passing its directed check means it correctly skipped traversal.
   It does not mean it found the expected causal chain.
 - Metadata coverage is completeness, not correctness. In a mixed workspace it
-  also includes graph edges outside this corpus.
+  also includes graph edges outside this corpus. It is a diagnostic and quality
+  gate, not Overall-score credit.
 - Graph matching is workspace-wide rather than document-filtered per edge.
   Use an isolated workspace/candidate corpus for controlled comparisons.
 
