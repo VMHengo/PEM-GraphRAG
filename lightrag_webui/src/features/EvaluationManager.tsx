@@ -18,6 +18,7 @@ import {
   SelectValue
 } from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
 import {
   Tooltip,
   TooltipContent,
@@ -606,6 +607,7 @@ function PromptComparison({
 }
 
 export default function EvaluationManager() {
+  const [activeSection, setActiveSection] = useState<'benchmarks' | 'prompt-experiments'>('benchmarks')
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
   const [mode, setMode] = useState<EvaluationRunMode>('retrieval')
@@ -766,180 +768,207 @@ export default function EvaluationManager() {
   return (
     <TooltipProvider delayDuration={250}>
       <div className="flex h-full flex-col gap-4 overflow-auto p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Evaluation</h2>
-            <p className="text-muted-foreground text-sm">
-              Run repeatable graph and retrieval quality checks against the current knowledge base.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="min-w-[280px]">
-              <Select value={selectedBenchmark} onValueChange={setSelectedBenchmark}>
-                <SelectTrigger>
-                  <SelectValue placeholder={isLoading ? 'Loading benchmarks...' : 'Select benchmark'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {benchmarks.map((benchmark) => (
-                    <SelectItem key={benchmark.id} value={benchmark.id}>
-                      [{benchmark.tier || 'custom'}] {benchmark.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-[220px]">
-              <Select value={mode} onValueChange={(value) => setMode(value as EvaluationRunMode)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="graph">Graph</SelectItem>
-                  <SelectItem value="retrieval">Retrieval</SelectItem>
-                  <SelectItem value="full">Full QA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="outline" size="sm" onClick={loadBenchmarks} disabled={isLoading}>
-              <RefreshCwIcon className={isLoading ? 'animate-spin' : ''} /> Refresh
-            </Button>
-            <Button size="sm" onClick={openRunDialog} disabled={!selectedBenchmark || isSubmitting}>
-              <PlayIcon /> Run Benchmark
-            </Button>
-          </div>
+        <div>
+          <h2 className="text-xl font-semibold">Evaluation</h2>
+          <p className="text-muted-foreground text-sm">
+            Measure retrieval quality or compare isolated extraction prompt profiles.
+          </p>
         </div>
 
-        <Card className="rounded-md">
-          <CardHeader>
-            <CardTitle>{activeBenchmark?.name || 'No benchmark selected'}</CardTitle>
-            <CardDescription>
-              {activeBenchmark?.description || 'Add benchmark JSON files under evaluation/benchmarks.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-sm">
-              <span className="text-muted-foreground">Cases:</span>{' '}
-              {activeBenchmark?.case_count ?? 0}
-            </div>
-            <div className="text-sm">
-              <span className="text-muted-foreground">Tier:</span>{' '}
-              {activeBenchmark?.tier || 'custom'}
-            </div>
-            <div className="text-sm">
-              <span className="text-muted-foreground">Selected mode:</span>{' '}
-              {modeDescriptions[mode]}
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs
+          value={activeSection}
+          onValueChange={(value) => setActiveSection(value as 'benchmarks' | 'prompt-experiments')}
+        >
+          <TabsList className="w-fit">
+            <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
+            <TabsTrigger value="prompt-experiments">Prompt Experiments</TabsTrigger>
+          </TabsList>
 
-        <PromptExperimentManager benchmarks={benchmarks} />
-
-        <RunHistory
-          runs={runs}
-          selectedRunId={selectedRunId}
-          isLoading={isLoadingRuns}
-          onOpen={setSelectedRunId}
-          onEdit={openEditDialog}
-          onRefresh={() => void loadRuns()}
-        />
-
-        <PromptComparison
-          runs={runs}
-          selectedRun={selectedRun}
-          baselineRunId={effectiveComparisonBaselineId}
-          onBaselineChange={setComparisonBaselineId}
-        />
-
-        {selectedRun && (
-          <div className="border-y py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <TabsContent
+            value="benchmarks"
+            className="mt-4 h-auto w-auto space-y-4 data-[state=inactive]:hidden"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">{selectedRun.title}</h3>
-                  <span className={`text-xs font-medium capitalize ${statusTone[selectedRun.status]}`}>
-                    {selectedRun.status}
-                  </span>
-                </div>
-                {selectedRun.note && <p className="text-muted-foreground mt-1 text-sm">{selectedRun.note}</p>}
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Extraction: {formatRevision(selectedRun.extraction_revision)}
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {selectedRun.benchmark_name} · {selectedRun.mode} · {formatDate(selectedRun.created_at)}
+                <h3 className="font-semibold">Benchmark Runs</h3>
+                <p className="text-muted-foreground text-sm">
+                  Run repeatable graph and retrieval quality checks against the current knowledge base.
                 </p>
               </div>
-              <Button variant="outline" size="icon" onClick={() => openEditDialog(selectedRun)} tooltip="Edit title and note">
-                <PencilIcon />
-                <span className="sr-only">Edit title and note</span>
-              </Button>
-            </div>
-            {['queued', 'running'].includes(selectedRun.status) && (
-              <p className="mt-2 text-sm text-amber-400">This run continues in the background. Its status refreshes every 10 seconds.</p>
-            )}
-            {selectedRun.error && <p className="mt-2 text-sm text-red-400">{selectedRun.error}</p>}
-          </div>
-        )}
-
-        {result && (
-          <>
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <ScoreTile label="Overall" score={result.scores.overall} detail={formatOverallWeights(result)} />
-              <ScoreTile label="Graph" score={result.scores.graph} detail={`entities ${formatScore(result.summary.graph.entity_score)} · relations ${formatScore(result.summary.graph.relation_score)}`} />
-              <ScoreTile label="Metadata" score={result.scores.metadata} detail="diagnostic" />
-              <ScoreTile label="Retrieval" score={result.scores.retrieval} />
-              <ScoreTile label="Directed" score={result.scores.directed} />
-              <ScoreTile label="Directed Exact" score={result.scores.directed_exact} />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="min-w-[280px]">
+                  <Select value={selectedBenchmark} onValueChange={setSelectedBenchmark}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={isLoading ? 'Loading benchmarks...' : 'Select benchmark'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {benchmarks.map((benchmark) => (
+                        <SelectItem key={benchmark.id} value={benchmark.id}>
+                          [{benchmark.tier || 'custom'}] {benchmark.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-[220px]">
+                  <Select value={mode} onValueChange={(value) => setMode(value as EvaluationRunMode)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="graph">Graph</SelectItem>
+                      <SelectItem value="retrieval">Retrieval</SelectItem>
+                      <SelectItem value="full">Full QA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" size="sm" onClick={loadBenchmarks} disabled={isLoading}>
+                  <RefreshCwIcon className={isLoading ? 'animate-spin' : ''} /> Refresh
+                </Button>
+                <Button size="sm" onClick={openRunDialog} disabled={!selectedBenchmark || isSubmitting}>
+                  <PlayIcon /> Run Benchmark
+                </Button>
+              </div>
             </div>
 
             <Card className="rounded-md">
               <CardHeader>
-                <CardTitle>Metadata Coverage</CardTitle>
+                <CardTitle>{activeBenchmark?.name || 'No benchmark selected'}</CardTitle>
                 <CardDescription>
-                  {result.summary.edges} edges and {result.summary.nodes} nodes inspected.
+                  {activeBenchmark?.description || 'Add benchmark JSON files under evaluation/benchmarks.'}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <MetadataCoverage result={result} />
+              <CardContent className="space-y-2">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Cases:</span>{' '}
+                  {activeBenchmark?.case_count ?? 0}
+                </div>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Tier:</span>{' '}
+                  {activeBenchmark?.tier || 'custom'}
+                </div>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Selected mode:</span>{' '}
+                  {modeDescriptions[mode]}
+                </div>
               </CardContent>
             </Card>
 
-            <DirectedRetrievalQuality result={result} />
+            <RunHistory
+              runs={runs}
+              selectedRunId={selectedRunId}
+              isLoading={isLoadingRuns}
+              onOpen={setSelectedRunId}
+              onEdit={openEditDialog}
+              onRefresh={() => void loadRuns()}
+            />
 
-            <QualityGates result={result} />
+            <PromptComparison
+              runs={runs}
+              selectedRun={selectedRun}
+              baselineRunId={effectiveComparisonBaselineId}
+              onBaselineChange={setComparisonBaselineId}
+            />
 
-            <Card className="rounded-md">
-              <CardHeader>
-                <CardTitle>Failed Checks</CardTitle>
-                <CardDescription>
-                  {result.failed_checks.length === 0
-                    ? 'All configured checks passed.'
-                    : `${result.failed_checks.length} checks need attention.`}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {result.failed_checks.length === 0 ? (
-                  <div className="text-sm text-emerald-400">No failed checks.</div>
-                ) : (
-                  <ul className="max-h-56 list-disc overflow-auto pl-5 text-sm">
-                    {result.failed_checks.map((failure, index) => (
-                      <li key={`${failure}-${index}`}>{failure}</li>
-                    ))}
-                  </ul>
+            {selectedRun && (
+              <div className="border-y py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{selectedRun.title}</h3>
+                      <span className={`text-xs font-medium capitalize ${statusTone[selectedRun.status]}`}>
+                        {selectedRun.status}
+                      </span>
+                    </div>
+                    {selectedRun.note && <p className="text-muted-foreground mt-1 text-sm">{selectedRun.note}</p>}
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Extraction: {formatRevision(selectedRun.extraction_revision)}
+                    </p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {selectedRun.benchmark_name} · {selectedRun.mode} · {formatDate(selectedRun.created_at)}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="icon" onClick={() => openEditDialog(selectedRun)} tooltip="Edit title and note">
+                    <PencilIcon />
+                    <span className="sr-only">Edit title and note</span>
+                  </Button>
+                </div>
+                {['queued', 'running'].includes(selectedRun.status) && (
+                  <p className="mt-2 text-sm text-amber-400">This run continues in the background. Its status refreshes every 10 seconds.</p>
                 )}
-              </CardContent>
-            </Card>
+                {selectedRun.error && <p className="mt-2 text-sm text-red-400">{selectedRun.error}</p>}
+              </div>
+            )}
 
-            <Card className="rounded-md">
-              <CardHeader>
-                <CardTitle>Case Details</CardTitle>
-                <CardDescription>Run ID: {selectedRun?.id || result.run.id || 'unknown'}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <CaseDetails result={result} />
-              </CardContent>
-            </Card>
-          </>
-        )}
+            {result && (
+              <>
+                <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                  <ScoreTile label="Overall" score={result.scores.overall} detail={formatOverallWeights(result)} />
+                  <ScoreTile label="Graph" score={result.scores.graph} detail={`entities ${formatScore(result.summary.graph.entity_score)} · relations ${formatScore(result.summary.graph.relation_score)}`} />
+                  <ScoreTile label="Metadata" score={result.scores.metadata} detail="diagnostic" />
+                  <ScoreTile label="Retrieval" score={result.scores.retrieval} />
+                  <ScoreTile label="Directed" score={result.scores.directed} />
+                  <ScoreTile label="Directed Exact" score={result.scores.directed_exact} />
+                </div>
+
+                <Card className="rounded-md">
+                  <CardHeader>
+                    <CardTitle>Metadata Coverage</CardTitle>
+                    <CardDescription>
+                      {result.summary.edges} edges and {result.summary.nodes} nodes inspected.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <MetadataCoverage result={result} />
+                  </CardContent>
+                </Card>
+
+                <DirectedRetrievalQuality result={result} />
+
+                <QualityGates result={result} />
+
+                <Card className="rounded-md">
+                  <CardHeader>
+                    <CardTitle>Failed Checks</CardTitle>
+                    <CardDescription>
+                      {result.failed_checks.length === 0
+                        ? 'All configured checks passed.'
+                        : `${result.failed_checks.length} checks need attention.`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {result.failed_checks.length === 0 ? (
+                      <div className="text-sm text-emerald-400">No failed checks.</div>
+                    ) : (
+                      <ul className="max-h-56 list-disc overflow-auto pl-5 text-sm">
+                        {result.failed_checks.map((failure, index) => (
+                          <li key={`${failure}-${index}`}>{failure}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-md">
+                  <CardHeader>
+                    <CardTitle>Case Details</CardTitle>
+                    <CardDescription>Run ID: {selectedRun?.id || result.run.id || 'unknown'}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <CaseDetails result={result} />
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent
+            value="prompt-experiments"
+            className="mt-4 h-auto w-auto data-[state=inactive]:hidden"
+          >
+            <PromptExperimentManager benchmarks={benchmarks} />
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={runDialogOpen} onOpenChange={setRunDialogOpen}>
