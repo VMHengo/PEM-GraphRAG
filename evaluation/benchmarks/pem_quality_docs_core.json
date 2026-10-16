@@ -1,0 +1,528 @@
+{
+  "id": "pem_quality_docs_core",
+  "name": "PEM Quality Papers - Extraction and Grounding",
+  "description": "Thirty source-audited cases across ten local papers. Checks extraction, model-selection limits, thermal mechanisms, measurement context and source coverage separately from directed path search. Reference answers and counterclaims are human-review guidance, not an LLM judge.",
+  "version": 1,
+  "benchmark_tier": "core",
+  "default_mode": "mix",
+  "source_directory": "test_documents/quality_docs",
+  "page_numbering": "One-based physical PDF pages, including publisher and ResearchGate cover pages.",
+  "evaluation_notes": [
+    "Run graph first, retrieval second, and full only after local embedding/import is healthy.",
+    "Graph and retrieval scores measure gold coverage, not factual precision or scientific accuracy. Inspect matched edges and reference answers.",
+    "The existing evaluator scores expected_entities, expected_relations, must_include and expected_documents. expected_answer, evidence and unacceptable_claims are review metadata.",
+    "Relations accept explicit surface aliases and conservative weighted predicate alternatives. Affects/influences do not establish positive or negative effect signs.",
+    "Do not interpret metadata completeness as correctness or infer a universal thermal trend across different chemistries and operating conditions.",
+    "Use all ten source documents for the complete suite. Prompt screening on sampled chunks is exploratory because it can omit the gold evidence."
+  ],
+  "document_scope": [
+    {"id": "thermal_review", "file": "A Critical Review of Thermal Issues in Lithium-Ion Batteries.pdf", "pdf_pages": 26, "sha256": "a2105863696a96322e7a836eabf018958014fac7f95969f5fe3636f14f4cf18a"},
+    {"id": "estimation_review", "file": "Advancements in parameter estimation techniques for 1RC and 2RC equivalent circuit models of lithium-ion batteries A comprehensive review.pdf", "pdf_pages": 39, "sha256": "4b8e4c1892d3bd64680d7a32410f255975a54bbc34426f4a3aaeebbc5244705a"},
+    {"id": "heat_factors", "file": "Analysis of the heat generation of lithium-ion battery during charging and discharging considering different influencing factors.pdf", "pdf_pages": 11, "sha256": "cab1002735c23695d1231df5165128d7b2cb742de234089a4c3cc882b926fd7e"},
+    {"id": "generic_models", "file": "AnOverviewofGenericBatteryModels.pdf", "pdf_pages": 7, "sha256": "f66d28bd5ce607c95d22a9ce4eaee2ff5c071ada6c2962ad330f6a53f21e14b7"},
+    {"id": "model_comparison", "file": "Critical comparison of equivalent circuit and physics-based models for lithium-ion batteries.pdf", "pdf_pages": 17, "sha256": "4cad7d0513a776862b7b13c798f76d0c11364b0cf038064b4db1ef19689b8967"},
+    {"id": "calorimeter", "file": "Finite-Element Simulation for Thermal Modeling of a Cell in an Adiabatic Calorimeter.pdf", "pdf_pages": 12, "sha256": "c3961f1ec21b779d84472895284ad8b78828abb46d6aa612e6445794c5694f49"},
+    {"id": "aging", "file": "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging.pdf", "pdf_pages": 10, "sha256": "ae26eaa21694ac3e7ac44ddcabfddfa04bd3486dbe33907da5da1625bc7d18f2"},
+    {"id": "mixing", "file": "Heats of mixing and of entropy in porous insertion electrodes.pdf", "pdf_pages": 6, "sha256": "9bf976d5c6ee4e23e1af65902ae122ab6df77460a04e48a007e3378fee633782"},
+    {"id": "coupled_model", "file": "The Polarization and Heat Generation Characteristics of Lithium-Ion Battery with Electric-Thermal Coupled Modeling.pdf", "pdf_pages": 23, "sha256": "efee7eaa082eb1dff1347145caf3ccdd2ff0a02f17e28885657fd2b8fc28c487"},
+    {"id": "thermal_design", "file": "Thermal modeling and design considerations of lithium-ion batteries.pdf", "pdf_pages": 8, "sha256": "48403c9802a8d0221e87c7f32c01694360b88033c6ef5945054be356a0fe47a6"}
+  ],
+  "quality_gates": {
+    "min_scores": {"graph": 65, "metadata": 80, "retrieval": 70},
+    "min_metadata_coverage": {"directionality": 85, "relation_type": 90, "relation_importance": 85, "chain_role": 65, "specific_relation_type": 85}
+  },
+  "cases": [
+    {
+      "id": "review_separator_short_circuit",
+      "category": "causal_mechanism",
+      "question": "How can separator melting produce additional heating in a lithium-ion battery?",
+      "hl_keywords": ["thermal runaway", "separator failure"],
+      "ll_keywords": ["separator melting", "internal short circuit", "additional heating"],
+      "expected_entities": ["Separator", "Short Circuit"],
+      "expected_relations": [
+        {"source": "Separator Melting", "source_aliases": ["Melted Separator", "Melting of the Separator"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1, "influences": 0.65}, "target": "Internal Short Circuit", "target_aliases": ["Battery Short Circuit", "Short Circuit"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["separator", "short circuit", "heat"],
+      "expected_documents": ["A Critical Review of Thermal Issues in Lithium-Ion Batteries"],
+      "expected_answer": "A melted separator can permit an internal short circuit, which adds heating and can contribute to thermal runaway. This is a conditional failure mechanism, not proof that every melting event produces an explosion.",
+      "unacceptable_claims": ["Separator melting improves electrical isolation.", "Every separator melts at one universal temperature."],
+      "evidence": [{"id": "e1", "document": "thermal_review", "page": 5, "section": "Thermal runaway", "anchor": "a melted separator could cause the battery to short circuit", "support": "The review explicitly links melted separator, short circuit and additional heating."}]
+    },
+    {
+      "id": "review_cold_charge_irreversible_loss",
+      "category": "conditional_mechanism",
+      "question": "Why can cold charging permanently reduce capacity rather than only temporarily reducing available power?",
+      "hl_keywords": ["cold charging", "irreversible capacity loss"],
+      "ll_keywords": ["charge transfer", "lithium plating", "electrolyte reduction"],
+      "expected_entities": ["Lithium Plating", "Capacity Loss"],
+      "expected_relations": [
+        {"source": "Poor Charge Transfer", "source_aliases": ["Poor Charge Transfer at the Electrode/Electrolyte Interface", "Reduced Charge Transfer"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Lithium Plating", "target_aliases": ["Plating on the Negative Electrode"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Lithium Plating", "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Irreversible Capacity Loss", "target_aliases": ["Permanent Capacity Loss"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["charging", "plating", "capacity"],
+      "expected_documents": ["A Critical Review of Thermal Issues in Lithium-Ion Batteries"],
+      "expected_answer": "The review connects poor interfacial charge transfer at low temperature to plating on the negative electrode during charging and irreversible capacity loss through electrolyte reduction. Distinguish this damage from reversible cold-temperature performance loss.",
+      "unacceptable_claims": ["Warming always recovers all capacity lost by lithium plating.", "Cold discharge and cold charging have identical consequences."],
+      "evidence": [{"id": "e1", "document": "thermal_review", "page": 6, "section": "Low temperature performance", "anchor": "poor charge transfer can lead to significant plating", "support": "The cold-temperature section identifies interfacial charge transfer, charging-time plating and irreversible loss."}]
+    },
+    {
+      "id": "review_sei_protection_loss",
+      "category": "causal_mechanism",
+      "question": "What protective role does the SEI have, and why can its decomposition allow further exothermic reactions?",
+      "hl_keywords": ["SEI decomposition", "thermal runaway mechanism"],
+      "ll_keywords": ["SEI", "lithiated carbon", "organic electrolyte", "exothermic reaction"],
+      "expected_entities": ["SEI", "Electrolyte"],
+      "expected_relations": [
+        {"source": "SEI Decomposition", "source_aliases": ["Decomposition of the SEI Film", "Incomplete SEI"], "relation_type": "leads_to", "accepted_relation_types": {"causes": 1, "results_in": 1}, "target": "Negative Electrode Electrolyte Reaction", "target_aliases": ["Reaction of the Negative Electrode with the Solvent", "Anode Electrolyte Reaction"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["SEI", "electrolyte", "exothermic"],
+      "expected_documents": ["A Critical Review of Thermal Issues in Lithium-Ion Batteries"],
+      "expected_answer": "The SEI normally protects lithiated carbon from further reaction with organic electrolyte. When the film is incomplete after decomposition, exposed negative-electrode material can react exothermically with solvent. The review reports ranges and chemistry-dependent pathways, not a universal onset temperature.",
+      "unacceptable_claims": ["All SEI constituents decompose simultaneously.", "An intact SEI causes rather than suppresses continued electrolyte attack."],
+      "evidence": [{"id": "e1", "document": "thermal_review", "page": 5, "section": "Thermal runaway", "anchor": "The SEI normally protects the lithiated carbon", "support": "The surrounding sentences explain exposure and exothermic electrode-solvent reaction after loss of protection."}]
+    },
+    {
+      "id": "estimation_hppc_heating_bias",
+      "category": "measurement_bias",
+      "question": "How can large HPPC pulses bias equivalent-circuit parameter identification?",
+      "hl_keywords": ["HPPC", "parameter identification error"],
+      "ll_keywords": ["current pulses", "heat", "constant SOC", "EECM parameters"],
+      "expected_entities": ["HPPC", "Heat", "Parameters"],
+      "expected_relations": [
+        {"source": "HPPC Current Pulses", "source_aliases": ["HPPC Pulses", "High Current Pulses"], "relation_type": "causes", "accepted_relation_types": {"produces": 1, "leads_to": 1, "results_in": 1}, "target": "Heat Generation", "target_aliases": ["Pulse-Induced Heating", "Heating"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Pulse-Induced Heating", "source_aliases": ["Heat Generation", "Heating"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "influences": 0.8}, "target": "EECM Parameter Errors", "target_aliases": ["Errors in EECM Parameters", "Parameter Identification Errors"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["pulse", "heat", "parameters"],
+      "expected_documents": ["Advancements in parameter estimation techniques for 1RC and 2RC"],
+      "expected_answer": "The review warns that HPPC current pulses induce heating and contribute to parameter errors. It separately notes that treating SOC as constant during a large pulse can be inaccurate. Preserve both qualifications rather than claiming HPPC is intrinsically invalid.",
+      "unacceptable_claims": ["HPPC identifies parameters independently of current, temperature and SOC."],
+      "evidence": [{"id": "e1", "document": "estimation_review", "page": 7, "section": "4. Experimental techniques for data collections", "anchor": "The pulses generated by this method induce heat", "support": "Heating and SOC assumptions are explicitly identified as sources of parameter error."}]
+    },
+    {
+      "id": "estimation_forgetting_factor_tradeoff",
+      "category": "algorithm_tradeoff",
+      "question": "What is the tradeoff between a smaller and larger forgetting factor in recursive least squares?",
+      "hl_keywords": ["recursive least squares", "forgetting factor tradeoff"],
+      "ll_keywords": ["FFRLS", "new data", "tracking", "fluctuations"],
+      "expected_entities": ["Forgetting Factor", "Parameter Identification"],
+      "expected_relations": [
+        {"source": "Forgetting Factor", "source_aliases": ["RLS Forgetting Factor", "Lambda"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Parameter Tracking", "target_aliases": ["System Tracking", "Tracking Effectiveness"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Forgetting Factor", "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Parameter Identification Fluctuations", "target_aliases": ["Parameter Fluctuations", "Identification Result Fluctuations"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["forgetting factor", "tracking", "fluctuations"],
+      "expected_documents": ["Advancements in parameter estimation techniques for 1RC and 2RC"],
+      "expected_answer": "Smaller lambda weights recent data more strongly, improves tracking but increases parameter fluctuations. Larger lambda gives older data greater influence, reducing fluctuations while worsening tracking. The review also warns about oscillation and divergence; neither choice is universally optimal.",
+      "unacceptable_claims": ["A smaller forgetting factor simultaneously minimizes fluctuations and maximizes tracking without a tradeoff."],
+      "evidence": [{"id": "e1", "document": "estimation_review", "page": 29, "section": "Recursive least squares methods", "anchor": "emphasizes the impact", "support": "The paragraph following Eq. 138 explicitly contrasts recent-data tracking with identification fluctuations."}]
+    },
+    {
+      "id": "estimation_more_rc_not_always_better",
+      "category": "overgeneralization_guard",
+      "question": "Does increasing the number of RC branches always improve a battery model?",
+      "hl_keywords": ["RC model order", "accuracy complexity tradeoff"],
+      "ll_keywords": ["RC pairs", "computational complexity", "overfitting"],
+      "expected_entities": ["RC", "Computational Complexity", "Overfitting"],
+      "expected_relations": [
+        {"source": "Additional RC Networks", "source_aliases": ["More RC Pairs", "Increasing RC Model Order", "RC Networks"], "relation_type": "influences", "accepted_relation_types": {"increases": 1, "affects": 1}, "target": "Computational Complexity", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Additional RC Networks", "source_aliases": ["More RC Pairs", "Increasing RC Model Order", "RC Networks"], "relation_type": "influences", "accepted_relation_types": {"increases": 1, "affects": 1}, "target": "Overfitting", "target_aliases": ["Overfitting Risk"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["RC", "complexity", "overfitting"],
+      "expected_documents": ["Advancements in parameter estimation techniques for 1RC and 2RC"],
+      "expected_answer": "No. Extra branches can capture additional dynamics, but increase complexity and potential overfitting. The review explicitly says adding RC networks does not consistently improve accuracy. Select order against measured performance, excitation and computational limits.",
+      "unacceptable_claims": ["2RC is always more accurate than 1RC.", "Any additional RC branch guarantees better SOC estimation."],
+      "evidence": [{"id": "e1", "document": "estimation_review", "page": 4, "section": "2.3. nRC model", "anchor": "potential for overfitting", "support": "The text explicitly rejects a guaranteed monotonic accuracy improvement with added RC networks."}]
+    },
+    {
+      "id": "heat_factors_cold_resistance",
+      "category": "conditional_mechanism",
+      "question": "Why can the tested cell generate more Joule heat at lower operating temperature?",
+      "hl_keywords": ["temperature dependent resistance", "Joule heat"],
+      "ll_keywords": ["operating temperature", "internal resistance", "overpotential"],
+      "expected_entities": ["Internal Resistance", "Joule Heat"],
+      "expected_relations": [
+        {"source": "Operating Temperature", "source_aliases": ["Battery Temperature", "Low Operating Temperature"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Internal Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Internal Resistance", "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9}, "target": "Joule Heat", "target_aliases": ["Resistive Heat", "Irreversible Heat"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["temperature", "resistance", "Joule"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery"],
+      "expected_answer": "For comparable current and SOC in the studied LMO/graphite cell, lower operating temperature increases internal resistance and overpotential, raising resistive Joule heat. This instantaneous operating-temperature trend is distinct from damage accumulated during high-temperature aging.",
+      "unacceptable_claims": ["A low ambient temperature necessarily makes the cell's absolute temperature higher than in a hot environment."],
+      "evidence": [{"id": "e1", "document": "heat_factors", "page": 3, "section": "Heat generation formulation, Eqs. 2-3", "anchor": "the resistance increases with the", "support": "The formulation relates Joule heating to resistance and states the inverse operating-temperature trend."}]
+    },
+    {
+      "id": "heat_factors_current_scaling",
+      "category": "mechanism_and_scaling",
+      "question": "Why does Joule heat account for a greater fraction of heat generation at larger discharge currents?",
+      "hl_keywords": ["current dependence of heat", "Joule heat fraction"],
+      "ll_keywords": ["current", "Joule heat", "reaction heat"],
+      "expected_entities": ["Current", "Joule Heat", "Reaction Heat"],
+      "expected_relations": [
+        {"source": "Discharge Current", "source_aliases": ["Operating Current", "Current"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 0.9}, "target": "Joule Heat", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["current", "Joule", "reaction"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery"],
+      "expected_answer": "At fixed resistance and thermodynamic coefficient, Joule heat scales with current squared whereas the entropic term scales linearly with current. The paper observes a greater Joule fraction at higher current. Changes in resistance, SOC and temperature qualify the simple scaling argument.",
+      "unacceptable_claims": ["Both heat terms necessarily scale quadratically with current."],
+      "evidence": [{"id": "e1", "document": "heat_factors", "page": 8, "section": "Influence of current", "anchor": "As discharge current increases", "support": "The current comparison attributes increasing heat share to the different current dependencies of the two heat terms."}]
+    },
+    {
+      "id": "heat_factors_entropy_sign",
+      "category": "sign_and_conditions",
+      "question": "Can the reaction heat during discharge be negative, and what controls its sign?",
+      "hl_keywords": ["reversible entropic heat", "SOC dependence"],
+      "ll_keywords": ["effective entropic potential", "SOC", "negative total heat"],
+      "expected_entities": ["SOC", "Reaction Heat"],
+      "expected_relations": [
+        {"source": "State of Charge", "source_aliases": ["SOC"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Entropic Potential", "target_aliases": ["Effective Entropic Potential", "Entropy Coefficient"], "directionality": "directed", "evidence_ids": ["e1", "e2"]}
+      ],
+      "must_include": ["SOC", "reaction heat", "negative"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery"],
+      "expected_answer": "Yes, in parts of the tested cell's high-SOC discharge range reaction heat is negative and total heat can be small or negative. Its sign follows current direction and the SOC-dependent entropic coefficient. Distinguish it from irreversible Joule heat and retain the paper's current sign convention.",
+      "unacceptable_claims": ["Reversible heat is always exothermic during discharge.", "A negative entropic term proves negative electrical resistance."],
+      "evidence": [
+        {"id": "e1", "document": "heat_factors", "page": 3, "section": "Heat generation formulation", "anchor": "The entropic potential is strongly", "support": "The coefficient depends strongly on SOC and chemistry."},
+        {"id": "e2", "document": "heat_factors", "page": 7, "section": "SOC and temperature results", "anchor": "reaction heat is mostly negative", "support": "The high-SOC result explicitly allows negative entropic and total heat."}
+      ]
+    },
+    {
+      "id": "generic_least_squares_identification",
+      "category": "model_calibration",
+      "question": "How are the generic models fitted, and why is prior test data necessary?",
+      "hl_keywords": ["generic battery models", "parameter fitting"],
+      "ll_keywords": ["Shepherd model", "least square estimation", "model voltage"],
+      "expected_entities": ["Shepherd Model", "Least Square Estimation"],
+      "expected_relations": [
+        {"source": "Least Square Estimation", "source_aliases": ["Least Squares Estimation", "Least Squares"], "relation_type": "produces", "accepted_relation_types": {"estimates": 1, "determines": 1}, "target": "Model Parameters", "target_aliases": ["Unknown Parameter Vector", "Unknown Vector"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["voltage", "parameters", "data"],
+      "expected_documents": ["AnOverviewofGenericBatteryModels"],
+      "expected_answer": "The mathematical model coefficients are fitted to measured voltage/current/SOC test data by minimizing model-versus-measured voltage error; the paper writes a least-squares solution for the unknown parameter vector. These models are calibrated, rather than parameter-free physical predictions.",
+      "unacceptable_claims": ["The coefficients can always be inferred uniquely without experimental data."],
+      "evidence": [{"id": "e1", "document": "generic_models", "page": 2, "section": "II. Mathematical models; Shepherd model", "anchor": "Using least square", "support": "The section explains the error-minimization objective and gives the parameter-vector solution."}]
+    },
+    {
+      "id": "generic_voltage_soc_dependency",
+      "category": "estimator_dependency",
+      "question": "Why does voltage-model accuracy matter for the SOC estimates in the generic-model study?",
+      "hl_keywords": ["SOC estimator", "model accuracy"],
+      "ll_keywords": ["voltage prediction accuracy", "Extended Kalman Filter", "SOC"],
+      "expected_entities": ["SOC", "Extended Kalman Filter"],
+      "expected_relations": [
+        {"source": "Voltage Prediction Accuracy", "source_aliases": ["Model Voltage Accuracy", "Battery Model Accuracy"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "SOC Estimation Accuracy", "target_aliases": ["SOC Prediction Accuracy", "State of Charge Estimation Accuracy"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["voltage", "SOC", "Kalman"],
+      "expected_documents": ["AnOverviewofGenericBatteryModels"],
+      "expected_answer": "The study uses an extended Kalman filter to evaluate SOC prediction and explicitly links SOC estimation quality to voltage prediction accuracy. Estimator design and test conditions still matter; accurate voltage alone is not a universal guarantee of exact SOC.",
+      "unacceptable_claims": ["SOC prediction is independent of the underlying voltage model."],
+      "evidence": [{"id": "e1", "document": "generic_models", "page": 5, "section": "IV.B. SOC Prediction", "anchor": "voltage prediction accuracy", "support": "The opening paragraph explicitly connects SOC prediction to voltage-model accuracy and identifies the EKF."}]
+    },
+    {
+      "id": "generic_transient_model_selection",
+      "category": "conditional_model_selection",
+      "question": "Why can the RC model be preferable to the linear model during transients even when their steady-state performance is similar?",
+      "hl_keywords": ["RC model", "transient response"],
+      "ll_keywords": ["linear model", "transients", "steady state", "complexity"],
+      "expected_entities": ["RC Model", "Linear Model"],
+      "expected_relations": [
+        {"source": "Model Accuracy", "source_aliases": ["Battery Model Accuracy"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "SOC Prediction Accuracy", "target_aliases": ["SOC Estimation Accuracy"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["RC", "linear", "transients"],
+      "expected_documents": ["AnOverviewofGenericBatteryModels"],
+      "expected_answer": "The discussion reports similar steady-state behavior for RC and linear models, but a better transient response for the RC model. It connects model accuracy to SOC accuracy and notes the complexity tradeoff. This conclusion concerns the tested models and profiles, not every RC realization.",
+      "unacceptable_claims": ["Identical steady-state voltage proves identical dynamic performance."],
+      "evidence": [{"id": "e1", "document": "generic_models", "page": 6, "section": "Results discussion", "anchor": "During transients", "support": "The results contrast steady-state and transient performance and then relate model accuracy to SOC prediction."}]
+    },
+    {
+      "id": "comparison_ecm_extrapolation",
+      "category": "generalization_limit",
+      "question": "Why should good ECM validation on a WLTC profile not be taken as proof of reliable sustained fast-charge prediction?",
+      "hl_keywords": ["ECM calibration domain", "fast charging", "WLTC"],
+      "ll_keywords": ["short pulses", "prolonged current", "calibration range", "PBM"],
+      "expected_entities": ["ECM", "PBM", "WLTC"],
+      "expected_relations": [
+        {"source": "High Current Demands", "source_aliases": ["Prolonged Charging Current Pulses", "High Current", "High-Rate Charging"], "relation_type": "affects", "accepted_relation_types": {"influences": 1, "degrades": 1}, "target": "ECM Predictive Accuracy", "target_aliases": ["ECM Accuracy", "Equivalent Circuit Model Accuracy"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["WLTC", "calibration", "PBM"],
+      "expected_documents": ["Critical comparison of equivalent circuit and physics-based models"],
+      "expected_answer": "The graphite/LFP study's WLTC contains predominantly modest currents and brief high-current pulses resembling ECM calibration. Sustained high-rate charging probes a different regime where ECM accuracy falls and PBM is more predictive. Preserve pulse duration, calibration range and cell chemistry in the recommendation.",
+      "unacceptable_claims": ["An ECM accurate on WLTC is necessarily accurate for unlimited sustained fast charging."],
+      "evidence": [{"id": "e1", "document": "model_comparison", "page": 12, "section": "WLTC discussion and Conclusion", "anchor": "without prolonged", "support": "The discussion distinguishes brief WLTC loads from sustained high-rate use and describes the complementary model roles."}]
+    },
+    {
+      "id": "comparison_pbm_calibration_burden",
+      "category": "model_tradeoff",
+      "question": "What does a physics-based battery model gain, and what calibration and runtime burden accompanies it?",
+      "hl_keywords": ["physics-based model", "calibration complexity"],
+      "ll_keywords": ["physical parameters", "diffusion", "reaction kinetics", "computational time"],
+      "expected_entities": ["Physics-Based Model", "Diffusion"],
+      "expected_relations": [
+        {"source": "Physics-Based Model", "source_aliases": ["PBM", "Physics-Based Models"], "relation_type": "requires", "accepted_relation_types": {"uses": 1, "depends_on": 1}, "target": "Physical Parameters", "target_aliases": ["Estimation of Physical Parameters", "Extensive Experimental Data"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["parameters", "calibration", "computational"],
+      "expected_documents": ["Critical comparison of equivalent circuit and physics-based models"],
+      "expected_answer": "PBMs represent transport and reaction physics and can remain predictive outside an ECM's fitted domain. They require many physical parameters and extensive calibration, with a greater runtime burden for variable-current simulation. They complement rather than universally replace ECMs.",
+      "unacceptable_claims": ["PBMs need no calibration because they are physics-based."],
+      "evidence": [{"id": "e1", "document": "model_comparison", "page": 1, "section": "Abstract", "anchor": "many physical parameters", "support": "The abstract directly pairs broader predictiveness with laborious parameter estimation and extended computational time."}]
+    },
+    {
+      "id": "comparison_temperature_history_fairness",
+      "category": "comparison_validity",
+      "question": "Why does the paper compare temperature trends rather than only absolute ECM and PBM temperatures during WLTC?",
+      "hl_keywords": ["WLTC temperature validation", "initial condition fairness"],
+      "ll_keywords": ["temperature history", "initialising each cycle", "temperature trend"],
+      "expected_entities": ["ECM", "PBM", "Temperature"],
+      "expected_relations": [
+        {"source": "Temperature History", "source_aliases": ["Initial Temperature", "Temperature Initialization"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Temperature Prediction", "target_aliases": ["Absolute Temperature Prediction", "Predicted Temperature"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["PBM", "ECM", "temperature", "history"],
+      "expected_documents": ["Critical comparison of equivalent circuit and physics-based models"],
+      "expected_answer": "The PBM resets to measured temperature for separate WLTC segments, whereas the ECM carries history across the full test. Absolute offsets therefore reflect different initialization histories as well as model behavior. The paper calls for comparing temperature-change trends under these circumstances.",
+      "unacceptable_claims": ["Both models have identical temperature histories throughout the WLTC test."],
+      "evidence": [{"id": "e1", "document": "model_comparison", "page": 11, "section": "WLTC temperature discussion", "anchor": "resetting its", "support": "The paragraph explains segment-wise PBM initialization, continuous ECM history and fair trend comparison."}]
+    },
+    {
+      "id": "calorimeter_cell_disambiguation",
+      "category": "entity_disambiguation",
+      "question": "Does the cell in the finite-element calorimeter article store lithium electrochemically, or does it serve a different purpose?",
+      "hl_keywords": ["adiabatic calorimeter", "cell meaning"],
+      "ll_keywords": ["fluid", "heat capacity", "sample cell", "cryostat"],
+      "expected_entities": ["Adiabatic Calorimeter", "Fluid", "Heat Capacity"],
+      "expected_relations": [
+        {"source": "Calorimeter Cell", "source_aliases": ["Sample Cell", "Calorimeter Sample Cell"], "relation_type": "contains", "accepted_relation_types": {"holds": 1}, "target": "Fluid", "target_aliases": ["Test Fluid", "Working Fluid"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["calorimeter", "fluid", "heat capacity"],
+      "expected_documents": ["Finite-Element Simulation for Thermal Modeling of a Cell"],
+      "expected_answer": "It is a calorimeter sample vessel containing a test fluid for measuring heat capacity, with heaters, sensors and an adiabatic shield. It is not a lithium-ion electrochemical cell. The geometry findings concern the studied calorimeter and cannot be relabeled as battery chemistry results.",
+      "unacceptable_claims": ["This article validates a spherical lithium-ion battery.", "The working fluid is a lithium-ion electrode."],
+      "evidence": [{"id": "e1", "document": "calorimeter", "page": 2, "section": "Introduction and operating principle", "anchor": "the calorimeter containing the fluid", "support": "The paper explicitly defines the cell as the fluid-containing element of the calorimeter."}]
+    },
+    {
+      "id": "calorimeter_geometry_gradients",
+      "category": "measurement_design",
+      "question": "Why does the study favor spherical calorimeter geometry, and what measured quantity motivates uniform temperature?",
+      "hl_keywords": ["calorimeter geometry", "temperature gradients"],
+      "ll_keywords": ["spherical", "cylindrical", "heat capacity", "homogeneity"],
+      "expected_entities": ["Spherical", "Temperature Gradients", "Heat Capacity"],
+      "expected_relations": [
+        {"source": "Cell Geometry", "source_aliases": ["Calorimeter Geometry", "Spherical Geometry"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Temperature Gradients", "target_aliases": ["Temperature Distribution", "Thermal Gradients"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["spherical", "gradients", "heat capacity"],
+      "expected_documents": ["Finite-Element Simulation for Thermal Modeling of a Cell"],
+      "expected_answer": "In the simulated calorimeter configurations, the spherical cell has smaller maximum gradients, reported as 0.104 C versus 0.208 C for the cylindrical cell. Fluid temperature homogeneity matters for heat-capacity measurement accuracy. This is a configuration-specific result, not a universal geometry theorem.",
+      "unacceptable_claims": ["Sphere and cylinder necessarily contain different battery electrodes.", "These gradient values are universal across materials and dimensions."],
+      "evidence": [{"id": "e1", "document": "calorimeter", "page": 10, "section": "6. Conclusions", "anchor": "the maximum gradient for a spherical", "support": "The conclusion reports both gradient values and links fluid homogeneity to heat-capacity measurement."}]
+    },
+    {
+      "id": "calorimeter_shield_heat_leak",
+      "category": "measurement_boundary",
+      "question": "How does the adiabatic shield reduce heat exchange with the calorimeter cell?",
+      "hl_keywords": ["adiabatic shield", "calorimeter boundary condition"],
+      "ll_keywords": ["same temperature", "heat transfer", "cell", "shield"],
+      "expected_entities": ["Adiabatic Shield", "Heat Transfer"],
+      "expected_relations": [
+        {"source": "Adiabatic Shield", "source_aliases": ["Adiabatic", "Temperature-Matched Shield"], "relation_type": "affects", "accepted_relation_types": {"reduces": 1, "prevents": 0.9, "influences": 1}, "target": "Heat Transfer", "target_aliases": ["Heat Exchange", "Cell-Shield Heat Transfer"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["shield", "temperature", "heat transfer"],
+      "expected_documents": ["Finite-Element Simulation for Thermal Modeling of a Cell"],
+      "expected_answer": "The shield is controlled to the cell temperature to minimize heat exchange between them. Adiabatic isolation of the system does not imply instantaneous uniform temperature inside its fluid; internal gradients and other heat leaks still need evaluation.",
+      "unacceptable_claims": ["Adiabatic means the fluid has no internal temperature gradients at any instant."],
+      "evidence": [{"id": "e1", "document": "calorimeter", "page": 2, "section": "Calorimeter operating principle", "anchor": "avoid heat transfer between both", "support": "The shield tracks the cell temperature to suppress boundary heat exchange."}]
+    },
+    {
+      "id": "aging_local_current_plating",
+      "category": "causal_mechanism",
+      "question": "How can high-temperature aging lead to lithium plating during subsequent charging?",
+      "hl_keywords": ["high-temperature aging", "local current nonuniformity"],
+      "ll_keywords": ["electrolyte decomposition", "gas generation", "local drying", "lithium plating"],
+      "expected_entities": ["Electrolyte Decomposition", "Lithium Plating"],
+      "expected_relations": [
+        {"source": "Electrolyte Decomposition", "relation_type": "causes", "accepted_relation_types": {"results_in": 1, "leads_to": 1}, "target": "Gas Generation", "target_aliases": ["Gas Formation"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Local Current Nonuniformity", "source_aliases": ["Nonuniform Local Current", "Uneven Current Distribution"], "relation_type": "causes", "accepted_relation_types": {"results_in": 1, "leads_to": 1}, "target": "Lithium Plating", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["electrolyte", "current", "plating"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_answer": "In the tested high-temperature-aged NCM622/graphite pouch cells, electrolyte decomposition produces gas and local drying. Gas changes electrode spacing and drying alters local conditions; resulting current nonuniformity promotes lithium plating on subsequent recharge. Plating is therefore not exclusive to cold aging.",
+      "unacceptable_claims": ["High-temperature aging excludes lithium plating.", "Gas generation alone proves every cell will immediately short circuit."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 4, "section": "3.1. Electrochemical performances", "anchor": "local current nonuniformity", "support": "The paragraph directly explains decomposition, gas, drying, current nonuniformity and subsequent plating."}]
+    },
+    {
+      "id": "aging_plating_sei_resistance",
+      "category": "causal_mechanism",
+      "question": "How does plated lithium contribute to SEI growth and impedance growth in the aging study?",
+      "hl_keywords": ["lithium plating", "SEI growth", "impedance"],
+      "ll_keywords": ["metallic lithium", "electrolyte", "SEI film resistance", "charge-transfer resistance"],
+      "expected_entities": ["Lithium Plating", "SEI", "Resistance"],
+      "expected_relations": [
+        {"source": "Lithium Plating", "source_aliases": ["Plated Metallic Lithium"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "SEI Film Thickening", "target_aliases": ["SEI Growth", "Thickening of the SEI Film"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "SEI Film Thickening", "source_aliases": ["SEI Growth"], "relation_type": "influences", "accepted_relation_types": {"increases": 1, "affects": 1}, "target": "SEI Film Resistance", "target_aliases": ["SEI Resistance"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["lithium", "SEI", "resistance"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_answer": "Reactive plated metallic lithium reacts with electrolyte and contributes to SEI thickening and impaired charge transfer. The study connects this to increased SEI-film and charge-transfer resistance. Electrolyte decomposition products also contribute, so plating is not the only SEI-growth source.",
+      "unacceptable_claims": ["All measured impedance growth proves lithium plating uniquely."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 4, "section": "3.1. EIS interpretation", "anchor": "thicken the SEI film", "support": "The same passage links plated lithium reaction, film thickening and resistance growth."}]
+    },
+    {
+      "id": "aging_early_late_heat_nonmonotonic",
+      "category": "overgeneralization_guard",
+      "question": "Why did discharge temperature rise decrease at mild aging but increase after deeper aging?",
+      "hl_keywords": ["aging stage", "temperature rise versus capacity"],
+      "ll_keywords": ["95% SOH", "90% SOH", "capacity fading", "temperature rise rate"],
+      "expected_entities": ["Capacity", "Temperature Rise"],
+      "expected_relations": [
+        {"source": "Capacity Fading", "source_aliases": ["Capacity Loss", "Cell Capacity Degradation"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Discharge Temperature Rise", "target_aliases": ["Temperature Rise"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["capacity", "temperature", "rate"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_answer": "At 95% SOH the temperature-rise rate changes little and reduced capacity limits total heating over discharge. At deeper aging, the much greater rise rate dominates despite reduced capacity, so total temperature rise grows. Distinguish heat rate, integrated heat, discharge duration and temperature rise under the paper's adiabatic conditions.",
+      "unacceptable_claims": ["Aging always monotonically increases total discharge heat.", "Aging always reduces temperature rise because capacity decreases."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 5, "section": "3.2. Heat generation characteristics", "anchor": "temperature rise rate has not", "support": "The paragraph contrasts the 95% SOH stage and subsequent rate-dominated behavior."}]
+    },
+    {
+      "id": "mixing_after_current_interruption",
+      "category": "causal_mechanism",
+      "question": "Why can heat still be measured after the external current has been switched off?",
+      "hl_keywords": ["heat of mixing", "relaxation"],
+      "ll_keywords": ["concentration gradients", "current interruption", "enthalpy"],
+      "expected_entities": ["Concentration Gradients", "Heat of Mixing"],
+      "expected_relations": [
+        {"source": "Concentration Gradient Relaxation", "source_aliases": ["Relaxation of Concentration Gradients", "Concentration Relaxation"], "relation_type": "causes", "accepted_relation_types": {"produces": 1, "results_in": 1, "leads_to": 1}, "target": "Heat of Mixing", "target_aliases": ["Heat of Relaxation", "Mixing Heat"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["current", "concentration", "mixing"],
+      "expected_documents": ["Heats of mixing and of entropy in porous insertion electrodes"],
+      "expected_answer": "Concentration gradients built during operation can relax after current interruption and produce a heat-of-mixing signal. Its sign and size depend on composition-dependent partial molar enthalpies and gradients. It is not evidence that external-current Joule heating continues unchanged at zero current.",
+      "unacceptable_claims": ["All post-interruption heat must be electrical Joule heating.", "Mixing relaxation is necessarily exothermic in every material."],
+      "evidence": [{"id": "e1", "document": "mixing", "page": 1, "section": "Abstract and Introduction", "anchor": "relaxation of concentration gradients", "support": "The abstract defines heat of mixing as heat following concentration relaxation after interruption."}]
+    },
+    {
+      "id": "mixing_zero_enthalpy_dependence",
+      "category": "limiting_case",
+      "question": "Do concentration gradients by themselves guarantee nonzero heat of mixing?",
+      "hl_keywords": ["heat of mixing limiting case", "partial molar enthalpy"],
+      "ll_keywords": ["constant with composition", "concentration gradients", "heat of mixing"],
+      "expected_entities": ["Partial Molar Enthalpy", "Heat of Mixing"],
+      "expected_relations": [
+        {"source": "Partial Molar Enthalpy", "source_aliases": ["Composition Dependence of Partial Molar Enthalpy", "Partial Molar Enthalpies"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Heat of Mixing", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["enthalp", "composition", "zero"],
+      "expected_documents": ["Heats of mixing and of entropy in porous insertion electrodes"],
+      "expected_answer": "No. In the derived energy balance, the heat-of-mixing term vanishes if all partial molar enthalpies are constant with composition. A concentration gradient supplies neither the necessary enthalpy dependence nor a universal heat sign by itself.",
+      "unacceptable_claims": ["Every nonzero concentration gradient necessarily yields positive heat of mixing."],
+      "evidence": [{"id": "e1", "document": "mixing", "page": 3, "section": "3. Heat of mixing", "anchor": "If the partial molar enthalpies are all constant", "support": "The sentence gives the zero-mixing-heat limiting condition explicitly."}]
+    },
+    {
+      "id": "mixing_particle_transport_exception",
+      "category": "conditional_mechanism",
+      "question": "When can intraparticle heat of mixing become significant despite often being small in a well-designed cell?",
+      "hl_keywords": ["particle transport", "heat of mixing significance"],
+      "ll_keywords": ["large particles", "high current density", "low solid diffusivity"],
+      "expected_entities": ["Particles", "Heat of Mixing"],
+      "expected_relations": [
+        {"source": "Particle Size", "source_aliases": ["Particle Radius", "Large Particles"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Intraparticle Heat of Mixing", "target_aliases": ["Heat of Mixing within Particles", "Heat of Mixing"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Solid Diffusivity", "source_aliases": ["Solid Diffusion Coefficient", "Low Solid Diffusivity"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Intraparticle Heat of Mixing", "target_aliases": ["Heat of Mixing within Particles", "Heat of Mixing"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["particles", "current", "diffusivity"],
+      "expected_documents": ["Heats of mixing and of entropy in porous insertion electrodes"],
+      "expected_answer": "The paper highlights large particles, high current density, low solid diffusivity and strong enthalpy variation with concentration. Preserve this exception to the small-mixing-heat approximation and distinguish particle gradients from the usually negligible radial gradients within pores.",
+      "unacceptable_claims": ["Heat of mixing is always negligible regardless of particle size or transport."],
+      "evidence": [{"id": "e1", "document": "mixing", "page": 4, "section": "3. Heat of mixing, discussion of Table 1", "anchor": "large particles, high current density, low solid diffusivity", "support": "The paper lists the conditions that make particle mixing heat significant."}]
+    },
+    {
+      "id": "coupled_cold_polarization",
+      "category": "coupled_mechanism",
+      "question": "How do cold ambient temperature and a high discharge rate affect polarization and heating in the coupled model?",
+      "hl_keywords": ["electric-thermal coupling", "cold high-rate discharge"],
+      "ll_keywords": ["ohmic polarization", "concentration polarization", "polarization heat"],
+      "expected_entities": ["Ohmic Polarization", "Polarization Heat"],
+      "expected_relations": [
+        {"source": "Ambient Temperature", "source_aliases": ["Low Ambient Temperature", "Low-Temperature Environment"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Polarization", "target_aliases": ["Battery Polarization", "Polarization Values"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Discharge Rate", "source_aliases": ["High Discharge Rate", "C-Rate"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 0.9}, "target": "Polarization Heat", "target_aliases": ["Polarization Heat Generation"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["polarization", "temperature", "discharge"],
+      "expected_documents": ["The Polarization and Heat Generation Characteristics"],
+      "expected_answer": "For the studied cell, low ambient temperature and high discharge rate increase ohmic, concentration and electrochemical polarization, as well as ohmic and polarization heating. Report the studied conditions rather than assuming all chemistries have identical polarization shares.",
+      "unacceptable_claims": ["Cold conditions always suppress heat generation because ambient temperature is low."],
+      "evidence": [{"id": "e1", "document": "coupled_model", "page": 21, "section": "5. Conclusions, points 2-3", "anchor": "low-temperature", "support": "The conclusion states the conditional polarization increase and the associated heat-generation trends."}]
+    },
+    {
+      "id": "coupled_entropy_low_rate",
+      "category": "approximation_limit",
+      "question": "Why is omitting reversible entropy heat risky at low discharge rate and high ambient temperature?",
+      "hl_keywords": ["reversible heat significance", "thermal model approximation"],
+      "ll_keywords": ["entropy heat coefficient", "low discharge rate", "high ambient temperature"],
+      "expected_entities": ["Reversible Entropy Heat", "Discharge Rate"],
+      "expected_relations": [
+        {"source": "Ambient Temperature", "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Reversible Entropy Heat Proportion", "target_aliases": ["Proportion of the Reversible Entropy Heat Effect", "Reversible Heat Fraction"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["entropy", "rate", "temperature"],
+      "expected_documents": ["The Polarization and Heat Generation Characteristics"],
+      "expected_answer": "As temperature increases, resistive and polarization heat shares fall and the reversible term becomes relatively more important. At low rate its linear current dependence makes it less negligible relative to the quadratic ohmic term. Its sign can be cooling over part of discharge; contribution must not be equated with positive heating everywhere.",
+      "unacceptable_claims": ["A reversible heat term that cools the cell can safely be omitted from the energy balance."],
+      "evidence": [{"id": "e1", "document": "coupled_model", "page": 20, "section": "4.2.4. Proportion of heat generation types", "anchor": "proportional to the square of the current", "support": "The section explains temperature-dependent heat shares and quadratic versus linear current scaling."}]
+    },
+    {
+      "id": "coupled_heat_sign_over_discharge",
+      "category": "sign_and_conditions",
+      "question": "Do ohmic, polarization and reversible entropy heat all heat the cell throughout the entire discharge?",
+      "hl_keywords": ["heat component signs", "discharge progression"],
+      "ll_keywords": ["ohmic heat", "polarization heat", "reversible entropy heat", "end of discharge"],
+      "expected_entities": ["Ohmic Heat", "Polarization Heat", "Reversible Entropy Heat"],
+      "expected_relations": [
+        {"source": "Ohmic Heat", "source_aliases": ["Ohmic Heat Generation"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "contributes_to": 1}, "target": "Total Heat Generation", "target_aliases": ["Battery Heat Generation", "Total Heat"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["ohmic", "polarization", "entropy", "end"],
+      "expected_documents": ["The Polarization and Heat Generation Characteristics"],
+      "expected_answer": "No. Ohmic and polarization terms add heat, whereas the studied reversible entropy term promotes heating only near the end of discharge and is negative over much of the earlier discharge. The sign depends on the measured entropic coefficient and chemistry.",
+      "unacceptable_claims": ["All three components are positive at every SOC.", "The reversible term is intrinsically zero until the last discharge instant."],
+      "evidence": [{"id": "e1", "document": "coupled_model", "page": 21, "section": "5. Conclusions, point 3", "anchor": "only at the end of the discharge period", "support": "The conclusion distinguishes positive ohmic/polarization heating from the discharge-stage-dependent entropy effect."}]
+    },
+    {
+      "id": "design_heat_removal_hotspots",
+      "category": "thermal_feedback",
+      "question": "Why can insufficient heat removal make scaling up a cell unsafe?",
+      "hl_keywords": ["battery scale-up", "heat accumulation"],
+      "ll_keywords": ["heat transfer", "hot spots", "thermal runaway"],
+      "expected_entities": ["Heat", "Hot Spots", "Thermal Runaway"],
+      "expected_relations": [
+        {"source": "Insufficient Heat Transfer", "source_aliases": ["Insufficient Heat Removal", "Poor Heat Dissipation"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Heat Accumulation", "target_aliases": ["Heat Buildup"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["heat", "hot spots", "thermal runaway"],
+      "expected_documents": ["Thermal modeling and design considerations"],
+      "expected_answer": "When reaction and transport heat is not removed sufficiently, it accumulates, raising internal temperature and potentially forming hot spots that risk runaway. Geometry, cooling, chemistry and operating conditions jointly determine whether a critical condition is reached.",
+      "unacceptable_claims": ["Cell capacity alone determines thermal safety regardless of cooling."],
+      "evidence": [{"id": "e1", "document": "thermal_design", "page": 1, "section": "1. Introduction", "anchor": "heat transfer from", "support": "The introduction explicitly links insufficient removal, accumulation, temperature rise, hot spots and runaway risk."}]
+    },
+    {
+      "id": "design_cooling_biot_gradients",
+      "category": "model_validity_limit",
+      "question": "Does stronger surface cooling guarantee a more uniform internal cell temperature?",
+      "hl_keywords": ["Biot number", "surface cooling", "lumped thermal model"],
+      "ll_keywords": ["temperature gradient", "cell center", "uniform temperature"],
+      "expected_entities": ["Biot Number", "Temperature Gradient"],
+      "expected_relations": [
+        {"source": "Cooling Rate", "source_aliases": ["Heat Transfer Coefficient", "Surface Cooling"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Internal Temperature Gradient", "target_aliases": ["Temperature Gradient", "Cell Temperature Gradient"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["Biot", "gradient", "cooling"],
+      "expected_documents": ["Thermal modeling and design considerations"],
+      "expected_answer": "No. In the scaled-cell simulations, stronger cooling lowers temperature rise but can increase center-to-surface gradients as the Biot number exceeds about 0.1. A nearly insulated cell can be more uniform while much hotter. Uniformity is not synonymous with safety.",
+      "unacceptable_claims": ["Stronger cooling always decreases every internal temperature gradient.", "A uniform-temperature insulated cell is necessarily safe."],
+      "evidence": [{"id": "e1", "document": "thermal_design", "page": 7, "section": "6.2.2. Scaled-up design", "anchor": "the cell center", "support": "The simulations report lower total rise with cooling but larger gradients and Biot-number-dependent lumped validity."}]
+    },
+    {
+      "id": "design_soc_runaway_threshold",
+      "category": "conditional_threshold",
+      "question": "Why should the Sony-cell onset temperatures not be treated as a universal thermal-runaway threshold?",
+      "hl_keywords": ["thermal runaway onset", "state of charge dependence"],
+      "ll_keywords": ["Sony US18650", "open circuit voltage", "104", "109", "144"],
+      "expected_entities": ["Open Circuit Voltage", "Thermal Runaway"],
+      "expected_relations": [
+        {"source": "Open Circuit Voltage", "source_aliases": ["OCV", "State of Charge", "SOC"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Onset of Thermal Runaway", "target_aliases": ["Thermal Runaway Onset Temperature", "OTR Temperature"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["voltage", "temperature", "Sony"],
+      "expected_documents": ["Thermal modeling and design considerations"],
+      "expected_answer": "The ARC experiment reports onset at 104, 109 and 144 C for OCV 4.06, 3.0 and 2.8 V respectively in Sony US18650 cells. The state-dependent data support lower onset for charged cells in that experiment. Chemistry, construction, SOC and test protocol prevent adopting one number for every cell.",
+      "unacceptable_claims": ["All lithium-ion cells become unsafe at precisely 104 C regardless of state or chemistry."],
+      "evidence": [{"id": "e1", "document": "thermal_design", "page": 5, "section": "6.2.1. Thermal runaway conditions", "anchor": "104, 109, and 144", "support": "The paper pairs three onset values with specific OCVs, cell type and ARC protocol."}]
+    }
+  ]
+}

@@ -1,0 +1,442 @@
+{
+  "id": "pem_quality_docs_multihop",
+  "name": "PEM Quality Papers - Directed Mechanisms",
+  "description": "Eighteen mechanism-focused cases with explicit source evidence, upstream root-cause traversal, connected two/three-hop chains, and two cross-paper branch-synthesis cases. Uses the existing semantic partial-credit scorer. This stress suite measures path coverage, not a certified answer-accuracy percentage.",
+  "version": 1,
+  "benchmark_tier": "stress",
+  "default_mode": "mix",
+  "source_directory": "test_documents/quality_docs",
+  "page_numbering": "One-based physical PDF pages, including cover sheets. Document IDs and file fingerprints are declared in pem_quality_docs_core.json.",
+  "evaluation_notes": [
+    "Run the extraction core first. An absent extracted link and a failed traversal are different failure modes.",
+    "Every expected path has two or three adjacent edges. Reversing traversal for root causes does not reverse the scientific edge semantics.",
+    "Some mechanisms admit several valid graph granularities. The listed paths are reviewed reference representations, not an exhaustive ontology; inspect partial scores before rejecting a prompt.",
+    "The stress budget is fixed at top_k=40, chunk_top_k=20, chain_top_k=20, fanout=10 and importance>=0.35. Do not change these between prompt comparisons.",
+    "Expected aliases preserve concepts, not opposite effect signs. Direction, conditions and sign still require review against expected_answer and unacceptable_claims.",
+    "The existing router's causal allowlist omits labels such as increases, reduces and contributes_to. A graph hit with a missing path can therefore indicate an allowlist limitation rather than bad extraction.",
+    "No four/five-hop accuracy is claimed: QueryParam currently bounds hop_depth to three.",
+    "The two synthesis cases require two independently evidenced branches, not an invented physical edge connecting unrelated experiments."
+  ],
+  "document_scope": [
+    {"id": "thermal_review", "file": "A Critical Review of Thermal Issues in Lithium-Ion Batteries.pdf"},
+    {"id": "estimation_review", "file": "Advancements in parameter estimation techniques for 1RC and 2RC equivalent circuit models of lithium-ion batteries A comprehensive review.pdf"},
+    {"id": "heat_factors", "file": "Analysis of the heat generation of lithium-ion battery during charging and discharging considering different influencing factors.pdf"},
+    {"id": "generic_models", "file": "AnOverviewofGenericBatteryModels.pdf"},
+    {"id": "model_comparison", "file": "Critical comparison of equivalent circuit and physics-based models for lithium-ion batteries.pdf"},
+    {"id": "calorimeter", "file": "Finite-Element Simulation for Thermal Modeling of a Cell in an Adiabatic Calorimeter.pdf"},
+    {"id": "aging", "file": "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging.pdf"},
+    {"id": "mixing", "file": "Heats of mixing and of entropy in porous insertion electrodes.pdf"},
+    {"id": "coupled_model", "file": "The Polarization and Heat Generation Characteristics of Lithium-Ion Battery with Electric-Thermal Coupled Modeling.pdf"},
+    {"id": "thermal_design", "file": "Thermal modeling and design considerations of lithium-ion batteries.pdf"}
+  ],
+  "quality_gates": {
+    "min_scores": {"graph": 65, "metadata": 80, "retrieval": 70, "directed": 55},
+    "min_directed_strategy_scores": {"directed": 50, "combined": 55, "auto": 55},
+    "require_directed_cases": true
+  },
+  "cases": [
+    {
+      "id": "mh_aging_gas_current_plating",
+      "category": "causal_chain",
+      "question": "What can electrolyte decomposition during high-temperature aging lead to during subsequent charging, through gas formation and local current distribution?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 3, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["high-temperature aging", "plating mechanism"],
+      "ll_keywords": ["electrolyte decomposition", "gas generation", "local current nonuniformity", "lithium plating"],
+      "expected_entities": ["Electrolyte Decomposition", "Gas", "Lithium Plating"],
+      "expected_relations": [
+        {"source": "Electrolyte Decomposition", "relation_type": "causes", "accepted_relation_types": {"results_in": 1, "leads_to": 1}, "target": "Gas Generation", "target_aliases": ["Gas Formation"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Gas Generation", "source_aliases": ["Gas Formation"], "relation_type": "leads_to", "accepted_relation_types": {"causes": 1, "results_in": 1, "influences": 0.9}, "target": "Local Current Nonuniformity", "target_aliases": ["Nonuniform Local Current", "Uneven Current Distribution"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Local Current Nonuniformity", "source_aliases": ["Nonuniform Local Current", "Uneven Current Distribution"], "relation_type": "causes", "accepted_relation_types": {"results_in": 1, "leads_to": 1}, "target": "Lithium Plating", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["gas", "current", "plating"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Electrolyte Decomposition", "Gas Generation", "Local Current Nonuniformity", "Lithium Plating"], "node_aliases": {"1": ["Gas Formation"], "2": ["Nonuniform Local Current", "Uneven Current Distribution"]}, "relation_types": ["causes", "leads_to", "causes"], "accepted_relation_types": [{"results_in": 1, "leads_to": 1}, {"causes": 1, "results_in": 1, "influences": 0.9}, {"results_in": 1, "leads_to": 1}], "source_documents": ["Heat Generation and Degradation Mechanism"], "require_citations": true}],
+      "expected_answer": "In the aged NCM622/graphite pouch cells, electrolyte decomposition generates gas and local drying. Changed spacing and local electrolyte conditions produce nonuniform charging current, allowing lithium plating. Explain the intermediates and the subsequent-charging condition; gas generation is not itself proof of a short circuit.",
+      "unacceptable_claims": ["Lithium plating causes the original high-temperature exposure.", "Plating is impossible after high-temperature aging."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 4, "section": "3.1. Electrochemical performances", "anchor": "local current nonuniformity", "support": "The same paragraph supplies every hop and the recharge condition. Electrode spacing is an additional valid intermediate not forced by this three-hop representation."}]
+    },
+    {
+      "id": "mh_root_plating_local_current",
+      "category": "root_cause",
+      "question": "What causes lithium plating after high-temperature aging when gas and local current nonuniformity are observed? Trace the upstream mechanism.",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 3, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["lithium plating root cause", "high-temperature aging"],
+      "ll_keywords": ["lithium plating", "local current nonuniformity", "gas generation", "electrolyte decomposition"],
+      "expected_entities": ["Lithium Plating", "Gas", "Electrolyte Decomposition"],
+      "expected_relations": [
+        {"source": "Electrolyte Decomposition", "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Gas Generation", "target_aliases": ["Gas Formation"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Gas Generation", "source_aliases": ["Gas Formation"], "relation_type": "leads_to", "accepted_relation_types": {"causes": 1, "influences": 0.9}, "target": "Local Current Nonuniformity", "target_aliases": ["Nonuniform Local Current", "Uneven Current Distribution"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Local Current Nonuniformity", "source_aliases": ["Nonuniform Local Current", "Uneven Current Distribution"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Lithium Plating", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["plating", "current", "electrolyte"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_edge_direction": "in", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"traversal_nodes": ["Lithium Plating", "Local Current Nonuniformity", "Gas Generation", "Electrolyte Decomposition"], "node_aliases": {"1": ["Nonuniform Local Current", "Uneven Current Distribution"], "2": ["Gas Formation"]}, "relation_types": ["causes", "leads_to", "causes"], "accepted_relation_types": [{"results_in": 1, "leads_to": 1}, {"causes": 1, "results_in": 1, "influences": 0.9}, {"results_in": 1, "leads_to": 1}], "source_documents": ["Heat Generation and Degradation Mechanism"], "require_citations": true}],
+      "expected_answer": "Trace backward from plating to local current nonuniformity, then gas/local drying and ultimately electrolyte decomposition during aging. Stored causal edges still point decomposition toward plating. This is the reverse-query partner of mh_aging_gas_current_plating, not independent experimental evidence.",
+      "unacceptable_claims": ["A root-cause query should follow only the downstream effects of plating."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 4, "section": "3.1. Electrochemical performances", "anchor": "in the subsequent charging process", "support": "Tests reverse traversal of the same explicitly described mechanism, without inventing reversed physical causes."}]
+    },
+    {
+      "id": "mh_plating_sei_impedance",
+      "category": "causal_chain",
+      "question": "What can plated lithium lead to through SEI-film growth, and how does this affect impedance?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["plating and SEI impedance"],
+      "ll_keywords": ["lithium plating", "SEI film thickening", "SEI film resistance"],
+      "expected_entities": ["Lithium Plating", "SEI", "Resistance"],
+      "expected_relations": [
+        {"source": "Lithium Plating", "source_aliases": ["Plated Metallic Lithium"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "SEI Film Thickening", "target_aliases": ["SEI Growth"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "SEI Film Thickening", "source_aliases": ["SEI Growth"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 1}, "target": "SEI Film Resistance", "target_aliases": ["SEI Resistance"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["lithium", "SEI", "resistance"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Lithium Plating", "SEI Film Thickening", "SEI Film Resistance"], "node_aliases": {"0": ["Plated Metallic Lithium"], "1": ["SEI Growth"], "2": ["SEI Resistance"]}, "relation_types": ["causes", "influences"], "accepted_relation_types": [{"leads_to": 1, "results_in": 1}, {"affects": 1, "increases": 1}], "source_documents": ["Heat Generation and Degradation Mechanism"], "require_citations": true}],
+      "expected_answer": "Reactive plated lithium reacts with electrolyte, thickens the SEI and raises film resistance; charge-transfer resistance also increases. Preserve the intermediate film change rather than substituting a generic plating-to-battery relation. Do not infer plating uniquely from increased impedance.",
+      "unacceptable_claims": ["SEI growth necessarily improves charge transfer during this aging experiment."],
+      "evidence": [{"id": "e1", "document": "aging", "page": 4, "section": "3.1. EIS interpretation", "anchor": "thicken the SEI film", "support": "The paragraph links the plated metal's electrolyte reaction, SEI thickening and increased resistances."}]
+    },
+    {
+      "id": "mh_aging_resistance_irreversible_heat",
+      "category": "causal_chain",
+      "question": "What can high-temperature aging lead to through DC-resistance growth during later adiabatic discharge?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["aging heat-generation mechanism"],
+      "ll_keywords": ["high-temperature aging", "DC resistance", "irreversible heat"],
+      "expected_entities": ["Aging", "DC Resistance", "Irreversible Heat"],
+      "expected_relations": [
+        {"source": "High-Temperature Aging", "source_aliases": ["High Temperature Aging"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 0.9}, "target": "DC Resistance", "target_aliases": ["Direct Current Resistance", "Internal Resistance"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "DC Resistance", "source_aliases": ["Direct Current Resistance", "Internal Resistance"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 1, "causes": 0.9}, "target": "Irreversible Heat", "target_aliases": ["Joule Heat", "Irreversible Heat Generation"], "directionality": "directed", "evidence_ids": ["e1", "e2"]}
+      ],
+      "must_include": ["resistance", "irreversible", "discharge"],
+      "expected_documents": ["Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["High-Temperature Aging", "DC Resistance", "Irreversible Heat"], "node_aliases": {"0": ["High Temperature Aging"], "1": ["Direct Current Resistance", "Internal Resistance"], "2": ["Joule Heat", "Irreversible Heat Generation"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1, "increases": 0.9}, {"affects": 1, "increases": 1, "causes": 0.9}], "source_documents": ["Heat Generation and Degradation Mechanism"], "require_citations": true}],
+      "expected_answer": "Aging raises DC resistance; for comparable current during the later discharge this raises irreversible resistive heating. Do not equate that with monotonically increasing total heat or temperature rise at every aging stage, because capacity and reversible heat also matter.",
+      "unacceptable_claims": ["The paper proves every aged cell has a larger integrated temperature rise than every fresh cell."],
+      "evidence": [
+        {"id": "e1", "document": "aging", "page": 8, "section": "Mechanism synthesis, Figure 11", "anchor": "increase in both the DC", "support": "The mechanism synthesis identifies aging-related DC-resistance growth."},
+        {"id": "e2", "document": "aging", "page": 9, "section": "Mechanism synthesis continued", "anchor": "increase in the irreversible heat", "support": "The continuation explicitly connects DC resistance to heat during adiabatic discharge."}
+      ]
+    },
+    {
+      "id": "mh_cold_resistance_joule_heat",
+      "category": "causal_chain",
+      "question": "What can a decrease in operating temperature lead to through internal resistance and Joule heating at comparable current?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["operating-temperature heat mechanism"],
+      "ll_keywords": ["operating temperature", "internal resistance", "Joule heat"],
+      "expected_entities": ["Temperature", "Internal Resistance", "Joule Heat"],
+      "expected_relations": [
+        {"source": "Operating Temperature", "source_aliases": ["Battery Temperature", "Low Operating Temperature"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Internal Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Internal Resistance", "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9}, "target": "Joule Heat", "target_aliases": ["Resistive Heat", "Irreversible Heat"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["temperature", "resistance", "Joule"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Operating Temperature", "Internal Resistance", "Joule Heat"], "node_aliases": {"0": ["Battery Temperature", "Low Operating Temperature"], "2": ["Resistive Heat", "Irreversible Heat"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1, "causes": 0.9}], "source_documents": ["Analysis of the heat generation"], "require_citations": true}],
+      "expected_answer": "For comparable current and SOC, colder operation increases internal resistance and hence Joule heating. This describes the studied cell's instantaneous operation, not high-temperature aging. Neither 'colder always safer' nor 'colder always hotter in absolute temperature' follows.",
+      "unacceptable_claims": ["The effect is caused by resistance decreasing at lower temperature."],
+      "evidence": [{"id": "e1", "document": "heat_factors", "page": 3, "section": "Heat generation formulation", "anchor": "the resistance increases with the", "support": "Eqs. 2-3 and accompanying text link operating temperature, resistance and Joule heat."}]
+    },
+    {
+      "id": "mh_root_joule_heat_cold",
+      "category": "root_cause",
+      "question": "What causes increased Joule heat during cold operation when current is held comparable, and what intermediate electrical property explains it?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["root cause of cold-operation heating"],
+      "ll_keywords": ["Joule heat", "internal resistance", "operating temperature"],
+      "expected_entities": ["Joule Heat", "Internal Resistance", "Temperature"],
+      "expected_relations": [
+        {"source": "Operating Temperature", "source_aliases": ["Battery Temperature", "Low Operating Temperature"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Internal Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Internal Resistance", "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9}, "target": "Joule Heat", "target_aliases": ["Resistive Heat", "Irreversible Heat"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["resistance", "temperature", "current"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery"],
+      "expected_edge_direction": "in", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"traversal_nodes": ["Joule Heat", "Internal Resistance", "Operating Temperature"], "node_aliases": {"0": ["Resistive Heat", "Irreversible Heat"], "2": ["Battery Temperature", "Low Operating Temperature"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1, "causes": 0.9}, {"affects": 1}], "source_documents": ["Analysis of the heat generation"], "require_citations": true}],
+      "expected_answer": "Follow incoming edges from Joule heat to resistance, then operating temperature. The colder operating state increases resistance at comparable current and SOC. This case pairs with the forward question to distinguish true direction support from an undirected neighborhood match.",
+      "unacceptable_claims": ["Following outgoing effects of heat is sufficient to identify its upstream cause."],
+      "evidence": [{"id": "e1", "document": "heat_factors", "page": 3, "section": "Heat generation formulation", "anchor": "battery internal resistance", "support": "Reverse-query partner of mh_cold_resistance_joule_heat using the same scientific mechanism."}]
+    },
+    {
+      "id": "mh_cold_charge_capacity_loss",
+      "category": "causal_chain",
+      "question": "What can poor interfacial charge transfer during cold charging lead to through lithium plating?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["cold charge damage mechanism"],
+      "ll_keywords": ["poor charge transfer", "lithium plating", "irreversible capacity loss"],
+      "expected_entities": ["Charge Transfer", "Lithium Plating", "Capacity Loss"],
+      "expected_relations": [
+        {"source": "Poor Charge Transfer", "source_aliases": ["Reduced Charge Transfer", "Poor Charge Transfer at the Electrode/Electrolyte Interface"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Lithium Plating", "target_aliases": ["Plating on the Negative Electrode"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Lithium Plating", "source_aliases": ["Plating on the Negative Electrode"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Irreversible Capacity Loss", "target_aliases": ["Permanent Capacity Loss"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["charge transfer", "plating", "capacity"],
+      "expected_documents": ["A Critical Review of Thermal Issues in Lithium-Ion Batteries"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Poor Charge Transfer", "Lithium Plating", "Irreversible Capacity Loss"], "node_aliases": {"0": ["Reduced Charge Transfer", "Poor Charge Transfer at the Electrode/Electrolyte Interface"], "1": ["Plating on the Negative Electrode"], "2": ["Permanent Capacity Loss"]}, "relation_types": ["causes", "causes"], "accepted_relation_types": [{"leads_to": 1, "results_in": 1}, {"leads_to": 1, "results_in": 1}], "source_documents": ["A Critical Review of Thermal Issues"], "require_citations": true}],
+      "expected_answer": "Poor interfacial charge transfer in cold charging promotes negative-electrode plating and can cause irreversible capacity loss through electrolyte reduction. A more detailed graph may include electrolyte reduction as another intermediate. Preserve charging conditions and distinguish permanent loss from temporary cold performance reduction.",
+      "unacceptable_claims": ["All cold capacity loss is irreversible.", "Heating the cell necessarily removes all plating-related damage."],
+      "evidence": [{"id": "e1", "document": "thermal_review", "page": 6, "section": "Low temperature performance", "anchor": "poor charge transfer can lead to significant plating", "support": "The passage links poor charge transfer, plating during charging and irreversible capacity loss."}]
+    },
+    {
+      "id": "mh_separator_short_additional_heat",
+      "category": "causal_chain",
+      "question": "What can separator melting lead to through an internal short circuit?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["separator failure mechanism"],
+      "ll_keywords": ["separator melting", "internal short circuit", "additional heating"],
+      "expected_entities": ["Separator", "Short Circuit", "Heat"],
+      "expected_relations": [
+        {"source": "Separator Melting", "source_aliases": ["Melted Separator", "Melting of the Separator"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Internal Short Circuit", "target_aliases": ["Battery Short Circuit", "Short Circuit"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Internal Short Circuit", "source_aliases": ["Short Circuit", "Battery Short Circuit"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Additional Heating", "target_aliases": ["Additional Heat Generation", "Heat Generation"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["separator", "short circuit", "heat"],
+      "expected_documents": ["A Critical Review of Thermal Issues in Lithium-Ion Batteries"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Separator Melting", "Internal Short Circuit", "Additional Heating"], "node_aliases": {"0": ["Melted Separator", "Melting of the Separator"], "1": ["Battery Short Circuit", "Short Circuit"], "2": ["Additional Heat Generation", "Heat Generation"]}, "relation_types": ["causes", "causes"], "accepted_relation_types": [{"leads_to": 1, "results_in": 1}, {"leads_to": 1, "results_in": 1}], "source_documents": ["A Critical Review of Thermal Issues"], "require_citations": true}],
+      "expected_answer": "Separator melting can permit an internal short circuit that adds heating. The result may reinforce a runaway trajectory, but the source does not assert that every separator melting event inevitably produces an explosion.",
+      "unacceptable_claims": ["A short circuit restores separator insulation."],
+      "evidence": [{"id": "e1", "document": "thermal_review", "page": 5, "section": "Thermal runaway", "anchor": "causing additional heating", "support": "Both causal steps are explicitly stated in one source sentence."}]
+    },
+    {
+      "id": "mh_heat_accumulation_hotspots",
+      "category": "causal_chain",
+      "question": "What can insufficient heat removal lead to through heat accumulation and hot-spot formation?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 3, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["thermal scale-up safety", "heat-removal mechanism"],
+      "ll_keywords": ["insufficient heat transfer", "heat accumulation", "hot spots", "thermal runaway"],
+      "expected_entities": ["Heat", "Hot Spots", "Thermal Runaway"],
+      "expected_relations": [
+        {"source": "Insufficient Heat Removal", "source_aliases": ["Insufficient Heat Transfer", "Poor Heat Dissipation"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Heat Accumulation", "target_aliases": ["Heat Buildup"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Heat Accumulation", "source_aliases": ["Heat Buildup"], "relation_type": "leads_to", "accepted_relation_types": {"causes": 1, "results_in": 1}, "target": "Hot Spots", "target_aliases": ["Hot Spot Formation", "Hotspots"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Hot Spots", "source_aliases": ["Hot Spot Formation", "Hotspots"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "leads_to": 0.85, "causes": 0.7}, "target": "Thermal Runaway Risk", "target_aliases": ["Risk of Thermal Runaway", "Thermal Runaway"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["heat", "hot spots", "runaway"],
+      "expected_documents": ["Thermal modeling and design considerations"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Insufficient Heat Removal", "Heat Accumulation", "Hot Spots", "Thermal Runaway Risk"], "node_aliases": {"0": ["Insufficient Heat Transfer", "Poor Heat Dissipation"], "1": ["Heat Buildup"], "2": ["Hot Spot Formation", "Hotspots"], "3": ["Risk of Thermal Runaway", "Thermal Runaway"]}, "relation_types": ["causes", "leads_to", "influences"], "accepted_relation_types": [{"leads_to": 1, "results_in": 1}, {"causes": 1, "results_in": 1}, {"affects": 1, "leads_to": 0.85, "causes": 0.7}], "source_documents": ["Thermal modeling and design considerations"], "require_citations": true}],
+      "expected_answer": "Inadequate removal lets internal heat accumulate, raises local temperature and can form hot spots that increase runaway risk. The last relation is a risk contribution, not an unconditional deterministic outcome. Temperature rise can be an additional valid intermediate.",
+      "unacceptable_claims": ["Every hot spot proves thermal runaway has already occurred."],
+      "evidence": [{"id": "e1", "document": "thermal_design", "page": 1, "section": "1. Introduction", "anchor": "heat to accumulate", "support": "The introduction provides the complete removal-to-hotspot-to-risk mechanism and uses conditional wording."}]
+    },
+    {
+      "id": "mh_calorimeter_geometry_accuracy",
+      "category": "causal_chain",
+      "question": "What can changing calorimeter-cell geometry lead to through internal temperature gradients, and why does that matter for heat-capacity measurements?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["calorimetry measurement mechanism"],
+      "ll_keywords": ["calorimeter geometry", "temperature gradients", "heat capacity measurement"],
+      "expected_entities": ["Geometry", "Temperature Gradients", "Heat Capacity"],
+      "expected_relations": [
+        {"source": "Calorimeter Geometry", "source_aliases": ["Cell Geometry", "Spherical Geometry"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Temperature Gradients", "target_aliases": ["Temperature Distribution", "Thermal Gradients"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Temperature Gradients", "source_aliases": ["Thermal Gradients", "Nonuniform Temperature Distribution"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Heat Capacity Measurement Accuracy", "target_aliases": ["Accuracy of Heat Capacity Measurement", "Heat Capacity Measurement"], "directionality": "directed", "evidence_ids": ["e1", "e2"]}
+      ],
+      "must_include": ["calorimeter", "gradients", "heat capacity"],
+      "expected_documents": ["Finite-Element Simulation for Thermal Modeling of a Cell"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Calorimeter Geometry", "Temperature Gradients", "Heat Capacity Measurement Accuracy"], "node_aliases": {"0": ["Cell Geometry", "Spherical Geometry"], "1": ["Temperature Distribution", "Thermal Gradients", "Nonuniform Temperature Distribution"], "2": ["Accuracy of Heat Capacity Measurement", "Heat Capacity Measurement"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1}], "source_documents": ["Finite-Element Simulation for Thermal Modeling"], "require_citations": true}],
+      "expected_answer": "Geometry changes temperature gradients and fluid homogeneity, which affect how representative the measured temperature rise is for heat-capacity estimation. The studied sphere has smaller gradients. This is a fluid-filled calorimeter vessel, not a lithium-ion electrode or an electrochemical battery cell.",
+      "unacceptable_claims": ["The study proves spherical lithium-ion batteries always have twice the safety of cylindrical ones."],
+      "evidence": [
+        {"id": "e1", "document": "calorimeter", "page": 10, "section": "6. Conclusions", "anchor": "geometry affects", "support": "The conclusion connects geometry, temperature gradients, homogeneity and measurement accuracy."},
+        {"id": "e2", "document": "calorimeter", "page": 9, "section": "5. Discussion", "anchor": "temperature rise measurement", "support": "The discussion explicitly states the dependency of accurate heat-capacity measurement on temperature-rise measurement."}
+      ]
+    },
+    {
+      "id": "mh_hppc_heat_parameter_state_error",
+      "category": "causal_chain",
+      "question": "What can large HPPC pulses lead to through heating and parameter-identification errors, and why does that matter for estimated battery states?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 3, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["HPPC measurement error propagation"],
+      "ll_keywords": ["HPPC pulses", "heating", "parameter errors", "state estimation accuracy"],
+      "expected_entities": ["HPPC", "Parameters", "Battery States"],
+      "expected_relations": [
+        {"source": "HPPC Current Pulses", "source_aliases": ["HPPC Pulses", "High Current Pulses"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1, "produces": 1}, "target": "Pulse-Induced Heating", "target_aliases": ["Heat Generation", "Heating"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Pulse-Induced Heating", "source_aliases": ["Heating", "Heat Generation"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "influences": 0.8}, "target": "Parameter Identification Errors", "target_aliases": ["EECM Parameter Errors", "Errors in EECM Parameters"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Parameter Identification Errors", "source_aliases": ["EECM Parameter Errors", "Errors in EECM Parameters"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "degrades": 1}, "target": "Battery State Estimation Accuracy", "target_aliases": ["State Estimation Accuracy", "Estimation Accuracy of the Battery States"], "directionality": "directed", "evidence_ids": ["e2"]}
+      ],
+      "must_include": ["heat", "parameters", "state"],
+      "expected_documents": ["Advancements in parameter estimation techniques for 1RC and 2RC"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["HPPC Current Pulses", "Pulse-Induced Heating", "Parameter Identification Errors", "Battery State Estimation Accuracy"], "node_aliases": {"0": ["HPPC Pulses", "High Current Pulses"], "1": ["Heating", "Heat Generation"], "2": ["EECM Parameter Errors", "Errors in EECM Parameters"], "3": ["State Estimation Accuracy", "Estimation Accuracy of the Battery States"]}, "relation_types": ["causes", "causes", "influences"], "accepted_relation_types": [{"leads_to": 1, "results_in": 1, "produces": 1}, {"leads_to": 1, "influences": 0.8}, {"affects": 1, "degrades": 1}], "source_documents": ["Advancements in parameter estimation techniques"], "require_citations": true}],
+      "expected_answer": "HPPC pulses induce heat and can bias identified circuit parameters; parameter accuracy in turn affects battery-state estimation. The chain combines the review's measurement warning with its stated estimator dependency. It establishes a potential error pathway, not a quantitative SOC-error prediction.",
+      "unacceptable_claims": ["The paper quantifies one universal SOC error caused by every HPPC pulse."],
+      "evidence": [
+        {"id": "e1", "document": "estimation_review", "page": 7, "section": "4. Experimental techniques", "anchor": "induce heat", "support": "The HPPC paragraph directly connects pulse-induced heating and parameter errors."},
+        {"id": "e2", "document": "estimation_review", "page": 1, "section": "Abstract", "anchor": "accuracy of these parameters directly impacts", "support": "The abstract states the dependency of battery-state estimation on parameter accuracy."}
+      ]
+    },
+    {
+      "id": "mh_root_hppc_state_error",
+      "category": "root_cause",
+      "question": "What causes battery-state estimation errors when an EECM is fitted using large heating HPPC pulses? Trace the measurement pathway upstream.",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 3, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["state estimation root cause", "measurement bias"],
+      "ll_keywords": ["state estimation accuracy", "parameter errors", "pulse heating", "HPPC"],
+      "expected_entities": ["Battery States", "Parameters", "HPPC"],
+      "expected_relations": [
+        {"source": "HPPC Current Pulses", "source_aliases": ["HPPC Pulses", "High Current Pulses"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1, "produces": 1}, "target": "Pulse-Induced Heating", "target_aliases": ["Heating", "Heat Generation"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Pulse-Induced Heating", "source_aliases": ["Heating", "Heat Generation"], "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "influences": 0.8}, "target": "Parameter Identification Errors", "target_aliases": ["EECM Parameter Errors", "Errors in EECM Parameters"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Parameter Identification Errors", "source_aliases": ["EECM Parameter Errors", "Errors in EECM Parameters"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "degrades": 1}, "target": "Battery State Estimation Accuracy", "target_aliases": ["State Estimation Accuracy", "Estimation Accuracy of the Battery States"], "directionality": "directed", "evidence_ids": ["e2"]}
+      ],
+      "must_include": ["parameters", "heat", "HPPC"],
+      "expected_documents": ["Advancements in parameter estimation techniques for 1RC and 2RC"],
+      "expected_edge_direction": "in", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"traversal_nodes": ["Battery State Estimation Accuracy", "Parameter Identification Errors", "Pulse-Induced Heating", "HPPC Current Pulses"], "node_aliases": {"0": ["State Estimation Accuracy", "Estimation Accuracy of the Battery States"], "1": ["EECM Parameter Errors", "Errors in EECM Parameters"], "2": ["Heating", "Heat Generation"], "3": ["HPPC Pulses", "High Current Pulses"]}, "relation_types": ["influences", "causes", "causes"], "accepted_relation_types": [{"affects": 1, "degrades": 1}, {"leads_to": 1, "influences": 0.8}, {"leads_to": 1, "results_in": 1, "produces": 1}], "source_documents": ["Advancements in parameter estimation techniques"], "require_citations": true}],
+      "expected_answer": "Follow incoming dependencies from state-estimation quality to identified parameter errors, then pulse heating and the HPPC stimulus. Other parameter errors remain possible. The case reverses mh_hppc_heat_parameter_state_error without changing the physical direction of influence.",
+      "unacceptable_claims": ["Every SOC estimation error uniquely proves an overheated HPPC calibration."],
+      "evidence": [
+        {"id": "e1", "document": "estimation_review", "page": 7, "section": "4. Experimental techniques", "anchor": "induce heat", "support": "The pulse-to-heating-to-parameter-error chain is explicit."},
+        {"id": "e2", "document": "estimation_review", "page": 1, "section": "Abstract", "anchor": "estimation accuracy of the battery states", "support": "Parameter accuracy is linked to state-estimation accuracy."}
+      ]
+    },
+    {
+      "id": "mh_soc_entropy_reversible_heat",
+      "category": "causal_chain",
+      "question": "What can changes in state of charge lead to through reaction entropy when predicting reversible heat in insertion electrodes?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["state dependent reversible heat"],
+      "ll_keywords": ["state of charge", "entropy of reaction", "reversible heat"],
+      "expected_entities": ["State of Charge", "Entropy", "Reversible Heat"],
+      "expected_relations": [
+        {"source": "State of Charge", "source_aliases": ["SOC", "Lithium Concentration"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Entropy of Reaction", "target_aliases": ["Reaction Entropy", "Entropy Coefficient"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Entropy of Reaction", "source_aliases": ["Reaction Entropy", "Entropy Coefficient"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Reversible Heat", "target_aliases": ["Reversible Entropic Heat", "Reversible Heat Effect"], "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "must_include": ["entropy", "charge", "reversible"],
+      "expected_documents": ["Heats of mixing and of entropy in porous insertion electrodes"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["State of Charge", "Entropy of Reaction", "Reversible Heat"], "node_aliases": {"0": ["SOC", "Lithium Concentration"], "1": ["Reaction Entropy", "Entropy Coefficient"], "2": ["Reversible Entropic Heat", "Reversible Heat Effect"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1}], "source_documents": ["Heats of mixing and of entropy"], "require_citations": true}],
+      "expected_answer": "State of charge changes electrode composition and reaction entropy, affecting the reversible heat term. Both electrodes' potential-temperature coefficients and a consistent current convention matter. The term can change sign; the path encodes dependency rather than an always-increasing trend.",
+      "unacceptable_claims": ["Reaction entropy is necessarily constant over every SOC range.", "Reversible heat is always positive."],
+      "evidence": [{"id": "e1", "document": "mixing", "page": 1, "section": "Abstract and Introduction", "anchor": "entropy of reaction", "support": "The abstract states the SOC dependence of reaction entropy and its reversible heat effect; the introduction discusses both electrodes."}]
+    },
+    {
+      "id": "mh_coupled_temperature_resistance_heat",
+      "category": "causal_chain",
+      "question": "What can changing cell temperature lead to through ohmic resistance in the electric-thermal coupling model?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["electric-thermal model coupling"],
+      "ll_keywords": ["battery temperature", "ohmic resistance", "ohmic heat"],
+      "expected_entities": ["Temperature", "Ohmic Resistance", "Ohmic Heat"],
+      "expected_relations": [
+        {"source": "Battery Temperature", "source_aliases": ["Cell Temperature", "Temperature"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Ohmic Resistance", "target_aliases": ["R0", "Internal Ohmic Resistance"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Ohmic Resistance", "source_aliases": ["R0", "Internal Ohmic Resistance"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9}, "target": "Ohmic Heat", "target_aliases": ["Ohmic Heat Generation", "Joule Heat"], "directionality": "directed", "evidence_ids": ["e2"]}
+      ],
+      "must_include": ["temperature", "resistance", "heat"],
+      "expected_documents": ["The Polarization and Heat Generation Characteristics"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Battery Temperature", "Ohmic Resistance", "Ohmic Heat"], "node_aliases": {"0": ["Cell Temperature", "Temperature"], "1": ["R0", "Internal Ohmic Resistance"], "2": ["Ohmic Heat Generation", "Joule Heat"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1, "causes": 0.9}], "source_documents": ["The Polarization and Heat Generation Characteristics"], "require_citations": true}],
+      "expected_answer": "The thermal result updates temperature-dependent electrical parameters including ohmic resistance. Resistance affects ohmic heating at a given current, which feeds the thermal calculation. Explain this coupling without assuming a globally positive thermal feedback or forcing a repeated-node cycle into the bounded path output.",
+      "unacceptable_claims": ["Temperature is computed once and never feeds back into electrical parameters."],
+      "evidence": [
+        {"id": "e1", "document": "coupled_model", "page": 12, "section": "Electric-thermal coupling", "anchor": "adjusts the ohmic resistance", "support": "The coupling description updates resistance and other electrical parameters from temperature and SOC."},
+        {"id": "e2", "document": "coupled_model", "page": 10, "section": "Ohmic heat formulation, Eq. 17", "anchor": "presence of ohmic resistance", "support": "The heat source expression identifies ohmic resistance as the origin of ohmic heating."}
+      ]
+    },
+    {
+      "id": "mh_synthesis_heat_components",
+      "category": "cross_document_synthesis",
+      "question": "What can changes in current and state of charge lead to through different irreversible and reversible heat mechanisms? Connect the coupled-model and insertion-electrode papers.",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["cross-paper heat-component mechanisms"],
+      "ll_keywords": ["discharge current", "ohmic heat", "state of charge", "entropy of reaction"],
+      "expected_entities": ["Current", "Ohmic Heat", "Entropy", "Reversible Heat"],
+      "expected_relations": [
+        {"source": "Discharge Current", "source_aliases": ["Current", "Discharge Rate"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 0.9}, "target": "Ohmic Heat", "target_aliases": ["Ohmic Heat Generation", "Joule Heat"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Ohmic Heat", "source_aliases": ["Ohmic Heat Generation", "Joule Heat"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "contributes_to": 1}, "target": "Total Heat Generation", "target_aliases": ["Total Heat", "Battery Heat Generation"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "State of Charge", "source_aliases": ["SOC"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Entropy of Reaction", "target_aliases": ["Reaction Entropy", "Entropy Coefficient"], "directionality": "directed", "evidence_ids": ["e2"]},
+        {"source": "Entropy of Reaction", "source_aliases": ["Reaction Entropy", "Entropy Coefficient"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Reversible Heat", "target_aliases": ["Reversible Entropic Heat", "Reversible Heat Effect"], "directionality": "directed", "evidence_ids": ["e2"]}
+      ],
+      "must_include": ["current", "entropy", "reversible", "heat"],
+      "expected_documents": ["The Polarization and Heat Generation Characteristics", "Heats of mixing and of entropy in porous insertion electrodes"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [
+        {"nodes": ["Discharge Current", "Ohmic Heat", "Total Heat Generation"], "node_aliases": {"0": ["Current", "Discharge Rate"], "1": ["Ohmic Heat Generation", "Joule Heat"], "2": ["Total Heat", "Battery Heat Generation"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1, "increases": 0.9}, {"affects": 1, "contributes_to": 1}], "source_documents": ["The Polarization and Heat Generation Characteristics"], "require_citations": true},
+        {"nodes": ["State of Charge", "Entropy of Reaction", "Reversible Heat"], "node_aliases": {"0": ["SOC"], "1": ["Reaction Entropy", "Entropy Coefficient"], "2": ["Reversible Entropic Heat", "Reversible Heat Effect"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1}], "source_documents": ["Heats of mixing and of entropy"], "require_citations": true}
+      ],
+      "expected_answer": "The coupled model explains the quadratic-current ohmic contribution to total heat, while the insertion-electrode paper supplies the SOC-dependent entropy pathway for reversible heat. Explain why reversible heat becomes relatively important at low current and may cool rather than heat. Cite both papers; do not merge their experiments into one cell-specific numerical result.",
+      "unacceptable_claims": ["All heat sources have the same current scaling and sign.", "The papers study the same cell and share all numerical parameters."],
+      "evidence": [
+        {"id": "e1", "document": "coupled_model", "page": 20, "section": "4.2.4. Heat generation proportions", "anchor": "proportional to the square of the current", "support": "Current scaling and total-heat shares support the irreversible branch."},
+        {"id": "e2", "document": "mixing", "page": 1, "section": "Abstract", "anchor": "entropy of reaction", "support": "SOC-dependent entropy and reversible heat support the second branch. No invented inter-paper causal edge is required."}
+      ]
+    },
+    {
+      "id": "mh_synthesis_cold_vs_aged_root_heat",
+      "category": "cross_document_root_cause",
+      "question": "What causes increased irreversible heat in cold operation and after high-temperature aging, and which distinct upstream mechanisms connect to resistance?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["cold versus aged heat root causes"],
+      "ll_keywords": ["irreversible heat", "internal resistance", "low operating temperature", "high-temperature aging"],
+      "expected_entities": ["Internal Resistance", "Irreversible Heat", "Aging"],
+      "expected_relations": [
+        {"source": "Operating Temperature", "source_aliases": ["Low Operating Temperature", "Battery Temperature"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Internal Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Internal Resistance", "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9}, "target": "Irreversible Heat", "target_aliases": ["Joule Heat", "Resistive Heat"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "High-Temperature Aging", "source_aliases": ["High Temperature Aging"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "increases": 0.9}, "target": "DC Resistance", "target_aliases": ["Internal Resistance", "Direct Current Resistance"], "directionality": "directed", "evidence_ids": ["e2"]},
+        {"source": "DC Resistance", "source_aliases": ["Internal Resistance", "Direct Current Resistance"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "causes": 0.9, "increases": 1}, "target": "Irreversible Heat", "target_aliases": ["Joule Heat", "Resistive Heat"], "directionality": "directed", "evidence_ids": ["e3"]}
+      ],
+      "must_include": ["resistance", "temperature", "aging", "heat"],
+      "expected_documents": ["Analysis of the heat generation of lithium-ion battery", "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries"],
+      "expected_edge_direction": "in", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [
+        {"traversal_nodes": ["Irreversible Heat", "Internal Resistance", "Operating Temperature"], "node_aliases": {"0": ["Joule Heat", "Resistive Heat"], "2": ["Low Operating Temperature", "Battery Temperature"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1, "causes": 0.9}, {"affects": 1}], "source_documents": ["Analysis of the heat generation"], "require_citations": true},
+        {"traversal_nodes": ["Irreversible Heat", "DC Resistance", "High-Temperature Aging"], "node_aliases": {"0": ["Joule Heat", "Resistive Heat"], "1": ["Internal Resistance", "Direct Current Resistance"], "2": ["High Temperature Aging"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1, "causes": 0.9, "increases": 1}, {"affects": 1, "increases": 0.9}], "source_documents": ["Heat Generation and Degradation Mechanism"], "require_citations": true}
+      ],
+      "expected_answer": "Two distinct upstream conditions converge on resistance-dependent heating: cold operation raises resistance in the heat-factor study, whereas accumulated high-temperature aging damages cells and increases DC resistance in the aging study. They are not contradictory ambient-temperature trends. Preserve chemistry, current/SOC controls, history and the distinction between heat rate and integrated temperature rise.",
+      "unacceptable_claims": ["The papers contradict each other because both cold and heat are mentioned.", "An instantaneous ambient-temperature change and accumulated high-temperature aging are the same intervention."],
+      "evidence": [
+        {"id": "e1", "document": "heat_factors", "page": 3, "section": "Heat generation formulation", "anchor": "the resistance increases with the", "support": "Defines the instantaneous operating-temperature and resistance mechanism."},
+        {"id": "e2", "document": "aging", "page": 8, "section": "Mechanism synthesis", "anchor": "increase in both the DC", "support": "Defines aging-induced DC-resistance growth."},
+        {"id": "e3", "document": "aging", "page": 9, "section": "Mechanism synthesis continued", "anchor": "increase in the irreversible heat", "support": "Connects increased DC resistance with irreversible heating in later discharge."}
+      ]
+    },
+    {
+      "id": "mh_generic_parameters_voltage_soc",
+      "category": "causal_chain",
+      "question": "What can errors in fitted battery-model parameters lead to through voltage prediction when an EKF estimates SOC?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["model calibration error propagation", "SOC prediction"],
+      "ll_keywords": ["model parameters", "voltage prediction accuracy", "SOC estimation accuracy", "EKF"],
+      "expected_entities": ["Model", "Voltage", "SOC"],
+      "expected_relations": [
+        {"source": "Model Parameters", "source_aliases": ["Fitted Model Parameters", "Battery Model Parameters"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Voltage Prediction Accuracy", "target_aliases": ["Model Voltage Accuracy", "Voltage Prediction"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Voltage Prediction Accuracy", "source_aliases": ["Model Voltage Accuracy", "Voltage Prediction"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "SOC Estimation Accuracy", "target_aliases": ["SOC Prediction Accuracy", "State of Charge Estimation Accuracy"], "directionality": "directed", "evidence_ids": ["e2"]}
+      ],
+      "must_include": ["parameters", "voltage", "SOC"],
+      "expected_documents": ["AnOverviewofGenericBatteryModels"],
+      "expected_edge_direction": "out", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"nodes": ["Model Parameters", "Voltage Prediction Accuracy", "SOC Estimation Accuracy"], "node_aliases": {"0": ["Fitted Model Parameters", "Battery Model Parameters"], "1": ["Model Voltage Accuracy", "Voltage Prediction"], "2": ["SOC Prediction Accuracy", "State of Charge Estimation Accuracy"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1}], "source_documents": ["AnOverviewofGenericBatteryModels"], "require_citations": true}],
+      "expected_answer": "The model's fitted parameters determine its predicted terminal voltage. The study explicitly links SOC prediction quality to voltage prediction accuracy when using an EKF. This connects calibration quality to state estimation, but does not uniquely diagnose every SOC error or guarantee identifiability from voltage alone.",
+      "unacceptable_claims": ["Accurate voltage uniquely guarantees the true SOC under any excitation or chemistry."],
+      "evidence": [
+        {"id": "e1", "document": "generic_models", "page": 2, "section": "II. Mathematical models", "anchor": "The parameters are found", "support": "The fitting objective and model equations link coefficient values to predicted voltage."},
+        {"id": "e2", "document": "generic_models", "page": 5, "section": "IV.B. SOC Prediction", "anchor": "voltage prediction accuracy", "support": "The paper explicitly connects SOC prediction quality to voltage accuracy and identifies the EKF."}
+      ]
+    },
+    {
+      "id": "mh_root_pbm_temperature_overprediction",
+      "category": "root_cause",
+      "question": "What causes the PBM temperature-trend overprediction discussed for WLTC, and how do resistance estimates enter the heat-generation pathway?",
+      "top_k": 40, "chunk_top_k": 20, "hop_depth": 2, "chain_top_k": 20, "chain_fanout": 10, "chain_top_k_per_prompt": 6, "min_relation_importance": 0.35,
+      "hl_keywords": ["WLTC thermal prediction root cause"],
+      "ll_keywords": ["temperature prediction", "overestimated heat generation", "overprediction of internal resistances", "PBM"],
+      "expected_entities": ["PBM", "Internal Resistance", "Heat Generation"],
+      "expected_relations": [
+        {"source": "Internal Resistance Overprediction", "source_aliases": ["Overprediction of Internal Resistances", "Overestimated Internal Resistance"], "relation_type": "influences", "accepted_relation_types": {"affects": 1, "leads_to": 1}, "target": "Heat Generation Overprediction", "target_aliases": ["Overestimated Heat Generation", "Higher Generated Heat"], "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Heat Generation Overprediction", "source_aliases": ["Overestimated Heat Generation", "Higher Generated Heat"], "relation_type": "influences", "accepted_relation_types": {"affects": 1}, "target": "Temperature Prediction", "target_aliases": ["Temperature Trend Prediction", "Predicted Temperature Trend"], "directionality": "directed", "evidence_ids": ["e1", "e2"]}
+      ],
+      "must_include": ["resistance", "heat", "temperature", "WLTC"],
+      "expected_documents": ["Critical comparison of equivalent circuit and physics-based models"],
+      "expected_edge_direction": "in", "expected_auto_strategy": "combined", "path_requirement": "all",
+      "expected_directed_paths": [{"traversal_nodes": ["Temperature Prediction", "Heat Generation Overprediction", "Internal Resistance Overprediction"], "node_aliases": {"0": ["Temperature Trend Prediction", "Predicted Temperature Trend"], "1": ["Overestimated Heat Generation", "Higher Generated Heat"], "2": ["Overprediction of Internal Resistances", "Overestimated Internal Resistance"]}, "relation_types": ["influences", "influences"], "accepted_relation_types": [{"affects": 1}, {"affects": 1, "leads_to": 1}], "source_documents": ["Critical comparison of equivalent circuit and physics-based models"], "require_citations": true}],
+      "expected_answer": "The authors suggest overpredicted internal resistances as a reason for excessive predicted heat and temperature-trend deviation during WLTC. Keep the attribution tentative and distinct from the separately noted initialization-history offsets. It is an interpretation in this graphite/LFP comparison, not proof that every PBM overestimates temperature.",
+      "unacceptable_claims": ["The resistance attribution is uniquely proven and excludes temperature-history effects.", "Every physics-based model is less accurate than every ECM."],
+      "evidence": [
+        {"id": "e1", "document": "model_comparison", "page": 11, "section": "WLTC temperature discussion", "anchor": "overprediction of internal resistances", "support": "The authors suggest excessive resistance as the cause of higher predicted heat; the attribution is not definitive."},
+        {"id": "e2", "document": "model_comparison", "page": 12, "section": "WLTC discussion continued", "anchor": "temperature trend", "support": "The continuation relates the higher heat to temperature-trend prediction and qualifies the small deviations."}
+      ]
+    }
+  ]
+}
