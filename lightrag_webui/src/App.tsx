@@ -216,7 +216,7 @@ function App() {
                 <TabsContent value="retrieval" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
                   <RetrievalTesting />
                 </TabsContent>
-                <TabsContent value="evaluation" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
+                <TabsContent value="evaluation" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden data-[state=inactive]:hidden">
                   <EvaluationManager />
                 </TabsContent>
                 <TabsContent value="api" className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden">
