@@ -113,7 +113,7 @@ private keys, or generated runtime artefacts in Git commands.
 ## Multi-Agent Workflow
 
 For substantial independent work, coordinate with `gpt-6-sol` at medium
-reasoning and delegate bounded, disjoint scopes to `gpt-5.6-terra` at medium
+reasoning and delegate bounded, disjoint scopes to `gpt-5.6-sol` at medium
 reasoning. Define acceptance criteria, ownership, contracts, and checks before
 delegation. The coordinator inspects all changes and owns final verification;
 agent reports alone are not acceptance.
