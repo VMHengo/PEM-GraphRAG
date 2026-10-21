@@ -30,12 +30,21 @@ Detailed plan: [Ontology Integration Plan](ONTOLOGY_INTEGRATION_PLAN.md).
 These tasks introduce ontology support incrementally; current extraction and
 retrieval remain the baseline until a measured staging pilot passes.
 
-- [ ] **ONT-01: Audit and reproducible ontology input.** Verify source-file
+- [x] **ONT-01: Audit and reproducible ontology input.** Verify source-file
   closure, licenses, version/provenance and existing merged counts. Add a
   read-only validation command/test that reports differences without replacing
   `ontology/merged/merged.ttl` or its reports. Fix stale documentation for the
   now-present BTO files. Done when all 51 listed source files are accounted for,
   source/manifest mismatches are visible, and the command is covered by a test.
+- [ ] **ONT-01B: Reconcile the pinned ontology snapshot.** The read-only audit
+  found a BattINFO 0.7.0/Apache-2.0 source against an 0.8.0-beta/CC BY
+  recorded merge, plus 19 triple and one annotation-property differences.
+  Decide which source version is intended; verify provenance and reuse terms;
+  rebuild only in an isolated location; review the RDF difference; version
+  the curated source closure (without the full BattINFO software checkout) and
+  update manifest, report and merged artifact together if warranted. Done
+  when the read-only audit exits 0 on the chosen snapshot and all source
+  versions and licenses are documented. ONT-02 depends on this step.
 - [ ] **ONT-02: Reviewed mapping schema.** Add a versioned mapping from current
   PEM entity types and relation labels to ontology IRIs, preferred labels,
   aliases, inverses and source attribution. Mark unmapped/ambiguous cases
@@ -62,6 +71,12 @@ retrieval remain the baseline until a measured staging pilot passes.
   retained-chunk re-extraction or metadata-only backfill. Done when a reviewed
   go/no-go decision and repeatable staging procedure exist; production rollout
   requires a separate explicit task.
+
+ONT-01 evidence (2026-10-21): `python -m ontology.validate_sources` accounted
+for and parsed all 51 files, then correctly exited 1 on the documented source
+snapshot mismatch. `tests/ontology/test_validate_sources.py` covers matching
+sources, missing files, version/license/count drift and stored-merge drift.
+The audit details and safe command are in `ontology/README.md`.
 
 ## Other Planned Work
 

@@ -1,7 +1,8 @@
 # Ontology Integration Plan
 
-Status: planned, 2026-10-21. This is a local source review, not a claim that
-the ontology has been integrated into the runtime or deployed.
+Status: ONT-01 audit implemented, 2026-10-21; source-snapshot reconciliation
+is still required before mapping work. The ontology has not been integrated
+into the runtime or deployed.
 
 ## Goal And Baseline
 
@@ -33,7 +34,11 @@ Normal retrieval remains the default.
 
 The previous note that `sources/bto/` is missing is obsolete. The 49 BTO
 files plus two BattINFO source files match the 51 filenames in the merge
-report. The separate `domain-battery-0.20.2.ttl` is a header with imports;
+report. However, the current source graph differs from the recorded merge:
+65,882 versus 65,863 triples, with one additional annotation property.
+The current BattINFO file is 0.7.0/Apache-2.0; the recorded snapshot is
+0.8.0-beta/CC BY 4.0. See `ontology/README.md` for the read-only audit.
+The separate `domain-battery-0.20.2.ttl` is a header with imports;
 the locally resolved module closure is under `sources/bto/`. The manifest and
 inventory contain historical counts and notes; verification must distinguish
 current counts from earlier versions. Some notes refer to `NOTES.md` and
@@ -64,14 +69,15 @@ Each item below supplies the design details for that queue item.
 
 ### ONT-01: Reproducibility And Source Audit
 
-Add a validator for expected filenames, parseability, version identifiers,
+Implemented: a validator for expected filenames, parseability, version identifiers,
 source licenses and merge-report counts. Compare against existing artefacts in
 a temporary or in-memory graph; do not run `build_merged.py` against the
 checked-in baseline during audit because it overwrites the merged file and
 report. Record whether the full BattINFO repository is needed at all; its
 software license differs from the ontology source-license summary. Report
 label conflicts and unavailable historical notes. Use `ontology/manifest.json`,
-`build_merged.py` and `merge_report.json` as inputs. Estimated work: 0.5-1 day.
+`build_merged.py` and `merge_report.json` as inputs. ONT-01B now reconciles the
+detected source snapshot before ONT-02 starts. Estimated work: 0.5-1 day.
 
 ### ONT-02: Versioned Mapping
 

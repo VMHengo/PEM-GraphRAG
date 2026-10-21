@@ -85,8 +85,10 @@ assertions between the same two entities can be lost.
 
 ## Ontology Material
 
-- `ontology/merged/merged.ttl` is a CC BY 4.0 union graph of EMMO,
+- `ontology/merged/merged.ttl` is the recorded union graph of EMMO,
   domain-battery, domain-electrochemistry, CHAMEO, BTO, and BattINFO support.
+  Its manifest describes BattINFO 0.8.0-beta/CC BY; the current BattINFO
+  source declares 0.7.0/Apache-2.0. These are not a consistent snapshot.
 - `ontology/relation_types.json` is a provisional relation schema with
   canonical labels and additional relation families, derived from a narrow
   pilot: one article, 6 paragraphs, 55 sentences, and 32 annotated relations.
@@ -99,8 +101,10 @@ assertions between the same two entities can be lost.
   compare against the current pipeline before migrating data or prompts.
 - `ontology/sources/bto/` now contains 49 Turtle files; with two BattINFO
   source files this matches the merge report's 51 parsed filenames. The
-  separate `sources/battinfo-repo/` is a large software checkout. Rebuilding
-  the merge still needs a read-only reproducibility check before it is trusted.
+  separate `sources/battinfo-repo/` is a large software checkout. The read-only
+  audit in `ontology/validate_sources.py` finds 65,882 current-source triples
+  versus 65,863 recorded triples and fails structural comparison. ONT-01B
+  reconciles the snapshot before ontology mapping.
 - Ontology integration is planned in `docs/ONTOLOGY_INTEGRATION_PLAN.md`.
   `docs/PROJECT_TODO.md` is the canonical ordered implementation queue; its
   first open unblocked item is what "Implementiere den naechsten Schritt in
