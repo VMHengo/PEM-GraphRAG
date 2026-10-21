@@ -3,9 +3,10 @@
 Loads the vendored EMMO/CHAMEO/domain-battery/domain-electrochemistry/
 chemical-substance/BTO closure (from ontology/sources/bto/) plus the BattINFO
 stub file, merges them into one rdflib.Graph, detects version and IRI
-conflicts, and writes ontology/merged/merged.ttl plus ontology/merge_report.json.
-The provenance manifest is maintained separately; running this script does
-not update it and overwrites the existing merged graph and report.
+conflicts, and writes merged.ttl plus merge_report.json. By default these are
+the existing ontology/merged/merged.ttl and ontology/merge_report.json paths;
+``--output-dir`` writes both files to an isolated directory instead. The
+provenance manifest is maintained separately and is never updated.
 
 BATTINFO_RECORDS_FILE is a separate, explicitly non-canonical source: BattINFO's
 own IDENTIFIER_POLICY.md section 14 documents its `battinfo:` (slash-namespace)
@@ -18,6 +19,7 @@ consumers (Ticket 07) can filter on the https://w3id.org/battinfo/ namespace if
 they want to exclude them from the candidate entity-type set.
 """
 
+import argparse
 import json
 import sys
 from collections import defaultdict
@@ -34,6 +36,18 @@ MANIFEST_PATH = Path(__file__).parent / "manifest.json"
 BTO_FILES = sorted(BTO_DIR.glob("*.ttl"))
 BATTINFO_FILE = SOURCES_DIR / "battinfo.ttl"
 BATTINFO_RECORDS_FILE = SOURCES_DIR / "battinfo-records-placeholder-vocab.ttl"
+
+
+def output_directory(value: str) -> Path:
+    """Return a usable output directory path for argparse."""
+    path = Path(value).expanduser()
+    if path.exists() and not path.is_dir():
+        raise argparse.ArgumentTypeError(f"not a directory: {path}")
+    if path.resolve() in {MERGED_DIR.resolve(), Path(__file__).parent.resolve()}:
+        raise argparse.ArgumentTypeError("--output-dir must not be a default artifact directory")
+    if any((path / name).exists() for name in ("merged.ttl", "merge_report.json")):
+        raise argparse.ArgumentTypeError("--output-dir already contains merge artifacts")
+    return path
 
 
 def load_all_graphs():
@@ -122,7 +136,23 @@ def label_coverage(union):
     }
 
 
-def main():
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output-dir",
+        type=output_directory,
+        help="Write merged.ttl and merge_report.json to this directory",
+    )
+    args = parser.parse_args(argv)
+
+    if args.output_dir is None:
+        merged_path = MERGED_DIR / "merged.ttl"
+        report_path = Path(__file__).parent / "merge_report.json"
+    else:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        merged_path = args.output_dir / "merged.ttl"
+        report_path = args.output_dir / "merge_report.json"
+
     per_file, failed = load_all_graphs()
 
     print(f"Parsed {len(per_file)} files, {len(failed)} failed.")
@@ -136,8 +166,7 @@ def main():
         for triple in g:
             union.add(triple)
 
-    MERGED_DIR.mkdir(parents=True, exist_ok=True)
-    merged_path = MERGED_DIR / "merged.ttl"
+    merged_path.parent.mkdir(parents=True, exist_ok=True)
     union.serialize(destination=str(merged_path), format="turtle")
 
     n_classes = len(set(union.subjects(RDF.type, OWL.Class)))
@@ -166,7 +195,6 @@ def main():
         "subclass_conflicts": subclass_conflicts,
     }
 
-    report_path = Path(__file__).parent / "merge_report.json"
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(json.dumps(

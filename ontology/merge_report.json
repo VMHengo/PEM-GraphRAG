@@ -1,0 +1,225 @@
+{
+  "files_parsed": [
+    "1.0.2.ttl",
+    "agency.ttl",
+    "battery-cell-geometry.ttl",
+    "battery-dependencies.ttl",
+    "battery-manufacturing-lithium-ion.ttl",
+    "battery-manufacturing.ttl",
+    "battery-model-lithium-ion.ttl",
+    "battery-products.ttl",
+    "battery-quantities.ttl",
+    "battery-reference.ttl",
+    "battery-testing.ttl",
+    "battery.ttl",
+    "battinfo-records-placeholder-vocab.ttl",
+    "battinfo.ttl",
+    "bto.ttl",
+    "chameo.ttl",
+    "chemical-substance-dependencies.ttl",
+    "chemical-substance.ttl",
+    "computerscience.ttl",
+    "contrast.ttl",
+    "contributors.ttl",
+    "data.ttl",
+    "dependencies.ttl",
+    "electrochemistry-dependencies.ttl",
+    "electrochemistry-manufacturing.ttl",
+    "electrochemistry-quantities.ttl",
+    "electrochemistry-reference.ttl",
+    "electrochemistry-testing.ttl",
+    "electrochemistry.ttl",
+    "holistic.ttl",
+    "isq.ttl",
+    "manufacturing-equipment.ttl",
+    "manufacturing-processes.ttl",
+    "manufacturing.ttl",
+    "materials.ttl",
+    "math.ttl",
+    "mereocausality.ttl",
+    "metrology.ttl",
+    "models.ttl",
+    "persholistic.ttl",
+    "persistence.ttl",
+    "perspective.ttl",
+    "physicalistic.ttl",
+    "properties.ttl",
+    "reductionistic.ttl",
+    "semiotics.ttl",
+    "sidimensionalunits.ttl",
+    "standardmodel.ttl",
+    "structural.ttl",
+    "symbolic.ttl",
+    "workflow.ttl"
+  ],
+  "files_failed": [],
+  "triple_count": 65882,
+  "class_count": 4725,
+  "object_property_count": 310,
+  "data_property_count": 32,
+  "annotation_property_count": 101,
+  "generic_rdf_property_count": 53,
+  "individual_count": 32,
+  "label_coverage": {
+    "classes_total": 4725,
+    "with_rdfs_label": 2684,
+    "with_skos_preflabel": 4573,
+    "with_any_label": 4584,
+    "without_any_label": 141,
+    "skos_altlabel_triples": 1904
+  },
+  "label_conflicts": {
+    "rdfs:label": [],
+    "skos:prefLabel": [
+      {
+        "iri": "https://w3id.org/emmo#EMMO_39348191_08fd_4bb6_9b1e_012d5b2f1ff6",
+        "labels_by_file": {
+          "1.0.2.ttl": [
+            "MaterialByClassicalMaterialsScience"
+          ],
+          "dependencies.ttl": [
+            "ClassicallyDefinedMaterial"
+          ],
+          "materials.ttl": [
+            "MaterialByClassicalMaterialsScience"
+          ]
+        }
+      },
+      {
+        "iri": "https://w3id.org/emmo#EMMO_730f2e31_ca78_410f_a5e1_4043217a41ab",
+        "labels_by_file": {
+          "1.0.2.ttl": [
+            "Electron"
+          ],
+          "dependencies.ttl": [
+            "ElementaryElectron"
+          ],
+          "standardmodel.ttl": [
+            "Electron"
+          ]
+        }
+      },
+      {
+        "iri": "https://w3id.org/emmo#EMMO_8820f251_ad36_43f4_a693_c0e86a89cc1f",
+        "labels_by_file": {
+          "1.0.2.ttl": [
+            "MaterialByFunction"
+          ],
+          "dependencies.ttl": [
+            "FunctionallyDefinedMaterial"
+          ],
+          "materials.ttl": [
+            "MaterialByFunction"
+          ]
+        }
+      },
+      {
+        "iri": "https://w3id.org/emmo#EMMO_e4e80813_f379_4091_b017_ee059811f806",
+        "labels_by_file": {
+          "1.0.2.ttl": [
+            "MaterialBySize"
+          ],
+          "dependencies.ttl": [
+            "SizeDefinedMaterial"
+          ],
+          "materials.ttl": [
+            "MaterialBySize"
+          ]
+        }
+      }
+    ]
+  },
+  "subclass_conflicts": [
+    {
+      "iri": "https://w3id.org/emmo#EMMO_4207e895_8b83_4318_996a_72cfb32acd94",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_bc37743c_37c4_4ec7_9d58_d1aae5567352"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_6e9cb807_fc68_4bcf_b3ba_5fccc887c644",
+          "https://w3id.org/emmo#EMMO_bc37743c_37c4_4ec7_9d58_d1aae5567352"
+        ],
+        "materials.ttl": [
+          "https://w3id.org/emmo#EMMO_bc37743c_37c4_4ec7_9d58_d1aae5567352"
+        ]
+      }
+    },
+    {
+      "iri": "https://w3id.org/emmo#EMMO_48fc6f16_0f04_4e86_a9fc_fcfc14c5ef4b",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_9ec16158_9118_4886_be97_4310f02f7571"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_4207e895_8b83_4318_996a_72cfb32acd94"
+        ],
+        "materials.ttl": [
+          "https://w3id.org/emmo#EMMO_9ec16158_9118_4886_be97_4310f02f7571"
+        ]
+      }
+    },
+    {
+      "iri": "https://w3id.org/emmo#EMMO_75fe4fd1_0f7e_429b_b91d_59d248561bae",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_ddb62e5b_9a1f_4d10_8cd8_32655301bfc9"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_4207e895_8b83_4318_996a_72cfb32acd94"
+        ],
+        "materials.ttl": [
+          "https://w3id.org/emmo#EMMO_ddb62e5b_9a1f_4d10_8cd8_32655301bfc9"
+        ]
+      }
+    },
+    {
+      "iri": "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_0f795e3e_c602_4577_9a43_d5a231aa1360",
+          "https://w3id.org/emmo#EMMO_b32fe85d_2f7b_4972_9dd7_7cf20d4bba59"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_0f795e3e_c602_4577_9a43_d5a231aa1360",
+          "https://w3id.org/emmo#EMMO_b32fe85d_2f7b_4972_9dd7_7cf20d4bba59"
+        ],
+        "standardmodel.ttl": [
+          "https://w3id.org/emmo#EMMO_0f795e3e_c602_4577_9a43_d5a231aa1360"
+        ]
+      }
+    },
+    {
+      "iri": "https://w3id.org/emmo#EMMO_820619ca_b23e_4c7a_8543_18a17722abc0",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_53dced52_34f6_4cf0_8a99_ddf451861543",
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_53dced52_34f6_4cf0_8a99_ddf451861543",
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e"
+        ],
+        "standardmodel.ttl": [
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e"
+        ]
+      }
+    },
+    {
+      "iri": "https://w3id.org/emmo#EMMO_cafd0f10_ce85_48b9_9a36_2b0af141ce21",
+      "superclasses_by_file": {
+        "1.0.2.ttl": [
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e",
+          "https://w3id.org/emmo#EMMO_b5a5494c_83bf_44aa_a9a6_49b948e68939"
+        ],
+        "dependencies.ttl": [
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e",
+          "https://w3id.org/emmo#EMMO_b5a5494c_83bf_44aa_a9a6_49b948e68939"
+        ],
+        "standardmodel.ttl": [
+          "https://w3id.org/emmo#EMMO_7b79b2ac_3cf2_4d3b_8cdc_bcabb59d869e"
+        ]
+      }
+    }
+  ]
+}

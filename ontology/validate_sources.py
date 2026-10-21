@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -157,6 +158,22 @@ def audit(
         result["errors"].append(f"Unlisted source files: {', '.join(extra)}")
     if recorded.get("files_failed"):
         result["errors"].append("Recorded merge contains failed source files")
+    pinned_hashes = manifest.get("source_sha256")
+    if not isinstance(pinned_hashes, dict):
+        result["errors"].append("Manifest source_sha256 is missing or invalid")
+    else:
+        for name in sorted(expected):
+            if name not in actual:
+                continue
+            expected_hash = pinned_hashes.get(name)
+            if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+                result["errors"].append(f"Missing or invalid SHA-256 pin for {name}")
+                continue
+            actual_hash = hashlib.sha256(actual[name].read_bytes()).hexdigest()
+            if actual_hash != expected_hash.lower():
+                result["errors"].append(f"SHA-256 mismatch for {name}")
+        for name in sorted(pinned_hashes.keys() - expected):
+            result["errors"].append(f"Unlisted SHA-256 pin for {name}")
     manifest_count = manifest.get("counts", {}).get("files_merged")
     if manifest_count != len(expected):
         result["errors"].append(f"Manifest files_merged={manifest_count}, report lists {len(expected)}")

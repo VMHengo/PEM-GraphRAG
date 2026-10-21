@@ -1,0 +1,138 @@
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix battinfo: <https://w3id.org/battinfo#> .
+@prefix schema:  <https://schema.org/> .
+
+# ---------------------------------------------------------------------------
+# BattINFO application ontology
+#
+# ROLE (IDENTIFIER_POLICY.md section 14): this file is the EMMO import/pin
+# manifest for the BattINFO stack, plus a tiny local residue (currently only
+# the ConformanceStatus SKOS scheme below). It deliberately defines NO domain
+# terms: quantities and battery concepts live in the imported EMMO modules
+# (missing terms are added upstream, not minted here), and administrative
+# record predicates use dcterms/PROV/DCAT/schema.org/PAV.
+#
+# Companions (slash namespace, record layer):
+#   assets/vocab/battinfo-records.ttl - the closed inventory of battinfo:
+#     record-layer placeholder terms (scripts/gen_battinfo_vocab.py)
+#   assets/vocab/emmo-labels.ttl - skos:prefLabel companion for every EMMO
+#     term the record emitters use (scripts/gen_emmo_labels.py)
+#
+# EMMO dependency versions (pinned 2026-08-10):
+#   domain-battery            0.20.2
+#   domain-electrochemistry   0.37.2
+#   domain-chemical-substance 0.15.0
+#   EMMO core                 1.0.2
+#
+# To check for upstream updates run:
+#   python .tools/quality/check_emmo_versions.py
+# ---------------------------------------------------------------------------
+
+battinfo: a owl:Ontology ;
+
+    owl:versionIRI <https://w3id.org/battinfo/0.7.0/battinfo> ;
+    owl:versionInfo "0.7.0" ;
+
+    # Pinned EMMO domain imports.  Use versioned IRIs so that records
+    # published against this ontology remain interpretable even after
+    # upstream releases.  domain-battery imports domain-electrochemistry
+    # and domain-chemical-substance transitively; we declare them
+    # explicitly here for transparency and to document the exact versions
+    # tested against this application ontology.
+    owl:imports <https://w3id.org/emmo/domain/battery/0.20.2/battery> ;
+    owl:imports <https://w3id.org/emmo/domain/electrochemistry/0.37.2/electrochemistry> ;
+    owl:imports <https://w3id.org/emmo/domain/chemical-substance/0.15.0/chemical-substance> ;
+
+    dcterms:title "Battery Interface Ontology (BattINFO)"@en ;
+
+    dcterms:description """Application/profile ontology for the BattINFO battery data ecosystem.
+Imports the EMMO domain-battery and domain-electrochemistry modules and provides
+the semantic foundation for BattINFO canonical records, JSON schemas, and JSON-LD exports."""@en ;
+
+    dcterms:abstract """BattINFO is an implementation and interoperability layer for the
+EMMO-based domain-battery ontology. It provides Python tooling, JSON schemas,
+semantic mapping tables, and JSON-LD transformation pipelines for authoring,
+validating, and publishing battery cell records, test protocols, and datasets
+as Linked Data."""@en ;
+
+    dcterms:creator
+        "Simon Clark (SINTEF Industry, NO)"@en ,
+        "Casper Welzel Andersen"@en ,
+        "Francesca Lønstad Bleken"@en ;
+    dcterms:contributor
+        "BattINFO contributors — see https://w3id.org/battinfo for full list"@en ;
+
+    dcterms:license <https://www.apache.org/licenses/LICENSE-2.0> ;
+    dcterms:rights "Apache License 2.0"@en ;
+    dcterms:source <https://github.com/BIG-MAP/BattINFO> ;
+
+    rdfs:seeAlso <https://w3id.org/emmo/domain/battery> ;
+    rdfs:seeAlso <https://w3id.org/emmo/domain/electrochemistry> ;
+    # Record-layer companions under the slash namespace: the battinfo:
+    # placeholder vocabulary and the EMMO prefLabel companion.
+    rdfs:seeAlso <https://w3id.org/battinfo/> ;
+
+    rdfs:label "BattINFO application ontology"@en ;
+    rdfs:comment """Application ontology = EMMO import/pin manifest plus a tiny local residue (the ConformanceStatus scheme). No domain terms are defined here (IDENTIFIER_POLICY.md section 14): battery concepts come from the pinned EMMO imports; record-layer battinfo: placeholder terms are declared in assets/vocab/battinfo-records.ttl and human-readable labels for the EMMO terms the emitters use in assets/vocab/emmo-labels.ttl. EMMO dependency versions pinned in owl:imports; run .tools/quality/check_emmo_versions.py to check for upstream updates."""@en .
+
+# ---------------------------------------------------------------------------
+# Annotation properties declared so OWL tools do not warn about unknown
+# annotation properties from the dcterms vocabulary.
+# ---------------------------------------------------------------------------
+
+dcterms:title       a owl:AnnotationProperty .
+dcterms:description a owl:AnnotationProperty .
+dcterms:abstract    a owl:AnnotationProperty .
+dcterms:creator     a owl:AnnotationProperty .
+dcterms:contributor a owl:AnnotationProperty .
+dcterms:license     a owl:AnnotationProperty .
+dcterms:rights      a owl:AnnotationProperty .
+dcterms:source      a owl:AnnotationProperty .
+
+# ---------------------------------------------------------------------------
+# ConformanceStatus controlled vocabulary
+#
+# A SKOS concept scheme expressing how closely a battery test followed its
+# test specification.  Used in JSON-LD exports via dqv:value and prov:used.
+# IRIs are under the /ConformanceStatus/ sub-path (slash namespace) because
+# concept schemes are published as independent Linked Data resources.
+# ---------------------------------------------------------------------------
+
+<https://w3id.org/battinfo/ConformanceStatus>
+    a skos:ConceptScheme ;
+    skos:prefLabel "Conformance Status"@en ;
+    skos:definition "A controlled vocabulary expressing how well a physical battery test followed its test specification."@en ;
+    dcterms:isPartOf battinfo: .
+
+<https://w3id.org/battinfo/ConformanceStatus/Conformant>
+    a skos:Concept ;
+    skos:inScheme <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:topConceptOf <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:prefLabel "Conformant"@en ;
+    skos:definition "The test was carried out in full accordance with the test specification."@en .
+
+<https://w3id.org/battinfo/ConformanceStatus/PartialConformance>
+    a skos:Concept ;
+    skos:inScheme <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:topConceptOf <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:prefLabel "Partial Conformance"@en ;
+    skos:definition "The test deviated from the specification in one or more steps but produced usable data."@en .
+
+<https://w3id.org/battinfo/ConformanceStatus/NonConformant>
+    a skos:Concept ;
+    skos:inScheme <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:topConceptOf <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:prefLabel "Non-Conformant"@en ;
+    skos:definition "The test deviated from the specification to such a degree that the results are not considered reliable."@en .
+
+<https://w3id.org/battinfo/ConformanceStatus/ConformanceUnknown>
+    a skos:Concept ;
+    skos:inScheme <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:topConceptOf <https://w3id.org/battinfo/ConformanceStatus> ;
+    skos:prefLabel "Conformance Unknown"@en ;
+    skos:definition "It is not known whether the test conformed to the specification."@en .

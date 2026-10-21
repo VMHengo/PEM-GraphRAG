@@ -36,20 +36,21 @@ retrieval remain the baseline until a measured staging pilot passes.
   `ontology/merged/merged.ttl` or its reports. Fix stale documentation for the
   now-present BTO files. Done when all 51 listed source files are accounted for,
   source/manifest mismatches are visible, and the command is covered by a test.
-- [ ] **ONT-01B: Reconcile the pinned ontology snapshot.** The read-only audit
-  found a BattINFO 0.7.0/Apache-2.0 source against an 0.8.0-beta/CC BY
-  recorded merge, plus 19 triple and one annotation-property differences.
-  Decide which source version is intended; verify provenance and reuse terms;
-  rebuild only in an isolated location; review the RDF difference; version
-  the curated source closure (without the full BattINFO software checkout) and
-  update manifest, report and merged artifact together if warranted. Done
-  when the read-only audit exits 0 on the chosen snapshot and all source
-  versions and licenses are documented. ONT-02 depends on this step.
+- [x] **ONT-01B: Reconcile the pinned ontology snapshot.** Adopted the locally
+  corroborated BattINFO 0.7.0/Apache-2.0 source as a new curated baseline;
+  archived the prior 0.8.0-beta merge, reviewed the 46 added/27 removed named
+  triples, rebuilt in isolation, pinned SHA-256 for all 51 source files and
+  updated the manifest, report and active graph together. The full separate
+  BattINFO checkout is ignored. The read-only audit exits 0. Source licenses
+  are recorded separately; the old 0.8.0-beta source is not recoverable.
 - [ ] **ONT-02: Reviewed mapping schema.** Add a versioned mapping from current
   PEM entity types and relation labels to ontology IRIs, preferred labels,
   aliases, inverses and source attribution. Mark unmapped/ambiguous cases
   explicitly. Done when the mapping validates against the merged ontology and
   reviewed causal, process and part-whole examples have deterministic results.
+  Review the BattINFO 0.7.0 import pins against the older electrochemistry and
+  chemical-substance modules in this union; do not infer compatibility from
+  `owl:imports` without resolving their versions.
 - [ ] **ONT-03: Read-only ontology resolver.** Implement a small Python module
   that loads the reviewed mapping and resolves labels and inverses without
   modifying graph writes. Test German/English aliases, collisions, missing
@@ -77,6 +78,13 @@ for and parsed all 51 files, then correctly exited 1 on the documented source
 snapshot mismatch. `tests/ontology/test_validate_sources.py` covers matching
 sources, missing files, version/license/count drift and stored-merge drift.
 The audit details and safe command are in `ontology/README.md`.
+
+ONT-01B evidence (2026-10-21): isolated build parsed 51 files with zero
+failures; the read-only audit passed with 65,882 triples, matching structure
+and zero grounded-triple differences. The previous report/graph are under
+`ontology/history/`. Focused ontology tests: 10 passed; Ruff passed.
+The exact `--deep` isomorphism check was stopped after sustained CPU work;
+the structural/grounded audit passed, but formal isomorphism remains unverified.
 
 ## Other Planned Work
 

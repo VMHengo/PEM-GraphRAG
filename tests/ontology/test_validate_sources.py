@@ -1,6 +1,7 @@
 """Regression tests for the read-only ontology source audit."""
 
 import json
+import hashlib
 from pathlib import Path
 
 from rdflib import Graph, URIRef
@@ -65,6 +66,10 @@ def _write_fixture(root: Path) -> Path:
         "counts": {**counts, "files_merged": len(per_file)},
         "label_coverage": report["label_coverage"],
         "licenses": {"source_license_declarations": licenses},
+        "source_sha256": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(bto.glob("*.ttl")) + [root / "sources" / "battinfo.ttl", placeholder]
+        },
     }
     (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (root / "merge_report.json").write_text(json.dumps(report), encoding="utf-8")
@@ -95,6 +100,18 @@ def test_audit_reports_missing_source(tmp_path):
     assert not result["ok"]
     assert result["source_files"]["missing"] == ["battery.ttl"]
     assert any("Missing listed source files" in error for error in result["errors"])
+
+
+def test_audit_reports_changed_source_hash_even_if_rdf_is_unchanged(tmp_path):
+    root = _write_fixture(tmp_path / "ontology")
+    source = root / "sources" / "bto" / "battery.ttl"
+    source.write_text(source.read_text(encoding="utf-8") + "# changed comment\n", encoding="utf-8")
+
+    result = audit(root)
+
+    assert not result["ok"]
+    assert any("SHA-256 mismatch for battery.ttl" in error for error in result["errors"])
+    assert result["merged_structure_match"] is True
 
 
 def test_audit_reports_license_and_count_mismatches(tmp_path):

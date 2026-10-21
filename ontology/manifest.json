@@ -1,0 +1,183 @@
+{
+  "ticket": "06-ontologien-beziehen-und-mergen",
+  "retrieved": "2026-09-06",
+  "build_script": "ontology/build_merged.py",
+  "merged_output": "ontology/merged/merged.ttl",
+  "sources": {
+    "battery-testing-ontology (BTO)": {
+      "repo": "https://github.com/emmo-repo/application-battery-testing-ontology",
+      "note_repo_rename": "Repository-ID 611955600 wurde von emmo-repo/battery-testing-ontology zu emmo-repo/application-battery-testing-ontology umbenannt; alte URLs leiten per HTTP redirect um.",
+      "branch": "main",
+      "no_tagged_releases": true,
+      "resolved_version_iri": "http://w3id.org/emmo-bto/1.0.2/bto",
+      "owl_versionInfo": "1.0.0",
+      "note_version_mismatch": "owl:versionIRI (1.0.2) und owl:versionInfo (1.0.0) im selben Ontologie-Header widersprechen sich - Inkonsistenz im Original, nicht von uns eingeführt oder korrigiert.",
+      "vendored_bundle": "Repo liefert unter ontologies/ eine vom BTO-Team bereits vorab aufgelöste, selbstenthaltene owl:imports-Closure inklusive catalog-v001.xml (OWL-Catalog fuer Offline-Resolution). Alle 45 Dateien aus diesem Ordner wurden nach ontology/sources/bto/ heruntergeladen und vollstaendig fuer den Union-Graph geladen.",
+      "files_fetched": 45
+    },
+    "domain-battery": {
+      "canonical_repo": "https://github.com/emmo-repo/domain-battery",
+      "canonical_iri": "https://w3id.org/emmo/domain/battery",
+      "used_version": "0.20.2",
+      "used_source": "Ticket 23 (2026-09-08): real heruntergeladen von github.com/emmo-repo/domain-battery, Tag 0.20.2, Tree-SHA f7dceb899... - zehn Dateien (battery.ttl, battery-dependencies.ttl, modules/battery-cell-geometry.ttl, modules/battery-manufacturing.ttl, modules/battery-testing.ttl, reference/battery-quantities.ttl, reference/battery-reference.ttl, subdomains/battery-manufacturing-lithium-ion.ttl, subdomains/battery-model-lithium-ion.ttl, subdomains/battery-products.ttl), flach abgelegt in ontology/sources/bto/, ersetzen die zuvor vendorten sechs 0.18.6-Dateien.",
+      "version_history": "0.18.6 (Ticket 06, aus dem BTO-Bundle vendort) -> 0.20.2 (Ticket 21 Entscheidung, Ticket 23 Umsetzung, 2026-09-08). Grund: 0.18.6 war ohne echten Versionsvergleich gewaehlt worden (siehe KORREKTUR-Eintrag unten); der nachgeholte Vergleich ergab kein Konsistenzargument fuer 0.18.6, aber realen Gewinn bei den Klassen (siehe quantifizierte_kosten_der_versionswahl).",
+    "KORREKTUR_2026-09-06_vergleich_hat_nicht_stattgefunden": "Urspruenglich als 'separat geladen zum Vergleich' dokumentiert. Tatsaechlich enthaelt ontology/sources/domain-battery-0.20.2.ttl nur den 43-zeiligen Ontologie-Header mit owl:imports auf .../0.20.2/dependencies und KEINE einzige Klasse - der Import wurde nie aufgeloest, ein inhaltlicher Vergleich fand nie statt. Nachgeholt am 2026-09-06 durch Aufloesen aller 10 Moduldateien des 0.20.2-Tags (battery.ttl, battery-dependencies.ttl, modules/battery-cell-geometry.ttl, modules/battery-manufacturing.ttl, modules/battery-testing.ttl, reference/battery-quantities.ttl, reference/battery-reference.ttl, subdomains/battery-manufacturing-lithium-ion.ttl, subdomains/battery-model-lithium-ion.ttl, subdomains/battery-products.ttl).",
+    "quantifizierte_kosten_der_versionswahl": "domain-battery 0.20.2 enthaelt 320 Klassen, davon 206 auch im Merge (0.18.6) vorhanden und 114 dort FEHLEND. Aufschluesselung nach Modul (2026-09-07 nachgetragen): battery-cell-geometry 72 von 72 fehlend (Modul existiert im 0.18.6-Bundle gar nicht), battery-model-lithium-ion 20 von 20 fehlend (Modul existiert nicht), battery-products 15 von 15 fehlend (Modul existiert nicht), battery-reference 7 von 184 fehlend (Modul vorhanden, nur aelter), battery-quantities und battery-testing vollstaendig identisch. 107 der 114 fehlen also nicht wegen Versionsdrift, sondern weil drei Module in 0.18.6 noch nicht existierten.",
+    "relevanzbewertung_der_fehlenden_klassen": "KORREKTUR einer voreiligen Einschaetzung vom 2026-09-06 ('die fehlenden Klassen sind nicht randstaendig'). Nach Sichtung aller Labels ist der praktische Verlust deutlich kleiner als die Zahl 114: (a) 72 Geometrieklassen sind eine formalisierte Bemassungsnomenklatur fuer Zellzeichnungen (LengthA1..LengthC6, SurfaceAB2, SurfaceB2C3, OppositeTerminalPouchWithSealingSeam, PairedTerminalPrismaticVentSurfaceAC) und kommen in Fliesstext praktisch nie vor - fuer die Extraktionsaufgabe nahezu wertlos; (b) 20 Modellparameter (LithiumDiffusivityInPositiveElectrode, ActivationEnergyOfLithiumDiffusivityInElectrolyte, NegativeElectrodeCoatingThickness, LithiumTransportNumber, PositiveElectrodeMaximumLithiumConcentration ...) sind genuin prosarelevant fuer Modellierungs- und Elektrochemiepaper; (c) 15 Produktklassen sind IEC-Codes und Handelsbezeichnungen (INR18650MJ1, IFp21700, NaCR32140MP10, ICP66575) - Literatur nennt meist nur das nackte Format ('18650-Zellen'), also nur teilrelevant; (d) 7 System-/Spezifikationsbegriffe (BatterySystem, BatterySpecification, BatteryCellSpecification, BatteryModuleSpecification, BatteryPackSpecification, BatterySystemSpecification, PrismaticBattery) sind pro Klasse am relevantesten, weil hochfrequente Allgemeinbegriffe. Realistisch relevanter Verlust: rund 27 Klassen plus die Zellformat-Konzepte, nicht 114.",
+    "konsistenzargument_geschwaecht": "Die 0.20.2-Module importieren <https://w3id.org/emmo/1.0.2> - dieselbe EMMO-Kernversion, die auch im BTO-Bundle vendort ist. Das urspruengliche Hauptargument fuer 0.18.6 ('intern konsistent mit dem Bundle') traegt damit schwaecher als beim ersten Durchlauf angenommen. Die Versionswahl ist neu zu entscheiden (Ticket 21), nicht stillschweigend beizubehalten.",
+      "version_conflict": "BattINFO (master, battinfo.ttl) deklariert owl:imports auf domain-battery 0.13.0-beta - eine DRITTE, noch aeltere Version als die im BTO-Bundle vendorte 0.18.6.",
+      "resolution": "0.18.6 aus dem BTO-Bundle gewaehlt. Begruendung: (a) intern konsistent mit der ebenfalls darin vendorten domain-electrochemistry 0.31.1 und CHAMEO 1.0.0 - vom BTO-Team als zusammenpassendes Set kuratiert und vertrieben; (b) neuer als BattINFOs deklarierte 0.13.0-beta; (c) domain-battery und BattINFO nutzen denselben stabilen Klassen-Namespace (https://w3id.org/emmo/domain/battery#, ohne Versionsanteil in der Klassen-IRI - nur die Ontologie-Dokument-IRI traegt die Version), wodurch der spaetere Wechsel von 0.13.0-beta auf 0.18.6 fuer BattINFOs (ohnehin fast leere) eigene Aussagen keine IRI-Bruchstelle erzeugt."
+    },
+    "domain-electrochemistry": {
+      "canonical_repo": "https://github.com/emmo-repo/domain-electrochemistry",
+      "used_version": "0.31.1",
+      "used_source": "vendored innerhalb des BTO-Bundles"
+    },
+    "chameo": {
+      "canonical_repo": "https://github.com/emmo-repo/domain-characterisation-methodology",
+      "used_version": "1.0.0",
+      "used_source": "vendored innerhalb des BTO-Bundles"
+    },
+    "chemical-substance": {
+      "used_version": "0.12.3",
+      "used_source": "vendored innerhalb des BTO-Bundles"
+    },
+    "EMMO core": {
+      "used_version": "1.0.2",
+      "used_source": "ontologies/1.0.2.ttl im BTO-Bundle (4 MB, EMMO-Kernontologie in einer Datei) plus die einzeln vendorten EMMO-Mid-/Top-Perspektiven-Module (agency, computerscience, data, holistic, isq, manufacturing, materials, math, mereocausality, metrology, models, persholistic, persistence, perspective, physicalistic, reductionistic, semiotics, sidimensionalunits, standardmodel, structural, symbolic, workflow) - laut BTO-Root-Datei teils bereits transitiv ueber CHAMEO importiert, hier vorsorglich vollstaendig mitgeladen."
+    },
+    "BattINFO": {
+      "repo": "https://github.com/BIG-MAP/BattINFO",
+      "cloned_commit": "Historical record: c227283c03f35b1e85300b42f311fec19f215c77 (2026-09-04). The checkout has no .git metadata and this commit cannot be authenticated locally against the current 0.7.0 source.",
+      "file_fetched": "battinfo.ttl (master-Branch, hash-namespace Ontologie-Sammeldatei)",
+      "resolved_version_iri": "https://w3id.org/battinfo/0.7.0/battinfo",
+      "used_version": "0.7.0",
+      "source_license": "Apache-2.0",
+      "snapshot_note": "The local battinfo.ttl is byte-identical to the separate BattINFO software checkout and declares 0.7.0/Apache-2.0. The previously recorded c227283c commit and 0.8.0-beta/CC BY source cannot be authenticated from this checkout; the old merged graph was a different historical snapshot. This is a new curated baseline, not a reproduction of that original source file.",
+      "import_version_note": "The 0.7.0 source declares electrochemistry 0.37.2 and chemical-substance 0.15.0 imports, while this local union intentionally uses 0.31.1 and 0.12.3. owl:imports are not resolved by build_merged.py. Do not treat this mixed-version union as a dependency-consistent OWL closure.",
+      "content_finding": "battinfo.ttl enthaelt laut eigenem dcterms:abstract absichtlich fast nichts (\"intended to be empty and merely collecting the other ontologies\") - tatsaechlich nur 5 owl:AnnotationProperty-Deklarationen, keine einzige Domain-Klasse oder Object Property.",
+      "correction_2026-09-06": "Die vorige Manifest-Fassung nahm an, BattINFOs 'echte' Interface-Klassen (CellSpec, Cell, Test, Dataset) laegen unkompiliert im YAML-Schema und wuerden ein reichhaltiges Domain-Vokabular liefern, wenn man das Python-Toolchain ausfuehrt. Das Repo wurde jetzt vollstaendig geklont und geprueft - diese Annahme war falsch. Per IDENTIFIER_POLICY.md Abschnitt 14 (ratifiziert 2026-07-08) ist explizite Projektpolitik: 'battinfo: never carries scientific/domain semantics' - Batteriekonzepte MUESSEN in domain-battery/domain-electrochemistry leben (die wir bereits ueber den BTO-Zweig im Graph haben), battinfo: (slash-namespace, https://w3id.org/battinfo/) enthaelt AUSSCHLIESSLICH temporaere Platzhalter fuer Konzepte, die noch nicht upstream in EMMO angekommen sind, und soll laut Policy 'may only SHRINK' - keine stabile, wachsende Domain-Ontologie zum Ausschoepfen.",
+      "records_vocab_generator": "scripts/gen_battinfo_vocab.py - musste NICHT ausgefuehrt werden, sein Output liegt bereits fertig committed im Repo unter assets/vocab/battinfo-records.ttl (keine YAML-zu-RDF-Kompilierung noetig, das Skript scannt nur Python-Quellcode nach battinfo:-Verwendungen gegen ein Inventar - die YAML-Dateien unter schema/ definieren Pydantic-Datenmodelle fuer strukturierte Dateneingabe, nicht Ontologieklassen).",
+      "records_vocab_content": "assets/vocab/battinfo-records.ttl: 11 owl:Class (CellInstance, Channel, Deviation, ElectrodeSpec, Equipment, EquipmentSpec, Material, MaterialSpec, ParameterSet, TestConformance, TestSpec) + 53 rdf:Property (generisch typisiert, nicht owl:ObjectProperty/DatatypeProperty). Jede Klasse hat NUR rdfs:label + rdfs:comment ('Placeholder for record key ... pending an upstream EMMO term') + rdfs:isDefinedBy - keine subClassOf, keine Axiome, keine Domaenensemantik.",
+      "second_file_emmo_labels": "assets/vocab/emmo-labels.ttl (282 skos:prefLabel-Tripel auf bestehende EMMO-UUID-IRIs) gepruft und NICHT gemerged - Stichprobe (EMMO_06448f64_8db6_4304_8b2c_e785dba82044 = 'Density') zeigt, dass unser Graph ueber die BTO-Bundle-Quelldateien bereits ein eigenes rdfs:label fuer dieselbe IRI traegt. Reine Dopplung, kein Erkenntnisgewinn.",
+      "merge_decision": "battinfo-records-placeholder-vocab.ttl (Kopie von assets/vocab/battinfo-records.ttl) als EIGENE, separat benannte Quelldatei in ontology/sources/ aufgenommen und in build_merged.py als zusaetzliche, ausdruecklich nicht-kanonische Quelle eingebunden - bewusst nicht in battinfo.ttl hineingemischt, damit Ticket 07 anhand des Namespace https://w3id.org/battinfo/ filtern kann, falls diese 64 Platzhalterbegriffe aus dem Kandidatensatz ausgeschlossen werden sollen. Fuer Ticket 07 als Hinweisliste auf von BattINFOs Entwicklerteam identifizierte, noch offene Testing-/Equipment-Luecken in domain-battery/-electrochemistry brauchbar, nicht als eigenstaendige Domaenensemantik."
+    }
+  },
+  "counts": {
+    "triples": 65882,
+    "classes": 4725,
+    "object_properties": 310,
+    "data_properties": 32,
+    "annotation_properties": 101,
+    "generic_rdf_properties": 53,
+    "named_individuals": 32,
+    "files_merged": 51,
+    "previous_counts_before_ticket_23_0202_switch": {
+      "triples": 65228, "classes": 4611, "object_properties": 309,
+      "data_properties": 32, "annotation_properties": 92,
+      "generic_rdf_properties": 53, "named_individuals": 31, "files_merged": 47
+    }
+  },
+  "licenses": {
+    "source_license_declarations": {
+      "battery-testing-ontology (BTO)": "CC BY 4.0",
+      "domain-battery": "CC BY 4.0",
+      "domain-electrochemistry": "CC BY 4.0",
+      "chameo": "CC BY 4.0",
+      "chemical-substance": "CC BY 4.0",
+      "EMMO core": "CC BY 4.0",
+      "BattINFO": "Apache-2.0"
+    },
+    "summary": "Mixed source declarations: BattINFO 0.7.0 declares Apache-2.0; the other six root ontologies declare CC BY 4.0. Preserve source-level attribution and review redistribution obligations before publishing the union graph. The older 0.8.0-beta merge declared CC BY 4.0 for BattINFO as well."
+  },
+  "label_coverage": {
+    "note": "Nachgetragen bei der Korrektur vom 2026-09-06, Zahlen am 2026-09-08 nach dem domain-battery-0.20.2-Wechsel (Ticket 23) aktualisiert. Ticket 07 leitet den Kandidaten-Typensatz aus diesen Klassen ab, deshalb gehoert die Label-Abdeckung ins Manifest.",
+    "classes_total": 4725,
+    "with_rdfs_label": 2684,
+    "with_skos_preflabel": 4573,
+    "with_any_label": 4584,
+    "without_any_label": 141,
+    "skos_altlabel_triples": 1904,
+    "consequence": "EMMO fuehrt seine Primaerlabels in skos:prefLabel, nicht in rdfs:label - ein Ableitungsschritt, der nur rdfs:label liest, verliert rund 40 % der Klassen. Die 1.904 skos:altLabel-Tripel sind eine direkt nutzbare Synonymquelle fuer das Mention-Matching. 141 Klassen tragen ueberhaupt kein Label und sind ohne Zusatzarbeit nicht als Schematyp verwendbar."
+  },
+  "conflicts": {
+    "label_conflicts_rdfs_label": 0,
+    "label_conflicts_skos_preflabel": 4,
+    "label_conflict_correction": "URSPRUENGLICH FALSCH BERICHTET als '0 Label-Konflikte'. Der erste Durchlauf pruefte nur rdfs:label und uebersah damit das Praedikat, unter dem EMMO seine Primaerlabels fuehrt. Nach Korrektur des Checks (build_merged.py, skos:prefLabel ergaenzt): 4 echte Konflikte - MaterialByClassicalMaterialsScience/ClassicallyDefinedMaterial, Electron/ElementaryElectron, MaterialByFunction/FunctionallyDefinedMaterial, MaterialBySize/SizeDefinedMaterial. Siehe NOTES.md-Eintrag vom 2026-09-06 (Korrektur).",
+    "dependencies_ttl_pattern": "Auffaellig: in ALLEN 4 Label-Konflikten und in BEIDEN echten subClassOf-Konflikten ist dependencies.ttl die abweichende Datei, waehrend die uebrigen Quelldateien untereinander uebereinstimmen. Das stuetzt die Lesart, dass dependencies.ttl ein aelterer/schlanker Import-Stub ist. Empfehlung fuer Ticket 07: bei Label- oder Hierarchie-Abweichungen der nicht-dependencies.ttl-Fassung folgen.",
+    "subclass_conflicts_flagged": 6,
+    "subclass_conflicts_additive_harmless": 4,
+    "subclass_conflicts_genuine": 2,
+    "genuine_conflict_detail": "GranularMaterial und NaturalMaterial (beide EMMO-Materialklassen) werden in ontologies/dependencies.ttl direkt als subClassOf Material gefuehrt, waehrend ontologies/1.0.2.ttl und ontologies/materials.ttl uebereinstimmend die praezisere Zwischenklasse (MaterialByCompactness bzw. MaterialByOrigin) als direkten Elternteil angeben. Muster spricht dafuer, dass dependencies.ttl ein schlankes Platzhalter-/Import-Stub ist (fuer reine Import-Aufloesung gedacht), nicht eine zweite inhaltliche Quelle. Nicht aus dem Graphen entfernt - beide Aussagen sind in OWL nicht widerspruechlich (Mehrfachvererbung ueber eine Ontologiehierarchie hinweg ist zulaessig), nur dokumentiert wie von Ticket 06 verlangt.",
+    "detail_file": "ontology/merge_report.json",
+    "domain_battery_0202_switch_2026-09-08": "0 neue Label- oder subClassOf-Konflikte durch den Wechsel auf domain-battery 0.20.2 (Ticket 23) - alle oben gelisteten Konflikte sind unveraendert dieselben vier EMMO-Kern-dependencies.ttl-Faelle wie zuvor, real gegen merge_report.json nachgeprueft."
+  },
+  "plan_md_a3": {
+    "question": "Importiert BTO domain-battery bereits, ist der Merge also im Wesentlichen ein Import-Auflösen?",
+    "answer": "Ja, bestaetigt. BTOs eigene Root-Datei importiert domain-battery direkt (sowie battery-quantities, electrochemistry, electrochemistry-quantities, CHAMEO); CHAMEO importiert seinerseits einen grossen Teil der EMMO-Mid-/Top-Module. Der Merge war ueberwiegend Import-Aufloesung plus Hinzunahme von BattINFO (das NICHT von BTO importiert wird - eigenstaendige Schwester-Ontologie, kein Abhaengigkeitspfad zwischen beiden)."
+  },
+  "source_sha256": {
+    "1.0.2.ttl": "35e09d7cacf82ccd51b3c3bd254f52b28a31deef3fc3af3f2f664de33e4710d4",
+    "agency.ttl": "6da38179a7eeb4ec56b94bdfb75239b2a34638d48d8c1cb397164b5a309e8134",
+    "battery-cell-geometry.ttl": "0942452ba3aa6192116b7ff3c7bcd50e4f6a840fabad026b52c7c672f7c18bad",
+    "battery-dependencies.ttl": "ab5307074483cdb3e327e078b7bd205a8ba2dac9c641e62f62e42bc6af0055fd",
+    "battery-manufacturing-lithium-ion.ttl": "b34532519ceeb301e651ae9f78ca5137d2f8ebc0e56044dd6cb9b395368f8bc4",
+    "battery-manufacturing.ttl": "b7969b0c863d493d046223be510c53b1c254ba834fc2ec03c3aca381e6df381c",
+    "battery-model-lithium-ion.ttl": "d0b3265e0956fbd6816b2633eda9ceb85a2335166364638f6186429515d57fb0",
+    "battery-products.ttl": "e07d926dc924367f6067e42117f8a4934163e75d8148720d9e41a3ef668b5e32",
+    "battery-quantities.ttl": "b6748de4f4562b955f2e7d8ae12b12a5bcfdd867c4444e5de552d691a032b9db",
+    "battery-reference.ttl": "72a558f5dcd0ca59e9ae49bd2169a8745077ac166ab6aa0e4b3b579a77312e81",
+    "battery-testing.ttl": "e8efefc47f3459a5c686d1f728e6f825c6e69e98455fe8d16ae9d38c26a563ed",
+    "battery.ttl": "fcfaea62ba100d1d60016908c78c586535f6e9e34ca5019e3a4360f6196b001e",
+    "battinfo-records-placeholder-vocab.ttl": "86e8128005c8333d3b1604e1d2529d2f365b246025da4b19724b633914094abb",
+    "battinfo.ttl": "b0aab3d70afcc98999e48802a281d401ab1f22352ab97ae9f1773c362076b261",
+    "bto.ttl": "44560021130850f79855dd3a222ad81bdd876ef99a9aeeb487dabca726a0fa8d",
+    "chameo.ttl": "16df89bfa2b31f5c43d59f1ee9b8046b450a91886ae24fc523c7aedd7fee2c53",
+    "chemical-substance-dependencies.ttl": "f830a624c6aa008890461da8f2fbabdb6392ed0e80da112ae463cd2257a1f68c",
+    "chemical-substance.ttl": "4b2ae5900c2586f78644d659f648af73c849370367cbc12ee6e63554067fe579",
+    "computerscience.ttl": "7119359a4d2361965fb539485a0927ae3bbe935d2c53afac152f4dc7da1187a2",
+    "contrast.ttl": "3522128fc5a383aba557cd728e76e5d53072a63e82c232e05b42a95e2b90ba30",
+    "contributors.ttl": "2a22d1ed1643aec426211191f2efa94bb2342dbaa0fbfc7bd5b3662c084a5b83",
+    "data.ttl": "df59531f872dcc955c73ffca09081cc77d50744b7f0b87288e9efeec2244ac86",
+    "dependencies.ttl": "ecd6b085ae0d9b3ae17489baeeff2ca18d175ce79dcc288437fe7b9b62ba20b7",
+    "electrochemistry-dependencies.ttl": "6302da8a6fedb1d0d3c3a9a17d1de5c4f1dd6e7fed2953b16775b2632e24258e",
+    "electrochemistry-manufacturing.ttl": "804353dafceca863d145f0be3e27e20d0a5940b0ce66899e87ec5abce914aa08",
+    "electrochemistry-quantities.ttl": "f4c0218762b918bf7a4f7d2895af705fc230beb09b0b01b02e0f5769619de185",
+    "electrochemistry-reference.ttl": "477f2769ce85fcf588329d1809860c74101cab7d83ae5cde8472aa0f2681eaec",
+    "electrochemistry-testing.ttl": "91b35406f09e3768693136a70d039c78ae5234f3c2b5d624ad5381c8c6a76c22",
+    "electrochemistry.ttl": "8f16440a9b9675777202ba1124a9bf1172749f6641f88405200777e37e3f6efc",
+    "holistic.ttl": "45875703cc30c657de537ffbbfd47df908856094d342a1c98441e144e1cab8b6",
+    "isq.ttl": "16e3ba5ba765a57d5ba10902b5446c7f95d9009d5ca66df60afd4b562494b6c4",
+    "manufacturing-equipment.ttl": "e8598398468f37ed8976d62a60edfb3e8d1f40c75600b5388c29d408b58082b3",
+    "manufacturing-processes.ttl": "23deb8262a3386e9c8e868e2c0e9a3a566c129b025675504939ac5cc386a2223",
+    "manufacturing.ttl": "1f92a673659fa32f247788b420dbf77fd0e2f012b2e62dee8c8cf2c0070ad6b7",
+    "materials.ttl": "458e928b7d38891e593a2e5a242a98300130576138891588bd8138cf089b6e30",
+    "math.ttl": "d8a88dbf25a86b32bca09eda938a4b2fe501958ed6456cdb53d4ddeb32c68a9f",
+    "mereocausality.ttl": "e9c65a028e17977952173f22555b787e5778cabc03cd4f22d00181d9e618ca78",
+    "metrology.ttl": "2b5e90925d7bdc047907f92c5429563b41c8e2cb8570c03e616dc43c2069deda",
+    "models.ttl": "e5b90974b83da46144315a44236e5078065369cd9ffbe554c3c0f635653777bc",
+    "persholistic.ttl": "dea8b72b80981a93eb68c0a675065e45210abb258fa6bbe2acd0db31e9057424",
+    "persistence.ttl": "559bc4e9bf185c65f08eef6b4f05febf7e948dc2862e20963aa88d29ca744428",
+    "perspective.ttl": "31c88d961ecc34c554d87081131513681a5e5678698aace21d74dec97796d9cc",
+    "physicalistic.ttl": "7422544094d62f356bfe2fb981913d85c582eedd22919d82f12d75bdf3c69530",
+    "properties.ttl": "c1bfcf6ae25bae8ffafb580f38014bdbef7f208e56dd254910b67bc23ad336e1",
+    "reductionistic.ttl": "ce0a80f5d928631a8570c4a1ab8114a37eb72b220f9a3e8758923ad01c9462b3",
+    "semiotics.ttl": "f5a2271c68430bf4d3f21f64f9c969b50a476be7aa913ff8f07840f54d159a68",
+    "sidimensionalunits.ttl": "ec6638833442c304f66181882cbbd3ebb48c31bf7e11a99f4181d2f52513a074",
+    "standardmodel.ttl": "ad1a3b8e50521d58e548dd5ce506c58833f566fa370d98cf4891fcacf588a7c5",
+    "structural.ttl": "81572e2b0e55de81a93cc93a44098d912cd9cc8c0329de7675030da285fbc735",
+    "symbolic.ttl": "73254aad3b4f551c7baa40daa55f8cf34fe018d911b532ac553513f19ffdf7fb",
+    "workflow.ttl": "ad2e044af23cb859fd085313da1aac06c41e18200a767efe7aa0856fc0ef6ae3"
+  },
+  "ticket_03_thesis_check": {
+    "thesis": "Ticket 03 nennt sechs Ontologie-Quellen fuer die Extraktionsschema-Typologie (EMMO, domain-battery, Electrochemistry, BattINFO, CHAMEO, BTO), obwohl Ticket 06 nur drei Top-Level-Quellen zum Beziehen nennt (domain-battery, BattINFO, BTO). These: EMMO/CHAMEO/Electrochemistry kommen transitiv ueber die Imports von BattINFO/BTO herein.",
+    "finding": "Historical observation for the older 0.8.0-beta BattINFO header: only domain-battery 0.13.0-beta was imported. The current 0.7.0 source instead declares domain-battery 0.20.2, electrochemistry 0.37.2 and chemical-substance 0.15.0. This union does not resolve owl:imports and contains older electrochemistry and chemical-substance modules. BTO directly imports CHAMEO and Electrochemistry; EMMO is available transitively through its vendored modules."
+  },
+  "reasoner": {
+    "attempted": true,
+    "tool": "owlready2.sync_reasoner (HermiT, bundled .jar)",
+    "result": "FEHLGESCHLAGEN - Java-Laufzeitumgebung ist auf diesem Rechner nicht installiert (`java` nicht im PATH); HermiT benoetigt sie zwingend, um zu starten (owlready2 ruft es per Shell-Aufruf `java -jar HermiT.jar ...` auf).",
+    "not_a_blocker": "Gemaess Ticket-Vorgabe (Punkt 5: Scheitern ist zu dokumentieren, kein Blocker) akzeptiert. Fuer die Schema-Ableitung (Ticket 07) genuegt der Union-Graph ohne Reasoner-Inferenz.",
+    "retry_script": "ontology/check_consistency.py - laeuft, sobald eine Java-Laufzeitumgebung verfuegbar ist."
+  }
+}

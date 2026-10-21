@@ -1,7 +1,7 @@
 # Ontology Integration Plan
 
-Status: ONT-01 audit implemented, 2026-10-21; source-snapshot reconciliation
-is still required before mapping work. The ontology has not been integrated
+Status: ONT-01 audit and ONT-01B source-snapshot reconciliation implemented,
+2026-10-21. The ontology has not been integrated
 into the runtime or deployed.
 
 ## Goal And Baseline
@@ -26,18 +26,18 @@ Normal retrieval remains the default.
 | `ontology/sources/bto/*.ttl` | 49 Turtle files now present | Offline ontology source closure |
 | `ontology/sources/battinfo.ttl` and `battinfo-records-placeholder-vocab.ttl` | Both present; the latter contains record-layer placeholders | Separate domain concepts from software-record terms |
 | `ontology/sources/battinfo-repo/` | A separate, large BattINFO software checkout with its own Apache-2.0 license | Review provenance; do not import or commit wholesale as runtime ontology |
-| `ontology/merged/merged.ttl` and `merge_report.json` | Report lists 51 parsed files, zero failures, 65,863 triples, 4,725 classes and 310 object properties | Versioned, checked input to mapping work |
-| `ontology/manifest.json` | Source versions, attribution and historical merge notes | Provenance; reconcile with current files |
+| `ontology/merged/merged.ttl` and `merge_report.json` | Report lists 51 parsed files, zero failures, 65,882 triples, 4,725 classes and 310 object properties | Versioned, checked input to mapping work |
+| `ontology/manifest.json` | Source versions, licenses, SHA-256 pins and historical merge notes | Provenance for current 0.7.0 snapshot |
 | `ontology/inventory/*.csv` | Class/property inventory and screened relation candidates | Human review, not automatic extraction allowlist |
 | `ontology/relation_types.json` | Provisional relation families based on a narrow pilot | Curate mappings; do not treat as validated production gold |
 | `ontology/type_mapping_emmo.json`, `subproperties.json` | Coarse type rules and subproperty/inverse hints | Typed diagnostics and mapping candidates |
 
 The previous note that `sources/bto/` is missing is obsolete. The 49 BTO
 files plus two BattINFO source files match the 51 filenames in the merge
-report. However, the current source graph differs from the recorded merge:
-65,882 versus 65,863 triples, with one additional annotation property.
-The current BattINFO file is 0.7.0/Apache-2.0; the recorded snapshot is
-0.8.0-beta/CC BY 4.0. See `ontology/README.md` for the read-only audit.
+report. The current pinned graph contains 65,882 triples and BattINFO
+0.7.0/Apache-2.0. The previous 65,863-triple, 0.8.0-beta/CC BY 4.0 merge is
+preserved under `ontology/history/`; its standalone source is not recoverable.
+See `ontology/README.md` for the audit and mixed-version import caveat.
 The separate `domain-battery-0.20.2.ttl` is a header with imports;
 the locally resolved module closure is under `sources/bto/`. The manifest and
 inventory contain historical counts and notes; verification must distinguish
@@ -76,8 +76,8 @@ checked-in baseline during audit because it overwrites the merged file and
 report. Record whether the full BattINFO repository is needed at all; its
 software license differs from the ontology source-license summary. Report
 label conflicts and unavailable historical notes. Use `ontology/manifest.json`,
-`build_merged.py` and `merge_report.json` as inputs. ONT-01B now reconciles the
-detected source snapshot before ONT-02 starts. Estimated work: 0.5-1 day.
+`build_merged.py` and `merge_report.json` as inputs. ONT-01B reconciled the
+detected source snapshot before ONT-02. Estimated work: 0.5-1 day.
 
 ### ONT-02: Versioned Mapping
 
@@ -89,8 +89,9 @@ the predicates already used in PEM examples (`causes`, `affects`,
 `contains`). Inspect ontology definitions, not label similarity alone. Keep
 `relation_types.json` as a candidate source and review conflicts against
 `lightrag/relation_ontology.py`; preserve unmapped labels. Add validation of
-IRI existence and inverse consistency. Estimated work: 1-2 days plus domain
-review.
+IRI existence and inverse consistency. Review the BattINFO import-version
+mismatch before relying on domain/range axioms across these versions.
+Estimated work: 1-2 days plus domain review.
 
 ### ONT-03: Resolver Without Runtime Writes
 
