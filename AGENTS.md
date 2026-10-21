@@ -19,6 +19,18 @@ that file, verify its acceptance checks, and update the TODO and Project
 Memory when the project state changes. Do not infer a task from an older plan
 when the queue gives a concrete next step.
 
+## Roadmap Governance
+
+`docs/PEM-GRAPHRAG-IMPROVEMENT-ROADMAP.md` is the long-term product goal;
+read it before planning major pipeline or evaluation work. Align TODO tasks
+and design choices with evidence-grounded battery-engineering multi-hop
+retrieval, a market-ready product, ChatGPT access through MCP, and seamless
+developer and user workflows. Change long-term roadmap goals
+only deliberately: explicitly ask the user which goal to add or change and
+why before editing them, unless the current user request already states the
+specific goal. Record the decision in the roadmap. Put routine implementation
+ideas and sequencing in `docs/PROJECT_TODO.md`, not in the goal statement.
+
 ## Project
 
 PEM GraphRAG is a LightRAG-based document-ingestion and knowledge-graph system.

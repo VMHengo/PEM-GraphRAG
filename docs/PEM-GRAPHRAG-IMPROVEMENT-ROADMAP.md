@@ -1,6 +1,109 @@
 # PEM GraphRAG Improvement Roadmap
 
-This roadmap collects potential improvements for the PEM GraphRAG system. It separates changes that improve the end-user answer quality from changes that improve developer/admin operation.
+This roadmap defines the long-term product goals for PEM GraphRAG. The feature
+ideas below are possible means to reach them. The ordered,
+implementable tasks live in [Project TODO](PROJECT_TODO.md); technical design
+and research details live in the linked plans.
+
+## North Star: Evidence-Grounded Battery Engineering Multi-Hop Retrieval
+
+PEM GraphRAG should help battery engineers discover and check meaningful
+connections across documents: how manufacturing steps and process parameters
+affect materials or cell properties, how these changes relate to measurements
+and degradation mechanisms, and where an observed defect may have originated.
+The system should answer both forward questions ("What can this process change
+lead to?") and reverse root-cause questions ("What could explain this defect?").
+
+A valuable result is a **connected, directed and source-supported chain**,
+not merely several related nodes. Each link needs a meaningful predicate,
+correct endpoint direction, source evidence, and the conditions under which
+the source supports it. The answer must separate directly stated relations,
+inferences across sources, and uncertain hypotheses. If a necessary link is
+missing or contradicted, the answer should say so instead of completing the
+chain by plausibility alone.
+
+Primary subject areas are battery-cell manufacturing, electrode and component
+production, cell assembly, formation and ageing, diagnostics, degradation,
+failure analysis, safety and recycling. German and English terminology should
+resolve to the same concepts where justified, while keeping original terms
+and document provenance. Electric motors, PEM electrolysis and other PEM topics
+remain possible later applications; they are not the present quality target.
+
+### What Success Looks Like
+
+1. **Extraction:** On fully reviewed battery-engineering passages, entities
+   and assertions have measured precision and recall. Direction, predicate,
+   negation, conditions, units and source attribution are checked separately.
+   Multiple distinct assertions between the same entities survive storage.
+2. **Paths:** On a held-out graph with reviewed chains, the system retrieves
+   connected 2-3 hop causal or production paths with correct orientation and
+   relevant evidence under a fixed context budget. Only then test 4-5 hops.
+   Longer paths receive no automatic preference over shorter, better-supported
+   paths.
+3. **Answers:** A domain reviewer can trace each claimed link back to its
+   source. The system handles reverse root-cause questions, alternative
+   explanations, missing links and conflicting studies without asserting
+   unsupported causality.
+4. **Comparisons:** Report path correctness, supported-answer accuracy,
+   false-positive rate, evidence coverage, latency and cost per query on
+   held-out document families. Compare normal, directed and combined
+   retrieval with the same corpus and budget. Metadata coverage and a single
+   overall benchmark score are diagnostics, not proof of useful causal insight.
+
+The long-term ambition is at least 80% **reviewed, evidence-supported answer
+accuracy** on a representative in-domain 4-5 hop test set. This is a target,
+not a claim about the current system or a promise for arbitrary new papers.
+The test set, scoring rules and acceptable false-positive rate must be agreed
+with domain experts before using the number as a release gate.
+
+### Workstreams Toward The Goal
+
+| Workstream | Why it matters | Main plan |
+| --- | --- | --- |
+| Reliable extraction and import | Missing or truncated chunk outputs can erase essential links | [Pipeline research plan](PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md) P0/P3 |
+| Battery-specific concepts and predicates | Generic labels and ambiguous inverses weaken causal chains | [Ontology integration plan](ONTOLOGY_INTEGRATION_PLAN.md) and research plan P2 |
+| Assertion-preserving graph storage | Pair-based merging can lose different claims between the same entities | Research plan P4 |
+| Query-relevant directed paths | Correct anchors, direction and evidence matter more than raw hop count | Research plan P5/P6 |
+| Independent quality evaluation | Separates extraction, path-search and answer errors | Research plan P1 and [benchmark scoring](BENCHMARK_SCORING.md) |
+
+Existing normal retrieval remains available. Directed traversal is used when
+the question asks for a causal, production or dependency chain; association
+questions need not be forced into a causal interpretation. Ontology classes
+and relation labels are mapping aids, not evidence that an extracted claim is
+true.
+
+## Product Delivery Goals
+
+The battery-engineering quality target is the product's main differentiator.
+Three further goals were explicitly added by the user:
+
+| Goal | Desired user-visible outcome | Evidence before release |
+| --- | --- | --- |
+| Market-ready, technically advanced GraphRAG | A deployable, supportable product with evidence-grounded graph answers, reproducible releases, documented data rights and predictable operating costs | Security/privacy and license review, isolated deployments, recovery tests, monitored failures, documented costs and versioned evaluation results |
+| ChatGPT access through MCP | Authorized users can connect PEM GraphRAG as a ChatGPT connector and query the permitted knowledge base with useful source references | End-to-end authentication and permission tests, stable MCP tools, correct citations and a repeatable connection setup |
+| Seamless developer and user experience | Developers can ingest, inspect, retry and maintain documents without routine terminal repair; users can ask questions, follow evidence and understand uncertainty | Observed task completion for upload-to-answer and query-to-source flows, clear progress/errors, accessible UI and usable recovery actions |
+
+MCP is the current ChatGPT integration route. The word "plugin" describes the
+desired ChatGPT experience, not a commitment to an older plugin API. Each
+release should preserve the battery-quality baseline while improving product
+reliability and usability. Additional deployment or commercial requirements
+need their own reviewed acceptance criteria before being treated as complete.
+
+### Roadmap Change Rule
+
+Treat this goal as stable. Before adding or changing a long-term goal, ask the
+user explicitly which goal to add or change and why; record the decision here.
+An explicit goal stated in the current user request already answers that
+question. Add new implementation ideas, dependencies and experiments to
+`docs/PROJECT_TODO.md` and their detailed plans without silently expanding
+this roadmap. Review roadmap changes against battery-engineering answer
+quality and the agreed evaluation criteria.
+
+Decisions 2026-10-21: the user made evidence-grounded, battery-engineering-
+specific multi-hop retrieval and useful causal chains the primary quality
+goal. The user then added market-ready product quality, a ChatGPT connector
+through MCP, and seamless developer/ingestion and end-user experiences as
+long-term product goals.
 
 ## Status Update: 2026-10-19
 
@@ -30,7 +133,9 @@ Metadata or keyword coverage does not demonstrate correct scientific answers.
 
 ### 1.1 Domain-Specific Extraction Prompts
 
-Improve the PEM entity extraction profile so that extracted entities and relations focus more strongly on PEM's target domains:
+Improve the PEM entity extraction profile for the battery-engineering focus
+defined above. The wider topic list below records earlier application ideas;
+it does not change the primary quality target:
 
 - battery production
 - electromobility components
@@ -583,7 +688,8 @@ docs/STAGING_TO_PRODUCTION.md
 
 1. Reject incomplete extraction and freeze actual batch submission provenance.
 2. Evaluate extraction precision/recall and answer claims independently of coverage.
-3. Align predicate definitions, inverse rules, routing and evaluation.
+3. Align battery predicate definitions, ontology mappings, inverse rules,
+   routing and evaluation.
 4. Compare compact evidence/condition prompts, including a two-stage pilot.
 5. Preserve parallel, source-specific assertions before interpreting long chains.
 6. Improve query anchoring, bounded path reranking and nonredundant evidence.

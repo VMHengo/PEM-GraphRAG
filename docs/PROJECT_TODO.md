@@ -2,6 +2,12 @@
 
 This is the canonical, ordered implementation queue. Detailed rationale lives
 in linked plans. One checkbox represents one reviewable implementation step.
+The long-term product goal is in the
+[PEM GraphRAG Roadmap](PEM-GRAPHRAG-IMPROVEMENT-ROADMAP.md): evidence-grounded
+battery-engineering multi-hop retrieval, product readiness, ChatGPT access via
+MCP, and seamless developer and user workflows. Tasks here should state how
+they contribute to these goals or identify themselves as necessary enabling work.
+New long-term goals require explicit user input before changing the roadmap.
 
 ## How To Use This Queue
 

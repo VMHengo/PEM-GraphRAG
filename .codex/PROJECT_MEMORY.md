@@ -118,6 +118,14 @@ assertions between the same two entities can be lost.
 
 ## Primary Documentation
 
+- `docs/PEM-GRAPHRAG-IMPROVEMENT-ROADMAP.md`: stable long-term goals:
+  evidence-grounded battery-engineering multi-hop answers and useful causal
+  chains; market-ready product quality; ChatGPT access through MCP; seamless
+  developer/ingestion and end-user workflows. Ask the user explicitly before
+  adding or changing goals unless their request already specifies the change;
+  record the decision in the roadmap.
+- `docs/PROJECT_TODO.md`: canonical ordered implementation queue; keep new
+  implementation plans and completion status here.
 - `docs/PEM-GRAPHRAG-ARCHITECTURE.md`: current end-to-end architecture.
 - `docs/PIPELINE_CHANGE_GUIDE.md`: practical change locations.
 - `docs/PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md`: quality roadmap,
