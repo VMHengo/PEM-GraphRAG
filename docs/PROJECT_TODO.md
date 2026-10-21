@@ -43,7 +43,7 @@ retrieval remain the baseline until a measured staging pilot passes.
   updated the manifest, report and active graph together. The full separate
   BattINFO checkout is ignored. The read-only audit exits 0. Source licenses
   are recorded separately; the old 0.8.0-beta source is not recoverable.
-- [ ] **ONT-02: Reviewed mapping schema.** Add a versioned mapping from current
+- [x] **ONT-02: Reviewed mapping schema.** Add a versioned mapping from current
   PEM entity types and relation labels to ontology IRIs, preferred labels,
   aliases, inverses and source attribution. Mark unmapped/ambiguous cases
   explicitly. Done when the mapping validates against the merged ontology and
@@ -85,6 +85,15 @@ and zero grounded-triple differences. The previous report/graph are under
 `ontology/history/`. Focused ontology tests: 10 passed; Ruff passed.
 The exact `--deep` isomorphism check was stopped after sustained CPU work;
 the structural/grounded audit passed, but formal isomorphism remains unverified.
+
+ONT-02 evidence (2026-10-21): `ontology/pem_mapping_v1.json` covers ten PEM
+entity types and 31 relation labels. Its conservative EMMO core mappings,
+conditional cases, explicit ambiguity/unmapped entries and source-version
+warning are validated read-only by `python -m ontology.validate_mapping`.
+`tests/ontology/test_validate_mapping.py` covers causal orientation, process
+output, part-whole inverses, unknowns, drift and malformed mappings. The
+mapping is an offline candidate, not runtime-approved; expert review of
+conditional semantics remains a gate before enabling annotations.
 
 ## Other Planned Work
 

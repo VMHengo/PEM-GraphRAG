@@ -1,6 +1,7 @@
 # Ontology Integration Plan
 
-Status: ONT-01 audit and ONT-01B source-snapshot reconciliation implemented,
+Status: ONT-01 audit, ONT-01B source-snapshot reconciliation and ONT-02
+offline mapping candidate implemented,
 2026-10-21. The ontology has not been integrated
 into the runtime or deployed.
 
@@ -92,6 +93,14 @@ the predicates already used in PEM examples (`causes`, `affects`,
 IRI existence and inverse consistency. Review the BattINFO import-version
 mismatch before relying on domain/range axioms across these versions.
 Estimated work: 1-2 days plus domain review.
+
+Implemented as `ontology/pem_mapping_v1.json` with read-only validation in
+`ontology/validate_mapping.py`. The offline mapping is intentionally not a
+runtime allowlist: 31 current relation labels and ten entity types are covered,
+but only strong or explicitly conditional EMMO core matches receive canonical
+IRIs. `precedes`/`follows`, broad effect and input labels remain unresolved
+where the pinned definitions are narrower. Domain review of conditional cases
+is still required before using the mapping in production data paths.
 
 ### ONT-03: Resolver Without Runtime Writes
 

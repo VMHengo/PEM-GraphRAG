@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "mapping_version": "1.0.0",
+  "status": "curated_candidate_not_approved_for_runtime",
+  "source_versions": {
+    "EMMO core": "1.0.2",
+    "domain-electrochemistry": "0.31.1",
+    "chemical-substance": "0.12.3",
+    "BattINFO": "0.7.0"
+  },
+  "compatibility": "BattINFO 0.7.0 imports electrochemistry 0.37.2 and chemical-substance 0.15.0, but this pinned union contains 0.31.1 and 0.12.3. Only EMMO core 1.0.2 terms are mapped; do not infer across the mixed-version imports.",
+  "entity_types": [
+    {
+      "label": "Process", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_43e9a05d_98af_41b4_92f6_00f79a09bfce",
+      "source_file": "persistence.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "Process", "aliases": ["Prozess"],
+      "condition": "A physical process, not a planning or administrative workflow."
+    },
+    {
+      "label": "Material", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_4207e895_8b83_4318_996a_72cfb32acd94",
+      "source_file": "materials.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "Material", "aliases": ["Werkstoff"],
+      "condition": "A physical material, not an abstract material specification."
+    },
+    {
+      "label": "Data", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_3e7add3d_e6ed_489a_a796_8e31fef9b490",
+      "source_file": "contrast.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "Data", "aliases": ["Daten"],
+      "condition": "Actual data, not an unmeasured parameter or intended KPI."
+    },
+    {
+      "label": "Artifact", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_90ae56e4_d197_49b6_be1a_0049e4756606",
+      "source_file": "persistence.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "Object", "aliases": ["Bauteil"],
+      "condition": "A physical object; do not map software or abstract designs to Object."
+    },
+    {"label": "ResearchField", "status": "unmapped", "iri": null, "reason": "No reviewed equivalent in the pinned graph."},
+    {"label": "Concept", "status": "unmapped", "iri": null, "reason": "Too broad for a single ontology class."},
+    {"label": "Method", "status": "unmapped", "iri": null, "reason": "The similarly labeled BattINFO term is a record placeholder, not a domain class."},
+    {"label": "Organization", "status": "unmapped", "iri": null, "reason": "No reviewed PEM-to-ontology class mapping."},
+    {"label": "Content", "status": "unmapped", "iri": null, "reason": "Publications and other content need separate review."},
+    {"label": "Other", "status": "unmapped", "iri": null, "reason": "Fallback type cannot be mapped safely."}
+  ],
+  "relations": [
+    {
+      "label": "causes", "status": "mapped",
+      "iri": "https://w3id.org/emmo#EMMO_d67ee67e_4fac_4676_82c9_aec361dba698",
+      "source_file": "mereocausality.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "isCauseOf", "aliases": ["cause", "verursacht"],
+      "inverse": {"label": "caused_by", "iri": "https://w3id.org/emmo#EMMO_6735d3ff_67f8_43b5_b5b0_240fbfab4517", "swap_endpoints": true},
+      "family": "causal", "domain_hint": null, "range_hint": null,
+      "note": "Use only for an evidenced causal claim, not co-occurrence."
+    },
+    {
+      "label": "affects", "status": "ambiguous", "iri": null,
+      "candidate_iris": ["https://w3id.org/emmo#EMMO_449beacd_4fda_4d46_a723_d2118f4e2623"],
+      "aliases": ["affect", "beeinflusst"], "family": "causal_effect",
+      "reason": "EMMO affects means a specific Process/Object overlap; PEM uses the word more broadly."
+    },
+    {
+      "label": "influences", "status": "ambiguous", "iri": null,
+      "candidate_iris": ["https://w3id.org/emmo#EMMO_3c51ea74_43a4_42d5_953b_fcb43f359c73"],
+      "aliases": ["influence"], "family": "causal_effect",
+      "reason": "EMMO influences has Process/Object and causal-overlap semantics not guaranteed by a PEM label."
+    },
+    {
+      "label": "results_in", "status": "ambiguous", "iri": null,
+      "candidate_iris": ["https://w3id.org/emmo#EMMO_d67ee67e_4fac_4676_82c9_aec361dba698"],
+      "aliases": ["result_in"], "family": "causal",
+      "reason": "An observed result does not by itself establish EMMO causation."
+    },
+    {
+      "label": "precedes", "status": "ambiguous", "iri": null,
+      "candidate_iris": ["https://w3id.org/emmo#EMMO_499e24a5_5072_4c83_8625_fe3f96ae4a8d"],
+      "aliases": ["precede", "geht_voraus"], "family": "process_sequence",
+      "reason": "EMMO precedes implies directed causal contact; a manufacturing order alone does not."
+    },
+    {
+      "label": "produces", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_c4bace1d_4db0_4cd3_87e9_18122bae2840",
+      "source_file": "persistence.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "hasOutput", "aliases": ["produce", "erzeugt"],
+      "inverse": {"label": "produced_by", "iri": "https://w3id.org/emmo#EMMO_2bb50428_568d_46e8_b8bf_59a4c5656461", "swap_endpoints": true},
+      "family": "process_output", "domain_hint": "Process", "range_hint": "Artifact|Material",
+      "condition": "Only when the source is a physical process and the target its output; other senses of produces remain unmapped."
+    },
+    {
+      "label": "uses", "status": "ambiguous", "iri": null,
+      "candidate_iris": ["https://w3id.org/emmo#EMMO_36e69413_8c59_4799_946c_10b05d266e22"],
+      "aliases": ["use", "verwendet"], "family": "process_input",
+      "reason": "EMMO hasInput applies to process input, but PEM uses covers devices, methods and materials."
+    },
+    {
+      "label": "part_of", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_a8bd7094_6b40_47af_b1f4_a69d81a3afbd",
+      "source_file": "mereocausality.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "isPartOf", "aliases": ["ist_teil_von"],
+      "inverse": {"label": "has_part", "iri": "https://w3id.org/emmo#EMMO_17e27c22_37e1_468c_9dd7_95e137f73e7f", "swap_endpoints": true},
+      "family": "part_whole", "domain_hint": null, "range_hint": null,
+      "condition": "Only true mereological part-whole claims, not membership in a study or association."
+    },
+    {
+      "label": "contains", "status": "conditional",
+      "iri": "https://w3id.org/emmo#EMMO_17e27c22_37e1_468c_9dd7_95e137f73e7f",
+      "source_file": "mereocausality.ttl", "source_ontology": "EMMO core",
+      "preferred_label": "hasPart", "aliases": ["enthaelt"],
+      "inverse": {"label": "is_part_of", "iri": "https://w3id.org/emmo#EMMO_a8bd7094_6b40_47af_b1f4_a69d81a3afbd", "swap_endpoints": true},
+      "family": "part_whole", "domain_hint": null, "range_hint": null,
+      "condition": "Only constituent part-whole, not spatial or informational containment."
+    },
+    {"label": "leads_to", "status": "ambiguous", "iri": null, "candidate_iris": ["https://w3id.org/emmo#EMMO_d67ee67e_4fac_4676_82c9_aec361dba698"], "reason": "A downstream association is not necessarily causal."},
+    {"label": "follows", "status": "ambiguous", "iri": null, "candidate_iris": ["https://w3id.org/emmo#EMMO_60c57607_c9e7_4e75_a3d1_7a1f1f9928e4"], "reason": "EMMO temporal relation has stronger causal semantics than sequence order."},
+    {"label": "degrades", "status": "unmapped", "iri": null, "reason": "No reviewed equivalent with matching degradation semantics."},
+    {"label": "increases", "status": "unmapped", "iri": null, "reason": "A signed quantitative effect needs a typed property and evidence."},
+    {"label": "decreases", "status": "unmapped", "iri": null, "reason": "A signed quantitative effect needs a typed property and evidence."},
+    {"label": "depends_on", "status": "unmapped", "iri": null, "reason": "Dependency is broader than material input or causation."},
+    {"label": "requires", "status": "unmapped", "iri": null, "reason": "Requirement is not equivalent to a process input without typed context."},
+    {"label": "used_for", "status": "unmapped", "iri": null, "reason": "Purpose is not the inverse of process input."},
+    {"label": "occurs_in", "status": "unmapped", "iri": null, "reason": "Location or context is not mereological parthood."},
+    {"label": "optimizes", "status": "unmapped", "iri": null, "reason": "Optimization needs an objective and measured outcome."},
+    {"label": "supports", "status": "unmapped", "iri": null, "reason": "Support may mean evidence, enablement or assistance."},
+    {"label": "studies", "status": "unmapped", "iri": null, "reason": "Research activity needs separately typed actor and subject."},
+    {"label": "measures", "status": "unmapped", "iri": null, "reason": "Measurement relation needs an explicitly typed process, object or property."},
+    {"label": "published_by", "status": "unmapped", "iri": null, "reason": "Publication provenance is outside the reviewed EMMO relation subset."},
+    {"label": "authored_by", "status": "unmapped", "iri": null, "reason": "Authorship provenance is outside the reviewed EMMO relation subset."},
+    {"label": "evidenced_by", "status": "unmapped", "iri": null, "reason": "Evidence provenance must retain chunk and document identifiers."},
+    {"label": "described_in", "status": "unmapped", "iri": null, "reason": "Document attribution is not a physical containment relation."},
+    {"label": "collaborates_with", "status": "unmapped", "iri": null, "reason": "Symmetric organization relation; no reviewed equivalent."},
+    {"label": "compared_with", "status": "unmapped", "iri": null, "reason": "Comparison is not a causal or material relation."},
+    {"label": "similar_to", "status": "unmapped", "iri": null, "reason": "Similarity requires a stated comparison basis."},
+    {"label": "related_to", "status": "unmapped", "iri": null, "reason": "Generic fallback has no stable ontological meaning."},
+    {"label": "associated_with", "status": "unmapped", "iri": null, "reason": "Generic association is not causal evidence."}
+  ]
+}

@@ -1,5 +1,32 @@
 # Ontology Source Audit
 
+## PEM Mapping Candidate (ONT-02)
+
+`pem_mapping_v1.json` is an offline, versioned mapping candidate. It covers
+the ten current PEM entity types and the relation labels used by the extraction
+profile, routing rules and common fallbacks. A `mapped` entry has a reviewed
+semantic counterpart in the pinned graph; `conditional` also requires the
+stated type/context condition; `ambiguous` lists candidates but has no
+canonical IRI; `unmapped` intentionally stays with its raw PEM label. Runtime
+extraction, graph writes and retrieval do not read this file yet.
+
+Run `python -m ontology.validate_mapping` from the repository root to check
+label coverage, source versions, RDF types, source attribution, preferred
+labels, inverse endpoint swaps and ambiguity markers. The command is read-only.
+For example, `causes` maps to EMMO `isCauseOf` with `caused_by` requiring an
+endpoint swap; `produces` can map to `hasOutput` only for a physical Process
+and its output; `part_of`/`contains` map to inverse part-whole relations only
+when they really describe constituents. `precedes` and `follows` remain
+ambiguous because EMMO's temporal relations carry causal assumptions beyond
+simple manufacturing order. Broad PEM `affects`, `influences` and `uses` are
+not automatically equated with their narrower EMMO lookalikes.
+
+The mapped terms come from pinned EMMO core 1.0.2. BattINFO record placeholders
+are excluded. BattINFO 0.7.0 imports newer electrochemistry and
+chemical-substance releases than the local union contains, so no cross-version
+OWL inference is assumed. A domain expert should review conditional cases
+before ONT-03/ONT-04 use; this file alone makes no claim about extracted facts.
+
 `validate_sources.py` checks the local Turtle source closure against the
 pinned SHA-256 hashes, manifest, merge report and merged RDF graph. It is read-only: it
 never rewrites the original source, `merged.ttl`, `manifest.json` or
