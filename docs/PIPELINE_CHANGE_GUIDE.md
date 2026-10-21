@@ -5,6 +5,12 @@ is intentionally organised by the pipeline stage rather than by source tree.
 Use staging first for every change that affects extraction, embeddings, graph
 storage, or access control.
 
+Reviewed design context, verified limitations, pretrained-model candidates,
+and the next staged work packages are in
+[Pipeline Research And Improvement Plan](PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md)
+(2026-10-19). This guide maps change locations; it does not assert that a
+prompt-only edit can add new stored evidence/condition fields.
+
 ## Before Changing Anything
 
 1. Keep secrets in `.env` or `.env.staging`; never place them in source code
@@ -176,7 +182,10 @@ necessary, add regression tests under `tests/extraction/` or
 LightRAG extraction requests into Azure/OpenAI Batch API requests, polls their
 status, and imports completed output. Change this file when debugging batch
 JSONL formats, Azure Responses API compatibility, batch polling, or import
-behaviour. Use staging and one chunk before submitting a large batch.
+behaviour. New jobs persist a submission manifest and imports validate every
+expected chunk before graph writes. Use staging and one chunk before submitting
+a large batch; legacy jobs created before the manifest do not have comparable
+hash provenance.
 
 ## Models, Embeddings, And Reranking
 

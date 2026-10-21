@@ -5,6 +5,33 @@ to retrieval through ChatGPT. It is meant as a practical map for future changes:
 each stage lists what happens, the relevant code paths, the technologies in use,
 and the usual place to modify behavior.
 
+Reviewed against local commit `2b146577` on 2026-10-19. This is a code
+snapshot, not a fresh inspection of the running VPS. Deployment model names,
+prompt files, and resource settings must be checked in the active environment.
+The research-backed next steps, source references, acceptance criteria, and
+effort estimates are in
+[Pipeline Research And Improvement Plan](PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md).
+
+## Verified Status And Current Limits
+
+- Chunk-first ingestion, normal/Batch extraction, source URL editing,
+  extraction revisions, and retained-chunk re-extraction are implemented.
+- Evaluation has separate **Benchmarks** and **Prompt Experiments** tabs.
+  Experiments create isolated candidates and retain extraction artefacts;
+  they do not merely compare existing benchmark runs.
+- Optional directed retrieval supports `normal`, `directed`, `combined`,
+  and `auto`. Normal remains the default. Public controls allow **1-3 hops**.
+- Semantic endpoints drive directed traversal. Physical Neo4j writes still
+  merge an unordered node pair; parallel predicates/conditions can be lost.
+- Scoring 2.0.0 excludes Metadata from Overall. Term/reference coverage is
+  not an answer-correctness measurement; expected-answer prose and prohibited
+  claims are not yet evaluated by the live scorer.
+- Batch imports now reject incomplete/refused model outputs, invalid JSON
+  contracts, and missing/duplicate/foreign chunk IDs before graph merging.
+  New jobs retain a submission manifest and the submitted extraction revision.
+  Normal extraction completion validation, targeted retries, and idempotent
+  recovery after a merge failure remain open P0 work.
+
 Important distinction: the MCP server is currently read-only for ChatGPT. It
 does not ingest documents. Documents are ingested through the LightRAG WebUI or
 LightRAG REST API. ChatGPT reaches the already-ingested knowledge base through
@@ -68,8 +95,11 @@ ChatGPT
 | MCP gateway Dockerfile | `Dockerfile.mcp` |
 | Main LightRAG Dockerfile | `Dockerfile` |
 
-The local repository does not store real `.env` files. Real secrets live only on
-the VPS in `.env` / `.env.staging`.
+Real `.env` files are private runtime configuration and must not be committed.
+The VPS uses `.env` / `.env.staging`. The staging Compose file is maintained
+on the VPS and is absent from this local checkout. When benchmarks are mounted
+through `deploy/mcp/compose.evaluation-benchmarks.yml`, keep that overlay in
+the Compose invocation when recreating the service.
 
 ## 1. Document Upload
 
@@ -423,7 +453,7 @@ prompts/samples/pem_graphrag_entity_type_prompt.sample.yml
 data/prompts/entity_type/pem_graphrag_entity_type_prompt.yml
 ```
 
-The active configuration is:
+An example PEM configuration is (verify the runtime profile separately):
 
 ```env
 ENTITY_TYPE_PROMPT_FILE=pem_graphrag_entity_type_prompt.yml
@@ -507,8 +537,15 @@ EXTRACTION_GIT_COMMIT=
 The **Documents -> Re-extract outdated** action retains the document, source
 URL, chunks, and chunk embeddings. It removes and regenerates only the
 document's derived graph contribution. Benchmark runs save the same revision
-snapshot, so **Evaluation -> Prompt Comparison** can compare a selected run
-against a saved baseline. The operational workflow is documented in
+snapshot for history comparisons. **Evaluation -> Prompt Experiments** can
+also re-extract selected retained chunks with multiple server-side YAML
+profiles in isolated workspaces. Screening samples up to the configured
+number of initial chunks per document without gleaning; Validation uses all
+chunks without gleaning; Final retains the active gleaning intent and is the
+only promotable mode. Artefacts and results remain available after candidate
+workspace cleanup. Promotion preserves document URLs and chunk embeddings.
+See [Prompt Experiments](PROMPT_EXPERIMENTS.md). The operational versioning
+workflow is documented in
 [`EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md`](EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md).
 
 ### Current Extraction LLM Configuration
@@ -583,6 +620,9 @@ Chunked document
 POST /documents/{doc_id}/batch_extraction/start
 GET  /documents/{doc_id}/batch_extraction/status
 POST /documents/{doc_id}/batch_extraction/import
+GET  /documents/batch_extraction/overview
+POST /documents/batch_extraction/start_all
+POST /documents/batch_extraction/import_completed
 ```
 
 ### Current Batch Env
@@ -596,6 +636,8 @@ AZURE_BATCH_ENDPOINT=/responses
 AZURE_BATCH_COMPLETION_WINDOW=24h
 AZURE_BATCH_POLL_SECONDS=60
 AZURE_BATCH_HTTP_TIMEOUT=120
+# Optional output ceiling; unset means no ceiling is added by this helper.
+AZURE_BATCH_MAX_OUTPUT_TOKENS=8192
 ```
 
 `AZURE_BATCH_MODEL` should be the Azure deployment name if Azure requires a
@@ -608,6 +650,21 @@ AZURE_BATCH_ENDPOINT=/chat/completions
 AZURE_BATCH_ENDPOINT=/responses
 ```
 
+The 8192-token ceiling above is a pilot example, not a measured universal
+requirement. A Batch-level `completed` state alone still does not guarantee
+complete model output. Before merge, `_parse_output_jsonl()` rejects Responses
+`status=incomplete`, `incomplete_details`, refusals and non-`stop` Chat
+completion finishes. JSON extraction requires exactly `entities` and
+`relationships` array fields. The expected chunk set must be complete,
+unique and match the submitted manifest.
+
+New jobs persist a non-secret submission manifest: submitted chunk and request
+hashes, model, endpoint, completion window, output budget, prompt hash and
+the extraction revision. Import verifies retained chunks and stamps the
+submitted revision rather than a later active configuration. Older jobs remain
+importable without retrospective hash proof. Targeted retry and idempotent
+recovery after a failure during graph merge remain planned.
+
 ## 9. Graph Merge And Neo4j Storage
 
 ### What Happens
@@ -619,11 +676,14 @@ Neo4j stores the knowledge graph structure. It does not store all document
 chunks or all embeddings in the default setup.
 
 Current limitation: the LightRAG storage abstraction still treats relation
-identity mostly as undirected. Phase 1 therefore stores semantic direction as
-edge properties (`directionality`, `semantic_src_id`, `semantic_tgt_id`) without
-yet rewriting all graph-storage keys and vector IDs. Directed multi-hop retrieval
-should use these properties until the full direction-aware storage migration is
-implemented.
+identity mostly as undirected. Semantic direction is stored as edge properties
+(`directionality`, `semantic_src_id`, `semantic_tgt_id`) and is already used
+by the optional directed retriever. New relation-vector/chunk identities are
+direction-aware, but `merge_nodes_and_edges()` still groups an unordered
+endpoint pair and Neo4j uses an undirected `MERGE`. One representative
+predicate/direction can overwrite other assertions between the same entities.
+Preserving parallel predicates and source-specific conditions requires a
+further storage/merge change, not just changing Cypher arrows.
 
 ### Current Neo4j Configuration
 
@@ -641,6 +701,7 @@ NEO4J_DATABASE=neo4j
 | --- | --- |
 | Graph merge | `lightrag/operate.py` (`merge_nodes_and_edges`) |
 | Graph utilities | `lightrag/utils_graph.py` |
+| Direction-aware vector/tracking IDs, legacy compatibility | `lightrag/relation_identity.py` |
 | Neo4j backend | `lightrag/kg/neo4j_impl.py` |
 | Graph storage base class | `lightrag/base.py` (`BaseGraphStorage`) |
 | LightRAG graph object creation | `lightrag/lightrag.py` |
@@ -680,16 +741,18 @@ docker compose \
 
 ### What Happens
 
-LightRAG supports retrieval modes that use broader graph/community-style
-context. The exact community support depends on the storage backend and graph
-features available in the current LightRAG version/configuration.
+The reviewed `operate.py` retrieves entity and relationship vectors and their
+graph context. Its `global` mode is relationship-focused retrieval, not
+Microsoft GraphRAG's Leiden-community-report and map-reduce pipeline.
+No such community-report construction stage was found in the reviewed PEM
+ingestion/query flow. Neo4j graph visualisation is not community detection.
 
 For this project, the practical query modes are:
 
 ```text
 naive   vector search over chunks
 local   entity-focused graph retrieval
-global  broad graph/community retrieval
+global  relationship-focused vector/graph retrieval
 hybrid  local + global
 mix     graph + vector retrieval
 ```
@@ -743,6 +806,7 @@ Current tools:
 
 ```text
 query_pem_graphrag(question, mode="mix")
+trace_pem_graphrag_chain(question, ...)
 search_pem_documents(query, limit=10)
 fetch_pem_document_context(document_id, query=None, max_chunks=5)
 ```
@@ -765,11 +829,57 @@ Citation mapping lives in:
 lightrag_mcp/lightrag_client.py
 ```
 
-The future hook for stable source URLs is:
+Source/download URLs are implemented: document metadata is edited through
+`document_routes.py` and `DocumentManager.tsx`, REST references are enriched
+in `query_routes.py`, and MCP source/citation mapping uses:
 
 ```text
 _citation_url(...)
 ```
+
+### Optional Directed Retrieval
+
+`mode` selects the underlying LightRAG retrieval mode. Independently,
+`retrieval_strategy` selects `normal`, `directed`, `combined`, or `auto`.
+The deterministic DE/EN regex router is in `adaptive_retrieval.py`.
+`directed_retrieval.py` performs bounded, beam-pruned BFS over semantic
+endpoints supplied by `Neo4JStorage.get_directed_neighbor_edges_batch()`.
+Sources are resolved to stored chunks before path evidence enters the
+answer context; unresolved paths remain diagnostic.
+
+Defaults in `QueryParam`: `hop_depth=2` (allowed 1-3), `chain_top_k=20`,
+`chain_fanout=20`, `chain_top_k_per_prompt=2`, and
+`min_relation_importance=0.45`. Upstream/root-cause queries traverse `in`,
+downstream queries `out`. Traversal direction does not reverse the scientific
+meaning of a relationship. The general MCP query defaults to normal through
+`MCP_RETRIEVAL_STRATEGY`; the dedicated trace tool exposes bounded controls.
+
+The initial implementation seeds at most five entities and ranks paths using
+importance plus direction/predicate signals and a hop penalty. It does not
+yet score query-path relevance directly. Causal routing currently excludes
+`increases`, `decreases`, and `prevents` even though prompt samples use them.
+
+### Evaluation And Prompt Experiments
+
+| Concern | Implementation |
+| --- | --- |
+| Graph, query and directed diagnostics | `lightrag/evaluation/live_benchmark.py` |
+| Entity/relation/path matching | `lightrag/evaluation/semantic_matching.py`, `lightrag/relation_ontology.py` |
+| Isolated extraction candidates and promotion | `lightrag/evaluation/prompt_experiments.py` |
+| Saved results, titles, notes, revisions | `lightrag/evaluation/run_history.py` |
+| REST endpoints | `lightrag/api/routers/evaluation_routes.py` |
+| Separate WebUI views | `EvaluationManager.tsx`, `PromptExperimentManager.tsx` |
+| Source-controlled benchmark definitions | `evaluation/benchmarks/` |
+
+Scoring 2.0.0 uses endpoint-gated partial matches and separate exact signals.
+Metadata measures populated fields and is excluded from Overall. The current
+query scorer checks terms and expected document references, not scientific
+entailment against `expected_answer`/`unacceptable_claims`. Directed strategy
+checks use context/path diagnostics, while the ordinary full-QA case uses
+normal retrieval. Therefore the present UI is not yet a controlled comparison
+of answer correctness under all retrieval strategies.
+See [Benchmark Scoring](BENCHMARK_SCORING.md) and the planned separation of
+extraction, path-engine, evidence-retrieval, and answer-quality evaluation.
 
 ## 12. Authentication And Public Access
 
@@ -826,11 +936,13 @@ OAUTH2_PROXY_ISSUER_URL=https://...
 | Change entity types/prompt | `prompts/entity_type/*.yml`, `lightrag/prompt.py` |
 | Change extraction parsing | `lightrag/operate.py` |
 | Version prompts and re-extract documents | `lightrag/extraction_revisions.py`, `document_routes.py`, `DocumentManager.tsx`, `docs/EXTRACTION_VERSIONING_AND_PROMPT_COMPARISON.md` |
-| Compare prompt revisions | `evaluation/run_history.py`, `evaluation_routes.py`, `EvaluationManager.tsx` |
+| Compare prompt revisions and isolated re-extraction | `lightrag/evaluation/run_history.py`, `lightrag/evaluation/prompt_experiments.py`, `evaluation_routes.py`, `EvaluationManager.tsx`, `PromptExperimentManager.tsx` |
 | Change directed relationship metadata | `prompts/entity_type/*.yml`, `lightrag/prompt.py`, `lightrag/operate.py`, `docs/directed_multihop_retrieval_plan.md` |
 | Change Azure Batch behavior | `lightrag/api/azure_batch.py`, `DocumentManager.tsx` |
 | Change Neo4j behavior | `lightrag/kg/neo4j_impl.py` |
 | Change retrieval behavior | `lightrag/operate.py`, `query_routes.py` |
+| Change deterministic routing or path bounds/ranking | `lightrag/adaptive_retrieval.py`, `lightrag/directed_retrieval.py`, `lightrag/base.py` |
+| Change predicate/inverse matching | `lightrag/relation_ontology.py`, `lightrag/evaluation/semantic_matching.py` |
 | Change MCP tools | `lightrag_mcp/server.py`, `lightrag_mcp/lightrag_client.py` |
 | Change MCP auth | `lightrag_mcp/auth.py`, `lightrag_mcp/config.py` |
 | Change WebUI theme/branding | `lightrag_webui/src/index.css`, `lightrag_webui/src/lib/constants.ts`, `lightrag_webui/src/features/SiteHeader.tsx`, `lightrag_webui/index.html` |

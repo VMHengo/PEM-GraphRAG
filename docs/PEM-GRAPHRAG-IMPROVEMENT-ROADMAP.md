@@ -2,6 +2,30 @@
 
 This roadmap collects potential improvements for the PEM GraphRAG system. It separates changes that improve the end-user answer quality from changes that improve developer/admin operation.
 
+## Status Update: 2026-10-19
+
+Reviewed against local commit `2b146577`; no new runtime inspection is implied.
+The original feature proposals below remain useful background. Their wording
+does not mean every item is still missing. The actionable quality plan is now
+[Pipeline Research And Improvement Plan](PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md),
+including research through October 2026, optional pretrained models, prompt
+reuse, effort estimates, and acceptance tests.
+
+| Area | Verified code status | Remaining work |
+| --- | --- | --- |
+| Source/download URLs (1.4) | Editing, REST reference enrichment and MCP citation mapping implemented | Claim-level/page-level attribution and link availability checks |
+| Directed retrieval | Optional normal/directed/combined/auto, bounded Neo4j BFS, citations | Predicate alignment, query relevance, assertion preservation; currently max 3 hops |
+| WebUI batch controls (3.3) | Start/status/import and Advance All bulk operations; Batch JSON output validation and submission manifests implemented | Per-chunk retry and idempotent recovery after graph merge |
+| Evaluation (3.5) | Versioned benchmarks, partial/exact scoring, saved runs and notes | Precision, claim/condition checks and controlled strategy answer comparisons |
+| Prompt comparison | Isolated retained-chunk candidates, three cost modes and gated promotion implemented | Representative evidence-aware sampling, held-out evaluation, optional two-stage adapter |
+| Re-extraction | Revision fingerprints, retained-document refresh and new Batch submission provenance implemented | Normal-provider completion provenance and complete assertion-level migration |
+| Community reports | No Leiden/report retrieval in the reviewed query flow | Consider only if task-specific evaluation demonstrates a need |
+
+Highest-priority findings: the normal extraction path still needs equivalent
+completion validation; physical pair-based merge loses parallel assertions;
+the causal allowlist omits some predicates emitted by the prompts. High
+Metadata or keyword coverage does not demonstrate correct scientific answers.
+
 ## 1. User-Facing Quality Improvements
 
 ### 1.1 Domain-Specific Extraction Prompts
@@ -112,7 +136,9 @@ Implementation options:
 
 ### 1.4 Source Metadata And Download URLs
 
-Add a user-editable source URL for each document in the WebUI. This should be a URL where users can access or download the original file, similar to arXiv, publisher pages, institute publication pages, or internal document links.
+Implemented baseline: a user-editable source/download URL in the WebUI,
+preserved during retained-chunk re-extraction and included in reference mapping.
+The examples below describe its intended use and further metadata extensions.
 
 Example URLs:
 
@@ -483,7 +509,10 @@ For production, keep this disabled until Batch output parsing is stable.
 
 ### 3.3 WebUI Batch Controls
 
-Improve WebUI controls for Batch extraction:
+Implemented controls cover Batch start/status/import, Advance All bulk
+operations, and source URL editing. Remaining improvements are persistent
+per-document/per-chunk error display, safe retries, and validated completion.
+The checklist below describes baseline behavior already present in code:
 
 - show current Batch status
 - show error details
@@ -511,7 +540,11 @@ Improve pre-extraction estimates:
 
 ### 3.5 Evaluation Set
 
-Create an evaluation set for answer quality.
+Implemented baseline: JSON definitions under `evaluation/benchmarks/`, live
+graph/retrieval/full modes, separate semantic/exact diagnostics, saved history,
+and isolated prompt experiments. The earlier structure below is a historical
+proposal, not the active definition directory. Next add claim correctness,
+false-positive precision, conditions, and per-stage failure attribution.
 
 Suggested structure:
 
@@ -548,16 +581,17 @@ docs/STAGING_TO_PRODUCTION.md
 
 ## 4. Recommended Priority Order
 
-1. Improve domain and relationship extraction prompts.
-2. Add language normalization and alias mapping.
-3. Add source/download URL metadata and include it in references.
-4. Improve citation output for ChatGPT.
-5. Build a small evaluation set.
-6. Compare embeddings: `nomic-embed-text`, `text-embedding-3-small`, `bge-m3`.
-7. Add reranking.
-8. Test MinerU vs Docling for formula-heavy and figure-heavy PDFs.
-9. Improve section-aware chunking and table handling.
-10. Add Teams Batch notification.
-11. Add optional auto-import after Batch completion.
-12. Improve deploy reliability with built images and smoke tests.
+1. Reject incomplete extraction and freeze actual batch submission provenance.
+2. Evaluate extraction precision/recall and answer claims independently of coverage.
+3. Align predicate definitions, inverse rules, routing and evaluation.
+4. Compare compact evidence/condition prompts, including a two-stage pilot.
+5. Preserve parallel, source-specific assertions before interpreting long chains.
+6. Improve query anchoring, bounded path reranking and nonredundant evidence.
+7. Validate selected path IDs and grounded claims; pilot 4-5 hops separately.
+8. Audit existing embedding prefixes/context handling, then compare new indexes.
+9. Compare layout-aware parsing and section-aware chunks where evidence is lost.
+10. Pilot GLiNER2 or a small reranker on a separate worker if gains justify it.
+11. Consider GEPA after a held-out, scientifically reviewed benchmark exists.
+12. Add notifications/auto-import only after import integrity is established;
+    continue deployment isolation and resource controls.
 

@@ -31,6 +31,18 @@ class AzureBatchConfigError(RuntimeError):
     pass
 
 
+class AzureBatchOutputValidationError(ValueError):
+    """Raised when a completed Batch job cannot be safely merged.
+
+    Azure marks a batch as completed when its transport work is over.  That
+    does not guarantee that every individual model completion is complete or
+    belongs to the submitted document.  This error is intentionally raised
+    before any graph write takes place.
+    """
+
+    pass
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -133,6 +145,74 @@ def _max_output_tokens() -> int | None:
 
 def _response_format(use_json_extraction: bool) -> dict[str, str] | None:
     return {"type": "json_object"} if use_json_extraction else None
+
+
+def _sha256_text(value: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def _chunk_content_sha256(chunk: dict[str, Any]) -> str:
+    content = strip_internal_multimodal_markup_for_extraction(
+        chunk.get("content", "") or ""
+    )
+    return _sha256_text(content)
+
+
+def _system_prompt_from_request(line: dict[str, Any]) -> str:
+    body = line.get("body") or {}
+    instructions = body.get("instructions")
+    if isinstance(instructions, str):
+        return instructions
+    for message in body.get("messages") or []:
+        if isinstance(message, dict) and message.get("role") == "system":
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+    return ""
+
+
+def build_batch_submission_manifest(
+    *,
+    chunks: dict[str, dict[str, Any]],
+    request_lines: list[dict[str, Any]],
+    use_json_extraction: bool,
+    extraction_revision: dict[str, Any],
+) -> dict[str, Any]:
+    """Create an immutable, non-secret record of the submitted batch input."""
+
+    requests: dict[str, dict[str, str]] = {}
+    for line in request_lines:
+        chunk_id = line.get("custom_id")
+        if not isinstance(chunk_id, str) or chunk_id not in chunks:
+            raise ValueError("Batch request line has an unknown chunk id")
+        requests[chunk_id] = {
+            "chunk_content_sha256": _chunk_content_sha256(chunks[chunk_id]),
+            "request_body_sha256": _sha256_text(_canonical_json(line.get("body") or {})),
+        }
+
+    if len(requests) != len(request_lines):
+        raise ValueError("Batch request lines contain duplicate chunk ids")
+
+    system_prompts = {_system_prompt_from_request(line) for line in request_lines}
+    return {
+        "schema_version": 1,
+        "expected_chunk_ids": sorted(requests),
+        "chunks": requests,
+        "input_sha256": _sha256_text(_canonical_json(request_lines)),
+        "system_prompt_sha256": _sha256_text(_canonical_json(sorted(system_prompts))),
+        "model": _azure_model(),
+        "endpoint": _azure_batch_endpoint(),
+        "completion_window": _completion_window(),
+        "max_output_tokens": _max_output_tokens(),
+        "use_json_extraction": use_json_extraction,
+        "extraction_revision": dict(extraction_revision),
+    }
 
 
 def _build_extraction_prompt_context(global_config: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
@@ -326,6 +406,12 @@ async def start_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
     request_lines, use_json_extraction = build_batch_request_lines(
         chunks, rag._build_global_config()
     )
+    submission_manifest = build_batch_submission_manifest(
+        chunks=chunks,
+        request_lines=request_lines,
+        use_json_extraction=use_json_extraction,
+        extraction_revision=rag.get_extraction_revision(),
+    )
     jsonl_path = _job_jsonl_path(rag, doc_id)
     await _write_jsonl(jsonl_path, request_lines)
 
@@ -347,6 +433,7 @@ async def start_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
         "use_json_extraction": use_json_extraction,
         "endpoint": _azure_batch_endpoint(),
         "completion_window": _completion_window(),
+        "submission_manifest": submission_manifest,
         "created_at": now,
         "updated_at": now,
         "imported_at": None,
@@ -406,26 +493,130 @@ async def refresh_azure_batch_status(rag, doc_id: str) -> dict[str, Any]:
     return job
 
 
+def _validate_completed_response(
+    body: dict[str, Any], *, chunk_id: str | None, line_number: int
+) -> None:
+    """Reject provider responses that were transported successfully but truncated."""
+
+    label = chunk_id or str(line_number)
+    status = body.get("status")
+    if status in {"incomplete", "failed", "cancelled"}:
+        details = body.get("incomplete_details") or body.get("error") or status
+        raise AzureBatchOutputValidationError(
+            f"Batch response for {label} is not complete: {details}"
+        )
+    if body.get("incomplete_details"):
+        raise AzureBatchOutputValidationError(
+            f"Batch response for {label} is incomplete: {body['incomplete_details']}"
+        )
+    if body.get("refusal"):
+        raise AzureBatchOutputValidationError(f"Batch response for {label} was refused")
+
+    choices = body.get("choices") or []
+    if choices:
+        first_choice = choices[0] if isinstance(choices[0], dict) else {}
+        finish_reason = first_choice.get("finish_reason")
+        if finish_reason not in {None, "stop"}:
+            raise AzureBatchOutputValidationError(
+                f"Batch response for {label} finished with {finish_reason!r}"
+            )
+
+    for output in body.get("output") or []:
+        if not isinstance(output, dict):
+            continue
+        for content_item in output.get("content") or []:
+            if isinstance(content_item, dict) and content_item.get("type") == "refusal":
+                raise AzureBatchOutputValidationError(
+                    f"Batch response for {label} was refused"
+                )
+
+
+def _validate_json_extraction_content(content: str, *, chunk_id: str) -> None:
+    """Validate the structured-output contract before tolerant extraction parsing."""
+
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise AzureBatchOutputValidationError(
+            f"Batch JSON response for {chunk_id} is not valid JSON: {error.msg}"
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise AzureBatchOutputValidationError(
+            f"Batch JSON response for {chunk_id} must be an object"
+        )
+    expected_keys = {"entities", "relationships"}
+    if set(payload) != expected_keys:
+        raise AzureBatchOutputValidationError(
+            f"Batch JSON response for {chunk_id} must contain only entities and relationships"
+        )
+    for key in expected_keys:
+        if not isinstance(payload[key], list):
+            raise AzureBatchOutputValidationError(
+                f"Batch JSON response for {chunk_id} has a non-list {key} field"
+            )
+
+
 async def _parse_output_jsonl(
-    rag, text: str, use_json_extraction: bool
+    rag,
+    text: str,
+    use_json_extraction: bool,
+    *,
+    expected_chunk_ids: set[str] | None = None,
 ) -> list[tuple[str, tuple[dict, dict]]]:
     parsed: list[tuple[str, tuple[dict, dict]]] = []
+    seen_chunk_ids: set[str] = set()
     timestamp = int(time.time())
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line:
             continue
-        payload = json.loads(line)
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise AzureBatchOutputValidationError(
+                f"Batch output line {line_number} is not valid JSON: {error.msg}"
+            ) from error
+        if not isinstance(payload, dict):
+            raise AzureBatchOutputValidationError(
+                f"Batch output line {line_number} must be an object"
+            )
         chunk_id = payload.get("custom_id")
         response = payload.get("response") or {}
+        if not isinstance(chunk_id, str) or not chunk_id:
+            raise AzureBatchOutputValidationError(
+                f"Batch response missing custom_id at line {line_number}"
+            )
+        if expected_chunk_ids is not None and chunk_id not in expected_chunk_ids:
+            raise AzureBatchOutputValidationError(
+                f"Batch output contains unexpected chunk id {chunk_id}"
+            )
+        if chunk_id in seen_chunk_ids:
+            raise AzureBatchOutputValidationError(
+                f"Batch output contains duplicate chunk id {chunk_id}"
+            )
+        seen_chunk_ids.add(chunk_id)
+        if not isinstance(response, dict):
+            raise AzureBatchOutputValidationError(
+                f"Batch response for {chunk_id} is not an object"
+            )
         if response.get("status_code") != 200:
-            raise RuntimeError(
+            raise AzureBatchOutputValidationError(
                 f"Batch request failed for {chunk_id or line_number}: {response}"
             )
         body = response.get("body") or {}
+        if not isinstance(body, dict):
+            raise AzureBatchOutputValidationError(
+                f"Batch response body for {chunk_id} is not an object"
+            )
+        _validate_completed_response(body, chunk_id=chunk_id, line_number=line_number)
         content = _extract_batch_response_text(body)
-        if not chunk_id or not content:
-            raise RuntimeError(f"Batch response missing custom_id/content at line {line_number}")
+        if not content:
+            raise AzureBatchOutputValidationError(
+                f"Batch response missing content for {chunk_id}"
+            )
+        if use_json_extraction:
+            _validate_json_extraction_content(content, chunk_id=chunk_id)
 
         chunk_data = await rag.text_chunks.get_by_id(chunk_id)
         file_path = (
@@ -448,6 +639,16 @@ async def _parse_output_jsonl(
                 completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
             )
         parsed.append((chunk_id, result))
+
+    if expected_chunk_ids is not None:
+        missing_chunk_ids = sorted(expected_chunk_ids - seen_chunk_ids)
+        if missing_chunk_ids:
+            preview = ", ".join(missing_chunk_ids[:5])
+            suffix = "..." if len(missing_chunk_ids) > 5 else ""
+            raise AzureBatchOutputValidationError(
+                f"Batch output is missing {len(missing_chunk_ids)} expected chunk ids: "
+                f"{preview}{suffix}"
+            )
     return parsed
 
 
@@ -473,6 +674,104 @@ def _extract_batch_response_text(body: dict[str, Any]) -> str:
     return "\n".join(output_parts).strip()
 
 
+def _expected_chunk_ids(job: dict[str, Any], status_payload: dict[str, Any]) -> set[str]:
+    manifest = job.get("submission_manifest")
+    if isinstance(manifest, dict):
+        submitted = manifest.get("expected_chunk_ids")
+        if isinstance(submitted, list) and all(isinstance(item, str) for item in submitted):
+            return set(submitted)
+    return {
+        chunk_id
+        for chunk_id in status_payload.get("chunks_list") or []
+        if isinstance(chunk_id, str)
+    }
+
+
+async def _validate_current_chunk_manifest(
+    rag, job: dict[str, Any], expected_chunk_ids: set[str]
+) -> None:
+    """Ensure current retained chunks still match the batch submission.
+
+    Jobs submitted before this safeguard have no manifest. They remain
+    importable, but are deliberately marked as legacy in the persisted job.
+    """
+
+    manifest = job.get("submission_manifest")
+    if not isinstance(manifest, dict):
+        logger.warning(
+            "Azure Batch job %s has no submission manifest; skipping retained chunk hash validation",
+            job.get("batch_id"),
+        )
+        return
+
+    expected = manifest.get("chunks")
+    if not isinstance(expected, dict):
+        raise AzureBatchOutputValidationError("Batch submission manifest has no chunk hashes")
+    if set(expected) != expected_chunk_ids:
+        raise AzureBatchOutputValidationError(
+            "Batch submission manifest chunk ids do not match its expected chunk ids"
+        )
+
+    chunk_ids = sorted(expected_chunk_ids)
+    current_chunks = await rag.text_chunks.get_by_ids(chunk_ids)
+    if len(current_chunks) != len(chunk_ids):
+        raise AzureBatchOutputValidationError(
+            "Retained chunk lookup returned an unexpected number of chunks"
+        )
+
+    for chunk_id, chunk in zip(chunk_ids, current_chunks):
+        if not isinstance(chunk, dict):
+            raise AzureBatchOutputValidationError(
+                f"Submitted chunk {chunk_id} no longer exists"
+            )
+        expected_hash = (expected.get(chunk_id) or {}).get("chunk_content_sha256")
+        if not isinstance(expected_hash, str) or not expected_hash:
+            raise AzureBatchOutputValidationError(
+                f"Batch submission manifest has no content hash for {chunk_id}"
+            )
+        if _chunk_content_sha256(chunk) != expected_hash:
+            raise AzureBatchOutputValidationError(
+                f"Submitted chunk {chunk_id} changed after batch submission"
+            )
+
+
+async def _record_import_validation_failure(
+    rag, doc_id: str, job: dict[str, Any], error: Exception
+) -> None:
+    """Persist a retryable validation failure without changing Azure's batch status."""
+
+    now = _now_iso()
+    message = str(error)
+    job.update(
+        {
+            "import_validation_status": "failed",
+            "import_validation_error": message,
+            "import_validation_failed_at": now,
+            "updated_at": now,
+        }
+    )
+    await save_batch_job(rag, doc_id, job)
+
+    status_doc = await rag.doc_status.get_by_id(doc_id)
+    if not status_doc:
+        return
+    status_payload = _status_payload(status_doc)
+    metadata = dict(status_payload.get("metadata") or {})
+    metadata.update(
+        {
+            "batch_extraction": True,
+            "batch_id": job.get("batch_id"),
+            "batch_status": job.get("status"),
+            "batch_import_validation_status": "failed",
+            "batch_import_validation_error": message,
+            "batch_import_validation_failed_at": now,
+        }
+    )
+    status_payload.update({"metadata": metadata, "updated_at": now, "error_msg": message})
+    await rag.doc_status.upsert({doc_id: status_payload})
+    await rag._insert_done()
+
+
 async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
     job = await refresh_azure_batch_status(rag, doc_id)
     if job.get("status") != "completed":
@@ -487,15 +786,27 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=_batch_timeout()) as client:
         output_text = await _download_file_content(client, base_url, output_file_id)
 
-    parsed = await _parse_output_jsonl(
-        rag, output_text, bool(job.get("use_json_extraction", False))
-    )
-    chunk_results = [result for _, result in parsed]
-
     status_doc = await rag.doc_status.get_by_id(doc_id)
     if not status_doc:
         raise FileNotFoundError("Document not found")
     status_payload = _status_payload(status_doc)
+    expected_chunk_ids = _expected_chunk_ids(job, status_payload)
+    if not expected_chunk_ids:
+        raise AzureBatchOutputValidationError("Document has no expected batch chunk ids")
+
+    try:
+        await _validate_current_chunk_manifest(rag, job, expected_chunk_ids)
+        parsed = await _parse_output_jsonl(
+            rag,
+            output_text,
+            bool(job.get("use_json_extraction", False)),
+            expected_chunk_ids=expected_chunk_ids,
+        )
+    except AzureBatchOutputValidationError as error:
+        await _record_import_validation_failure(rag, doc_id, job, error)
+        raise
+
+    chunk_results = [result for _, result in parsed]
 
     pipeline_status = await get_namespace_data(
         "pipeline_status", workspace=rag.workspace
@@ -535,7 +846,10 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
             "batch_id": job["batch_id"],
             "batch_status": "imported",
             "batch_imported_at": _now_iso(),
-            "extraction_revision": rag.get_extraction_revision(),
+            "extraction_revision": dict(
+                (job.get("submission_manifest") or {}).get("extraction_revision")
+                or rag.get_extraction_revision()
+            ),
         }
     )
 
@@ -571,6 +885,8 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
             "imported_at": metadata["batch_imported_at"],
             "updated_at": metadata["batch_imported_at"],
             "imported_chunks": len(parsed),
+            "import_validation_status": "passed",
+            "import_validation_error": None,
         }
     )
     await save_batch_job(rag, doc_id, job)
