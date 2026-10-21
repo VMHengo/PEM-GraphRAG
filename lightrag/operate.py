@@ -67,6 +67,12 @@ from lightrag.relation_identity import (
     make_directional_relation_chunk_key,
     make_directional_relation_vdb_id,
 )
+from lightrag.relation_assertions import (
+    RELATION_ASSERTIONS_FIELD,
+    merge_relation_assertions,
+    parse_relation_assertions,
+    serialize_relation_assertions,
+)
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
 from lightrag.prompt import PROMPTS, resolve_entity_extraction_prompt_profile
 from lightrag.constants import (
@@ -2243,7 +2249,11 @@ async def _rebuild_single_relationship(
         )
         if key in current_relationship
     }
-    if relation_chunks_storage is not None and normalized_chunk_ids:
+    if (
+        relation_chunks_storage is not None
+        and normalized_chunk_ids
+        and not ontology_annotations_enabled()
+    ):
         storage_key = make_directional_relation_chunk_key(
             src, tgt, relationship_metadata
         )
@@ -2280,6 +2290,14 @@ async def _rebuild_single_relationship(
     if not all_relationship_data:
         logger.warning(f"No relation data found for `{src}-{tgt}`")
         return
+
+    assertion_records = []
+    if ontology_annotations_enabled():
+        for chunk_id in normalized_chunk_ids:
+            for edge_key in ((src, tgt), (tgt, src)):
+                assertion_records.extend(
+                    chunk_relationships.get(chunk_id, {}).get(edge_key, [])
+                )
 
     # Merge descriptions and keywords
     descriptions = []
@@ -2371,6 +2389,50 @@ async def _rebuild_single_relationship(
         else current_relationship.get("file_path", "unknown_source"),
         "truncate": truncation_info,
     }
+    if ontology_annotations_enabled():
+        remaining_ids = set(normalized_chunk_ids)
+        retained = [
+            assertion
+            for assertion in parse_relation_assertions(current_relationship, src, tgt)
+            if assertion.get("source_id") in remaining_ids
+        ]
+        new_assertions = [
+            {
+                **edge,
+                **annotate_ontology_label(
+                    str(edge.get("relation_type") or ""), relation=True
+                ),
+            }
+            for edge in assertion_records
+        ]
+        assertions = merge_relation_assertions(
+            {RELATION_ASSERTIONS_FIELD: serialize_relation_assertions(retained, src, tgt)},
+            new_assertions,
+            src,
+            tgt,
+        )
+        updated_relationship_data[RELATION_ASSERTIONS_FIELD] = (
+            serialize_relation_assertions(assertions, src, tgt)
+        )
+        selected_metadata = _merge_relationship_metadata(
+            None, assertion_records, combined_keywords, src, tgt
+        )
+        selected_metadata.update(
+            annotate_ontology_label(selected_metadata["relation_type"], relation=True)
+        )
+        updated_relationship_data.update(selected_metadata)
+        if relation_chunks_storage is not None:
+            old_key = make_directional_relation_chunk_key(
+                src, tgt, current_relationship
+            )
+            new_key = make_directional_relation_chunk_key(
+                src, tgt, updated_relationship_data
+            )
+            await relation_chunks_storage.upsert(
+                {new_key: {"chunk_ids": normalized_chunk_ids, "count": len(normalized_chunk_ids)}}
+            )
+            if old_key != new_key:
+                await relation_chunks_storage.delete([old_key])
 
     # Ensure both endpoint nodes exist before writing the edge back
     # (certain storage backends require pre-existing nodes).
@@ -2451,6 +2513,12 @@ async def _rebuild_single_relationship(
             src, tgt, relationship_metadata
         )
         legacy_vdb_ids = legacy_relation_vdb_ids(src, tgt)
+        if ontology_annotations_enabled():
+            previous_id = make_directional_relation_vdb_id(
+                src, tgt, current_relationship
+            )
+            if previous_id != rel_vdb_id:
+                await relationships_vdb.delete([previous_id])
 
         # Delete historical pair records first. Do not delete a directional
         # reverse record, because it may represent a distinct semantic fact.
@@ -3100,6 +3168,23 @@ async def _merge_edges_then_upsert(
                 relationship_metadata["relation_type"], relation=True
             )
         )
+        assertion_properties = {}
+        if ontology_annotations_enabled():
+            new_assertions = [
+                {
+                    **edge,
+                    **annotate_ontology_label(
+                        str(edge.get("relation_type") or ""), relation=True
+                    ),
+                }
+                for edge in edges_data
+            ]
+            assertions = merge_relation_assertions(
+                already_edge, new_assertions, src_id, tgt_id
+            )
+            assertion_properties[RELATION_ASSERTIONS_FIELD] = (
+                serialize_relation_assertions(assertions, src_id, tgt_id)
+            )
         if relation_chunks_storage is not None and full_source_ids:
             directional_storage_key = make_directional_relation_chunk_key(
                 src_id, tgt_id, relationship_metadata
@@ -3411,6 +3496,7 @@ async def _merge_edges_then_upsert(
                 created_at=edge_created_at,
                 truncate=truncation_info,
                 **relationship_metadata,
+                **assertion_properties,
             ),
         )
         edge_upsert_elapsed = time.perf_counter() - edge_upsert_started
@@ -3432,6 +3518,7 @@ async def _merge_edges_then_upsert(
             truncate=truncation_info,
             weight=weight,
             **relationship_metadata,
+            **assertion_properties,
         )
 
         if relationships_vdb is not None:
@@ -3478,6 +3565,21 @@ async def _merge_edges_then_upsert(
                 log_start=False,
                 success_log_threshold_seconds=5.0,
             )
+
+        if ontology_annotations_enabled() and already_edge:
+            old_key = make_directional_relation_chunk_key(
+                src_id, tgt_id, already_edge
+            )
+            new_key = make_directional_relation_chunk_key(
+                src_id, tgt_id, relationship_metadata
+            )
+            if old_key != new_key:
+                if relationships_vdb is not None:
+                    await relationships_vdb.delete(
+                        [make_directional_relation_vdb_id(src_id, tgt_id, already_edge)]
+                    )
+                if relation_chunks_storage is not None:
+                    await relation_chunks_storage.delete([old_key])
 
         return edge_data
     finally:

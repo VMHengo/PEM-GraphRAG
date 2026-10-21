@@ -1,9 +1,10 @@
 # Ontology Integration Plan
 
-Status (2026-10-21): ONT-01 through ONT-03 complete. ONT-04 has an
-experimental, default-off graph annotation path and ONT-05 has optional
-benchmark diagnostics. Neither has passed a staging pilot or domain review;
-ONT-04 through ONT-06 remain open. No production deployment.
+Status (2026-10-22): ONT-01 through ONT-03 complete. ONT-04 has an
+experimental, default-off assertion-preserving graph annotation path; ONT-05
+has optional assertion-aware benchmark diagnostics and Neo4j traversal.
+Neither has passed a staging pilot or domain review; ONT-04 through ONT-06
+remain open. No production deployment.
 
 ## Goal And Baseline
 
@@ -144,9 +145,17 @@ into the API image. Batch import rejects a changed mapping snapshot before
 graph writes. New opt-in extractions also retain the extracted raw entity type
 and predicate where available; legacy rows cannot recover already discarded
 raw labels. Default-off extraction remains unchanged. These are **not**
-acceptance evidence: the current graph still collapses multiple predicates
-for one unordered entity pair, and deletion/rebuild paths use older relation
-keys. Source URLs remain on document metadata, not individual edges.
+acceptance evidence: the graph backend still has one physical edge per
+unordered entity pair. New opt-in edges also store a scalar
+`relation_assertions_json` list with separate predicate, semantic orientation,
+source chunk, evidence, raw label and mapping fields per assertion. The
+selected top-level edge remains for backward compatibility. Normal retrieval
+continues to see that selected edge; the assertion list is not a graph schema
+migration. Legacy merged edges cannot recover predicates already lost. Source
+URLs remain on document metadata, not individual assertions. Local tests
+exercise deletion and re-extraction cleanup of discoverable directional
+records, including truncated top-level source IDs. Restart compatibility and
+a real isolated-staging pilot remain before acceptance.
 
 ### ONT-05: Benchmark And Retrieval Pilot
 
@@ -162,10 +171,14 @@ days plus gold-data review.
 
 Partial implementation: `ontology_diagnostics=true` in a benchmark enables
 separate per-case raw, mapped-IRI, alias, inverse, hierarchy and false-positive
-diagnostics. It does not change Overall, Graph or Directed scores. Conditional
-mappings do not receive IRI equivalence credit. No reviewed hierarchy entries
-or held-out staging comparisons exist yet. Ontology-aware directed retrieval
-remains disabled pending domain review and measured false positives.
+diagnostics, including all stored assertions on a pair rather than only the
+selected top-level edge. It does not change Overall, Graph or Directed scores.
+Conditional mappings do not receive IRI equivalence credit. A separate
+`ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED` switch expands stored assertions in the
+Neo4j directed-neighbor provider; it is off by default and does not affect
+normal retrieval. No reviewed hierarchy entries or held-out staging
+comparisons exist yet. Ontology-aware predicate expansion remains disabled
+pending domain review and measured false positives.
 
 ### ONT-06: Decision And Rollout
 

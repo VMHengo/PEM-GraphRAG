@@ -25,6 +25,10 @@ from lightrag.evaluation.semantic_matching import (
 )
 from lightrag.relation_ontology import canonical_relation_type
 from lightrag.evaluation.ontology_diagnostics import score_ontology_edges
+from lightrag.relation_assertions import (
+    RELATION_ASSERTIONS_FIELD,
+    parse_relation_assertions,
+)
 from lightrag.utils import logger
 
 
@@ -453,10 +457,28 @@ def score_graph_cases(
                 for relation in expected_edges
                 for endpoint in ("source", "target")
             }
-            local_edges = [
-                edge for edge in edges
-                if _edge_source(edge) in case_nodes and _edge_target(edge) in case_nodes
-            ]
+            local_edges_by_relation: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+            for edge in edges:
+                assertions = (
+                    parse_relation_assertions(
+                        edge, _edge_source(edge), _edge_target(edge)
+                    )
+                    if RELATION_ASSERTIONS_FIELD in edge
+                    else [edge]
+                )
+                for assertion in assertions:
+                    source = _edge_source(assertion)
+                    target = _edge_target(assertion)
+                    if source not in case_nodes or target not in case_nodes:
+                        continue
+                    key = (
+                        source,
+                        str(assertion.get("relation_type") or ""),
+                        target,
+                        str(assertion.get("ontology_iri") or ""),
+                    )
+                    local_edges_by_relation[key] = assertion
+            local_edges = list(local_edges_by_relation.values())
             ontology_diagnostics = score_ontology_edges(expected_edges, local_edges)
 
         entity_score = (

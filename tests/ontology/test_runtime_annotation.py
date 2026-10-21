@@ -12,10 +12,16 @@ from lightrag.api.azure_batch import (
     AzureBatchOutputValidationError,
     _validate_ontology_batch_snapshot,
 )
+from lightrag.relation_assertions import parse_relation_assertions
+from lightrag.relation_identity import (
+    make_directional_relation_chunk_key,
+    make_directional_relation_vdb_id,
+)
 from lightrag.operate import (
     _merge_edges_then_upsert,
     _merge_nodes_then_upsert,
     _process_json_extraction_result,
+    _rebuild_single_relationship,
 )
 
 
@@ -26,6 +32,9 @@ class Graph:
 
     async def get_node(self, key):
         return self.nodes.get(key)
+
+    async def has_node(self, key):
+        return key in self.nodes
 
     async def upsert_node(self, key, node_data):
         self.nodes[key] = node_data
@@ -38,6 +47,21 @@ class Graph:
 
     async def upsert_edge(self, source, target, edge_data):
         self.edges[(source, target)] = edge_data
+
+
+class KV:
+    def __init__(self):
+        self.rows = {}
+
+    async def upsert(self, rows):
+        self.rows.update(rows)
+
+    async def get_by_id(self, key):
+        return self.rows.get(key)
+
+    async def delete(self, keys):
+        for key in keys:
+            self.rows.pop(key, None)
 
 
 @pytest.fixture
@@ -100,6 +124,117 @@ async def test_edge_write_keeps_raw_and_provenance(ontology_enabled):
     assert edge["file_path"] == "quality.pdf"
     assert edge["ontology_mapping_status"] == "mapped"
     assert edge["ontology_iri"].startswith("https://w3id.org/emmo#")
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_pair_edge_retains_distinct_assertions(ontology_enabled, monkeypatch):
+    async def summarize(_kind, _name, descriptions, _separator, _config, _cache=None, **_kwargs):
+        return " ".join(descriptions), False
+
+    monkeypatch.setattr("lightrag.operate._handle_entity_relation_summary", summarize)
+    graph = Graph()
+    edges = [
+        {
+            "src_id": source, "tgt_id": target,
+            "semantic_src_id": source, "semantic_tgt_id": target,
+            "relation_type": predicate, "directionality": "directed",
+            "relation_importance": 0.9,
+            "description": f"{source} {predicate} {target}",
+            "keywords": predicate, "weight": 1.0,
+            "source_id": chunk, "file_path": "pilot.pdf",
+        }
+        for source, target, predicate, chunk in (
+            ("A", "B", "causes", "chunk-1"),
+            ("B", "A", "influences", "chunk-2"),
+        )
+    ]
+    await _merge_edges_then_upsert(
+        "A", "B", edges, knowledge_graph_inst=graph,
+        relationships_vdb=None, entity_vdb=None, added_entities=[],
+        global_config={
+            "source_ids_limit_method": "KEEP", "max_source_ids_per_relation": 100,
+            "max_source_ids_per_entity": 100, "max_file_paths": 10,
+        },
+    )
+    assertions = parse_relation_assertions(graph.edges[("A", "B")], "A", "B")
+    assert {(item["semantic_src_id"], item["relation_type"], item["semantic_tgt_id"])
+            for item in assertions} == {
+        ("A", "causes", "B"), ("B", "influences", "A")
+    }
+    assert next(item for item in assertions if item["relation_type"] == "causes")[
+        "ontology_iri"
+    ].startswith("https://w3id.org/emmo#")
+
+    await _rebuild_single_relationship(
+        knowledge_graph_inst=graph,
+        relationships_vdb=KV(),
+        entities_vdb=None,
+        src="A", tgt="B", chunk_ids=["chunk-2"],
+        chunk_relationships={"chunk-2": {("B", "A"): [edges[1]]}},
+        llm_response_cache=None,
+        global_config={
+            "source_ids_limit_method": "KEEP", "max_source_ids_per_relation": 100,
+            "max_source_ids_per_entity": 100, "max_file_paths": 10,
+        },
+        relation_chunks_storage=KV(),
+    )
+    rebuilt = parse_relation_assertions(graph.edges[("A", "B")], "A", "B")
+    assert len(rebuilt) == 1
+    assert rebuilt[0]["source_id"] == "chunk-2"
+    assert rebuilt[0]["semantic_src_id"] == "B"
+    assert graph.edges[("A", "B")]["relation_type"] == "influences"
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_reselecting_pair_edge_cleans_old_directional_records(
+    ontology_enabled, monkeypatch
+):
+    async def summarize(_kind, _name, descriptions, _separator, _config, _cache=None, **_kwargs):
+        return " ".join(descriptions), False
+
+    monkeypatch.setattr("lightrag.operate._handle_entity_relation_summary", summarize)
+    graph = Graph()
+    graph.nodes = {
+        name: {"source_id": "chunk-1", "description": name, "entity_type": "UNKNOWN"}
+        for name in ("A", "B")
+    }
+    old = {
+        "semantic_src_id": "A", "semantic_tgt_id": "B",
+        "relation_type": "influences", "directionality": "directed",
+        "relation_importance": 0.1, "description": "A influences B",
+        "keywords": "influences", "weight": 1.0,
+        "source_id": "chunk-1", "file_path": "pilot.pdf",
+    }
+    graph.edges[("A", "B")] = old
+    relation_chunks = KV()
+    relationships_vdb = KV()
+    old_key = make_directional_relation_chunk_key("A", "B", old)
+    old_id = make_directional_relation_vdb_id("A", "B", old)
+    relation_chunks.rows[old_key] = {"chunk_ids": ["chunk-1"], "count": 1}
+    relationships_vdb.rows[old_id] = {"content": "old"}
+    new = {
+        **old, "relation_type": "causes", "relation_importance": 1.0,
+        "description": "A causes B", "keywords": "causes", "source_id": "chunk-2",
+    }
+
+    await _merge_edges_then_upsert(
+        "A", "B", [new], knowledge_graph_inst=graph,
+        relationships_vdb=relationships_vdb, entity_vdb=KV(),
+        relation_chunks_storage=relation_chunks, entity_chunks_storage=KV(),
+        global_config={
+            "source_ids_limit_method": "KEEP", "max_source_ids_per_relation": 100,
+            "max_source_ids_per_entity": 100, "max_file_paths": 10,
+        },
+    )
+
+    assert old_key not in relation_chunks.rows
+    assert old_id not in relationships_vdb.rows
+    selected = graph.edges[("A", "B")]
+    assert selected["relation_type"] == "causes"
+    assert make_directional_relation_chunk_key("A", "B", selected) in relation_chunks.rows
+    assert make_directional_relation_vdb_id("A", "B", selected) in relationships_vdb.rows
 
 
 @pytest.mark.offline

@@ -6,6 +6,7 @@ import pytest
 
 from lightrag.evaluation.ontology_diagnostics import score_ontology_edges
 from lightrag.evaluation.live_benchmark import score_graph_cases
+from lightrag.relation_assertions import serialize_relation_assertions
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -158,3 +159,24 @@ def test_live_benchmark_opt_in_adds_diagnostics_without_changing_scores():
     assert annotated_cases[0]["relation_score"] == baseline_cases[0]["relation_score"]
     assert "ontology_diagnostics" not in baseline_cases[0]
     assert annotated_cases[0]["ontology_diagnostics"]["cases"][0]["match_type"] == "raw_exact"
+
+
+def test_live_benchmark_diagnostics_include_nonselected_pair_assertions():
+    benchmark = {
+        "ontology_diagnostics": True,
+        "cases": [{
+            "id": "reverse",
+            "expected_relations": [edge("B", "causes", "A")],
+        }],
+    }
+    nodes = [{"entity_id": "A"}, {"entity_id": "B"}]
+    graph_edge = edge("A", "influences", "B")
+    graph_edge["relation_assertions_json"] = serialize_relation_assertions([
+        {"semantic_src_id": "A", "semantic_tgt_id": "B", "relation_type": "influences", "source_id": "chunk-1"},
+        {"semantic_src_id": "B", "semantic_tgt_id": "A", "relation_type": "causes", "source_id": "chunk-2"},
+    ])
+
+    cases, _ = score_graph_cases(benchmark, nodes, [graph_edge])
+
+    assert cases[0]["ontology_diagnostics"]["cases"][0]["match_type"] == "raw_exact"
+    assert cases[0]["ontology_diagnostics"]["summary"]["given_count"] == 2

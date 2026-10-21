@@ -13,15 +13,17 @@ The optional graph annotation path is gated by
 Conditional, ambiguous and unknown labels retain the raw PEM label with an
 empty IRI. This is graph metadata, not a new model prompt or ontology-guided
 retrieval mode. `ontology_diagnostics=true` in a benchmark adds separate case
-diagnostics without changing existing quality scores.
+diagnostics without changing existing quality scores. New opt-in edges also
+carry `relation_assertions_json`, preserving distinct assertions on a shared
+physical pair edge. `ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED=true` separately
+expands them for Neo4j directed-neighbor queries; normal retrieval is unchanged.
 
-**Do not enable on the shared staging or production graph yet.** The current
-storage contract merges distinct predicates and opposite directions for one
-unordered node pair into one edge. Deletion/rebuild still uses legacy pair
-keys while ingestion uses directional relation-chunk keys. A graph backup
-alone does not repair lost assertion identity. Use an isolated staging copy
-with separate document, chunk, graph and vector stores for the pilot. Do not
-run re-extraction on a shared graph while this limitation is unresolved.
+**Do not enable on the shared staging or production graph yet.** Legacy pair
+edges may have irreversibly lost other predicates. The new JSON assertion
+property is opt-in and has not passed an end-to-end staging pilot. A graph
+backup alone does not repair lost legacy assertion identity. Use an isolated
+staging copy with separate document, chunk, graph and vector stores; do not
+run re-extraction on a shared graph while compatibility is unverified.
 
 ## Pilot Procedure
 
@@ -50,15 +52,20 @@ run re-extraction on a shared graph while this limitation is unresolved.
    `{"doc_ids":["<pilot-doc-id>"],"outdated_only":false,"force":true}`.
    Verify its original document ID, chunk IDs, source/download URLs and
    original PEM relation labels are unchanged. Check mapped and unmapped
-   graph properties directly, including semantic endpoints and source chunk
-   IDs. Repeat after a restart; verify legacy documents still load.
+   graph properties directly, including every assertion's predicate, semantic
+   endpoints, evidence and source chunk ID. Delete one document contributing
+   to a shared pair and confirm the other document's assertion survives while
+   the deleted assertion's directional vector/chunk records disappear. Repeat
+   after a restart; verify legacy documents still load.
 6. Run the same held-out benchmark with `ontology_diagnostics=true` on the
    isolated graph. Report raw-exact, mapped-IRI-exact, alias, inverse,
    hierarchy-partial, unmapped and false-positive rates separately. The
    current mapping has no reviewed hierarchy entries, so no hierarchy credit
    should appear. Compare normal, directed and combined query modes with
-   matched context budgets. Do not interpret metadata coverage as answer
-   accuracy.
+   matched context budgets. First measure with assertion traversal disabled,
+   then enable `ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED=true` only in the isolated
+   pilot and repeat. Inspect extra false-positive paths, provenance and
+   latency. Do not interpret metadata coverage as answer accuracy.
 7. Test disabling the feature and restoring the snapshot. Confirm the
    default retrieval path and document metadata are unchanged. Record restore
    duration and any graph/vector inconsistencies. Do not promote unless
@@ -69,7 +76,7 @@ run re-extraction on a shared graph while this limitation is unresolved.
 | Gate | Required evidence | Current status |
 | --- | --- | --- |
 | Domain semantics | Reviewed causal, process and part-whole mappings; no invented IRIs | Pending |
-| Assertion identity | Opposite directions and multiple predicates between one pair survive write, delete and rebuild | Blocked by current pair-based storage |
+| Assertion identity | Opposite directions and multiple predicates between one pair survive write, delete and rebuild | Local opt-in JSON path implemented; staging verification pending |
 | Provenance | Source URL, retained chunks, raw labels and evidence survive re-extraction | Pending staging test |
 | Batch parity | Normal/Batch graph fields match, mapping drift rejected | Local guard tested; staging pending |
 | Quality | Held-out DE/EN precision, recall, path and supported-answer results beat or justify baseline | Pending |
@@ -77,7 +84,7 @@ run re-extraction on a shared graph while this limitation is unresolved.
 
 Decision: **NO-GO for production until every gate is reviewed**. A small
 isolated annotation pilot is permissible, but its results are not a substitute
-for the assertion-identity fix. If metadata alone improves diagnostics,
+for end-to-end assertion-identity verification. If metadata alone improves diagnostics,
 metadata-only backfill may be preferable to rerunning model extraction; if
 prompts or extracted assertions change, use retained-chunk re-extraction in
 an isolated workspace. Version ontology source, mapping JSON and extraction

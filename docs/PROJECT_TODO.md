@@ -103,15 +103,18 @@ asserting an IRI. Placeholder records are excluded. Ontology and extraction
 regressions: 33 passed; Ruff passed. Extraction and retrieval do not import
 the resolver, so the disabled baseline is unchanged.
 
-ONT-04/05 partial work (2026-10-21): a default-off, scalar graph annotation
-adapter records mapping status/version and only reviewed mapped IRIs. Azure
-Batch import checks the submitted mapping snapshot before merge. An opt-in
-benchmark diagnostic reports raw, IRI, alias, inverse and hierarchy matches
-without changing existing scores. See `docs/ONTOLOGY_STAGING_PILOT.md` for
-the pending measurements. **Do not mark ONT-04/05/06 complete yet:** distinct
-predicates for one unordered node pair can still collapse; deletion/rebuild
-uses legacy relation keys; domain-reviewed gold data and staging comparisons
-are absent. These are gates before ontology-aware retrieval or production.
+ONT-04/05 partial work (2026-10-22): default-off, scalar graph annotations
+record mapping status/version and reviewed mapped IRIs. A separate JSON
+property retains distinct semantic assertions, source chunks and raw labels
+for new opt-in extractions on one physical pair edge. Azure Batch import
+checks its submitted mapping snapshot. Optional benchmark diagnostics inspect
+the stored assertions without changing baseline scores; optional Neo4j
+directed-neighbor expansion has its own default-off switch. See
+`docs/ONTOLOGY_STAGING_PILOT.md` for the pending measurements. **Do not mark
+ONT-04/05/06 complete yet:** legacy collapsed predicates cannot be recovered,
+source URLs live on document metadata, and domain-reviewed gold data, live
+staging compatibility, held-out comparisons and rollback evidence are absent.
+These are gates before production or broader ontology-aware retrieval.
 
 ## Other Planned Work
 
