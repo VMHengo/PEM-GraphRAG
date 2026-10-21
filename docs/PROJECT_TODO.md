@@ -51,7 +51,7 @@ retrieval remain the baseline until a measured staging pilot passes.
   Review the BattINFO 0.7.0 import pins against the older electrochemistry and
   chemical-substance modules in this union; do not infer compatibility from
   `owl:imports` without resolving their versions.
-- [ ] **ONT-03: Read-only ontology resolver.** Implement a small Python module
+- [x] **ONT-03: Read-only ontology resolver.** Implement a small Python module
   that loads the reviewed mapping and resolves labels and inverses without
   modifying graph writes. Test German/English aliases, collisions, missing
   mappings, placeholder terms and incompatible domain/range hints. Done when
@@ -94,6 +94,14 @@ warning are validated read-only by `python -m ontology.validate_mapping`.
 output, part-whole inverses, unknowns, drift and malformed mappings. The
 mapping is an offline candidate, not runtime-approved; expert review of
 conditional semantics remains a gate before enabling annotations.
+
+ONT-03 evidence (2026-10-21): `ontology/resolver.py` is a read-only optional
+CLI/Python adapter that validates the pinned mapping before use. It resolves
+curated DE/EN aliases, RDF/SKOS labels and inverse endpoint swaps while
+reporting unknown, ambiguous, conditional and incompatible results without
+asserting an IRI. Placeholder records are excluded. Ontology and extraction
+regressions: 33 passed; Ruff passed. Extraction and retrieval do not import
+the resolver, so the disabled baseline is unchanged.
 
 ## Other Planned Work
 

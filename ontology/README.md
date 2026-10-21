@@ -25,7 +25,25 @@ The mapped terms come from pinned EMMO core 1.0.2. BattINFO record placeholders
 are excluded. BattINFO 0.7.0 imports newer electrochemistry and
 chemical-substance releases than the local union contains, so no cross-version
 OWL inference is assumed. A domain expert should review conditional cases
-before ONT-03/ONT-04 use; this file alone makes no claim about extracted facts.
+before ONT-04 runtime use; this file alone makes no claim about extracted facts.
+
+## Optional Read-Only Resolver (ONT-03)
+
+`ontology.resolver` loads only the validated, pinned mapping and graph. It
+recognizes curated PEM labels and aliases plus RDF/SKOS labels for mapped IRIs;
+it does not turn arbitrary similar graph labels into mappings. Explicit PEM
+labels take precedence over conflicting ontology alternate labels. Other
+collisions produce `ambiguous`, not a guessed IRI. Conditional matches expose
+candidate IRIs but never claim a canonical IRI; incompatible process input or
+output hints produce `incompatible`. Inverse predicates report whether source
+and target must be swapped. No extraction, storage or retrieval module imports
+this resolver.
+
+```powershell
+.\.venv\Scripts\python.exe -m ontology.resolver relation verursacht
+.\.venv\Scripts\python.exe -m ontology.resolver relation produced_by --source-type Artifact --target-type Process
+.\.venv\Scripts\python.exe -m ontology.resolver entity Material
+```
 
 `validate_sources.py` checks the local Turtle source closure against the
 pinned SHA-256 hashes, manifest, merge report and merged RDF graph. It is read-only: it

@@ -1,7 +1,7 @@
 # Ontology Integration Plan
 
-Status: ONT-01 audit, ONT-01B source-snapshot reconciliation and ONT-02
-offline mapping candidate implemented,
+Status: ONT-01 audit, ONT-01B source-snapshot reconciliation, ONT-02 offline
+mapping candidate and ONT-03 read-only resolver implemented,
 2026-10-21. The ontology has not been integrated
 into the runtime or deployed.
 
@@ -112,6 +112,14 @@ including German-English aliases and BattINFO placeholder exclusions. Integrate
 as an optional read-only adapter for experiments; no migration. Candidate code:
 `lightrag/relation_ontology.py` plus a focused new ontology module and tests.
 Estimated work: 1-2 days.
+
+Implemented in `ontology/resolver.py` as an explicit offline adapter. It
+validates the pinned mapping on load, keeps conditional mappings as candidates,
+checks PEM domain/range hints without asserting OWL entailments, excludes
+BattINFO placeholders and reports lexical collisions instead of guessing.
+There is no runtime import or graph write. See `ontology/README.md` for the
+CLI and `tests/ontology/test_resolver.py` for DE/EN, inverse and collision
+regressions.
 
 ### ONT-04: Extraction And Storage Pilot
 

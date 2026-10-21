@@ -45,9 +45,11 @@ Keep secrets and private document content out of memory.
   union. BattINFO 0.7.0 declares Apache-2.0; six other roots declare CC BY 4.0.
   The old 0.8.0-beta merge is archived under `ontology/history/`.
 - BattINFO imports newer electrochemistry/chemical-substance versions than
-  this union contains. Treat cross-version axioms cautiously in ONT-02.
+  this union contains. Do not assume a compatible OWL import closure.
 - `ontology/relation_types.json` is provisional pilot material, not gold.
-  Preserve raw labels/direction/evidence when adding a reviewed IRI mapping.
+  `ontology/pem_mapping_v1.json` and optional `ontology.resolver` are offline
+  only; conditional matches do not assert a canonical IRI. Runtime extraction
+  and retrieval do not load them. Preserve raw labels/direction/evidence.
   See `docs/ONTOLOGY_INTEGRATION_PLAN.md` and `docs/PROJECT_TODO.md`.
 
 ## Read On Demand
