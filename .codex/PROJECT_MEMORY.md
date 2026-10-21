@@ -1,145 +1,64 @@
 # PEM GraphRAG Project Memory
 
-Use this as short operational context for future work. Read the relevant
-section instead of rediscovering stable project facts. Source code, active
-environment variables, and the documents listed below remain authoritative.
-Never store passwords, API keys, tokens, or private document content here.
+Read only the relevant section. Code and live configuration outrank this file.
+Keep secrets and private document content out of memory.
 
 ## Working Context
 
-- Main development branch: `feature/azure-batch-extraction`.
-- Local workspace: Windows PowerShell. Python virtual environment: `.venv`.
-- Staging VPS repository: `/root/PEM-GraphRAG`; Compose project:
-  `pem-staging`; runtime environment: `.env.staging`.
-- Production Compose project: `mcp`; runtime environment: `.env`.
-- Staging Compose file exists on the VPS and is not present in this checkout.
-- When rebuilding staging with benchmarks, include both:
-  `deploy/mcp/docker-compose.staging.yml` and
+- Development is usually on `feature/azure-batch-extraction`; verify the
+  active branch. Local shell is PowerShell; Python venv is `.venv`.
+- VPS repo: `/root/PEM-GraphRAG`. Staging project `pem-staging` uses
+  `.env.staging`; production project `mcp` uses `.env`. The staging Compose
+  file is on the VPS, not in this checkout. Benchmark deployments also need
   `deploy/mcp/compose.evaluation-benchmarks.yml`.
-- Use Git as the normal delivery path. SCP is only a temporary targeted
-  runtime update and requires a container rebuild, recreate, restart, or
-  `docker cp` before it becomes active.
-
-## Delivery Convention
-
-After code or documentation changes, provide:
-
-1. One `git add <path>` command per file changed by the task.
-2. A `git diff --cached --check`, commit, and push command for the active
-   branch.
-3. Optional PowerShell `scp` commands only for runtime files that can be
-   safely copied individually.
-4. Exact staging update commands, including the benchmark Compose overlay
-   when relevant.
-
-Do not include `.env`, `.env.staging`, data directories, backups, private
-keys, generated runtime artefacts, or unrelated user files in Git commands.
+- Git is the normal delivery path. SCP alone does not activate container code.
 
 ## Architecture Map
 
-- `lightrag/pipeline.py`: document ingestion, parsing dispatch, queue work.
-- `lightrag/operate.py`: entity and relation extraction, merge, query context.
-- `lightrag/prompt.py` and `prompts/entity_type/*.yml`: extraction profiles.
-- `lightrag/relation_ontology.py`: current compact relation-label
-  normalization and benchmark similarity rules.
-- `lightrag/adaptive_retrieval.py`: deterministic DE/EN query router.
-- `lightrag/directed_retrieval.py`: directed-edge selection and bounded paths.
-- `lightrag/kg/neo4j_impl.py`: Neo4j storage and graph traversal.
-- `lightrag/api/azure_batch.py`: Azure/OpenAI-compatible Batch lifecycle.
-- `lightrag/evaluation/`: benchmarks, prompt experiments, scoring, run history.
-- `lightrag_webui/src/features/`: Documents, graph, retrieval, evaluation UI.
-
-The public query default remains normal retrieval. Directed, combined, and
-auto retrieval are optional. Public directed traversal is bounded to 1-3 hops.
-Physical Neo4j merge still groups unordered endpoint pairs, so parallel
-assertions between the same two entities can be lost.
+- Ingestion: `lightrag/pipeline.py`; extraction and query context:
+  `lightrag/operate.py`; extraction profiles: `prompts/entity_type/*.yml`.
+- Routing and paths: `lightrag/adaptive_retrieval.py` and
+  `lightrag/directed_retrieval.py`; graph storage: `lightrag/kg/neo4j_impl.py`.
+- Batch: `lightrag/api/azure_batch.py`; evaluation: `lightrag/evaluation/`.
+- Directed/combined/auto retrieval is optional; public directed paths are
+  bounded to 1-3 hops. Neo4j pair-based merge can lose parallel assertions.
 
 ## Extraction And Batch State
 
-- Documents are usually uploaded chunk-first. Deferred documents hold
-  `skip_kg: true` and appear as Chunked in the UI until extraction begins.
-- Extraction metadata includes directionality, relation type, importance,
-  chain role, and semantic endpoints.
-- Re-extraction retains source documents, chunks, and source URLs. Current
-  extraction revisions are stored in document metadata.
-- New Azure Batch jobs store a submission manifest with expected chunk IDs,
-  request and chunk hashes, model, endpoint, output budget, prompt hash, and
-  submitted extraction revision.
-- Batch import rejects incomplete/refused outputs, invalid JSON contracts, and
-  missing, duplicate, or foreign chunks before graph writes. It records
-  validation failures on the job and document.
-- P0 still needs normal-provider completion validation, targeted failed-chunk
-  retry, and idempotent recovery after a merge failure.
+- Chunk-first uploads use `skip_kg: true` until extraction. Re-extraction
+  retains source documents, chunks and URLs; revisions live in document metadata.
+- Azure Batch submission manifests bind chunks, hashes, model, prompt and
+  extraction revision. Import validates complete outputs before graph writes.
+- Still open: normal-provider completion validation, targeted retry and
+  idempotent recovery after merge failure.
 
 ## Evaluation And Prompt Experiments
 
-- WebUI separates Benchmarks and Prompt Experiments.
-- Prompt experiments run isolated candidate workspaces over retained chunks.
-  Screening samples chunks, Validation uses all selected chunks without
-  gleaning, and Final uses all selected chunks with active gleaning.
-- Evaluation scoring version 2.0.0 keeps Metadata outside Overall. Metadata
-  and reference coverage are diagnostics, not proof of scientific correctness.
-- Current benchmark limitations: entity precision is incomplete, expected
-  answer text and prohibited claims are not fully evaluated, and directed path
-  diagnostics do not yet equal strategy-specific end-to-end answer quality.
+- Prompt experiments use isolated retained-chunk workspaces. Screening
+  samples; Validation uses all chunks without gleaning; Final includes gleaning.
+- Scoring v2 excludes Metadata from Overall. Entity precision and answer-level
+  support remain limited; directed-path scores are not end-to-end answer quality.
 
 ## Ontology Material
 
-- `ontology/merged/merged.ttl` is the recorded union graph of EMMO,
-  domain-battery, domain-electrochemistry, CHAMEO, BTO, and BattINFO support.
-  Its manifest describes BattINFO 0.8.0-beta/CC BY; the current BattINFO
-  source declares 0.7.0/Apache-2.0. These are not a consistent snapshot.
-- `ontology/relation_types.json` is a provisional relation schema with
-  canonical labels and additional relation families, derived from a narrow
-  pilot: one article, 6 paragraphs, 55 sentences, and 32 annotated relations.
-  Treat it as candidate material, not established production truth.
-- `ontology/type_mapping_emmo.json` maps broad free-text types to upper EMMO
-  classes. `ontology/subproperties.json` records relation hierarchies and
-  inverses.
-- Integrate through a versioned mapping layer first: preserve existing labels
-  such as `causes`, map them to ontology IRI/canonical predicate metadata, and
-  compare against the current pipeline before migrating data or prompts.
-- `ontology/sources/bto/` now contains 49 Turtle files; with two BattINFO
-  source files this matches the merge report's 51 parsed filenames. The
-  separate `sources/battinfo-repo/` is a large software checkout. The read-only
-  audit in `ontology/validate_sources.py` finds 65,882 current-source triples
-  versus 65,863 recorded triples and fails structural comparison. ONT-01B
-  reconciles the snapshot before ontology mapping.
-- Ontology integration is planned in `docs/ONTOLOGY_INTEGRATION_PLAN.md`.
-  `docs/PROJECT_TODO.md` is the canonical ordered implementation queue; its
-  first open unblocked item is what "Implementiere den naechsten Schritt in
-  der TODO" means.
+- ONT-01B reconciled 51 SHA-256-pinned sources into the active 65,882-triple
+  union. BattINFO 0.7.0 declares Apache-2.0; six other roots declare CC BY 4.0.
+  The old 0.8.0-beta merge is archived under `ontology/history/`.
+- BattINFO imports newer electrochemistry/chemical-substance versions than
+  this union contains. Treat cross-version axioms cautiously in ONT-02.
+- `ontology/relation_types.json` is provisional pilot material, not gold.
+  Preserve raw labels/direction/evidence when adding a reviewed IRI mapping.
+  See `docs/ONTOLOGY_INTEGRATION_PLAN.md` and `docs/PROJECT_TODO.md`.
 
-## Verification
+## Read On Demand
 
-- Backend focused tests: `./scripts/test.sh <test path>` or
-  `.\.venv\Scripts\python.exe -m pytest <test path> -q` on Windows.
-- Frontend: `cd lightrag_webui`, `bun test`, `bun run lint`, and `bun run build`.
-- Python lint: `.\.venv\Scripts\python.exe -m ruff check <paths>`.
-- Always run `git diff --check` for edited paths.
-- Mock external services in unit tests; do not require live Azure, Neo4j, or
-  Ollama for local unit tests.
-
-## Primary Documentation
-
-- `docs/PEM-GRAPHRAG-IMPROVEMENT-ROADMAP.md`: stable long-term goals:
-  evidence-grounded battery-engineering multi-hop answers and useful causal
-  chains; market-ready product quality; ChatGPT access through MCP; seamless
-  developer/ingestion and end-user workflows. Ask the user explicitly before
-  adding or changing goals unless their request already specifies the change;
-  record the decision in the roadmap.
-- `docs/PROJECT_TODO.md`: canonical ordered implementation queue; keep new
-  implementation plans and completion status here.
-- `docs/PEM-GRAPHRAG-ARCHITECTURE.md`: current end-to-end architecture.
-- `docs/PIPELINE_CHANGE_GUIDE.md`: practical change locations.
-- `docs/PIPELINE_RESEARCH_AND_IMPROVEMENT_PLAN_2026-10.md`: quality roadmap,
-  research findings, priorities P0-P7, and known limitations.
-- `docs/BENCHMARK_SCORING.md`: evaluation semantics.
-- `docs/STAGING_TO_PRODUCTION.md`: promotion workflow.
-- `docs/DIRECTED_MULTIHOP_STAGING_RUNBOOK.md`: directed retrieval staging runbook.
+- Architecture/change locations: `docs/PEM-GRAPHRAG-ARCHITECTURE.md`,
+  `docs/PIPELINE_CHANGE_GUIDE.md`.
+- Evaluation: `docs/BENCHMARK_SCORING.md`.
+- Deployment: `docs/STAGING_TO_PRODUCTION.md` and, for directed retrieval,
+  `docs/DIRECTED_MULTIHOP_STAGING_RUNBOOK.md`.
+- Long-term goals: `docs/PEM-GRAPHRAG-IMPROVEMENT-ROADMAP.md`.
 
 ## Update Rule
 
-Update this file whenever a completed task changes a deployment convention,
-pipeline contract, storage model, active migration state, or known limitation.
-Keep it concise; move detailed rationale and procedures into `docs/`.
+Update only for changed durable facts; put procedures and evidence in `docs/`.
