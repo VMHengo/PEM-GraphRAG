@@ -3,6 +3,7 @@ from typing import Any
 import pytest
 
 from lightrag.kg.neo4j_impl import Neo4JStorage
+from lightrag.relation_assertions import serialize_relation_assertions
 
 
 class _FakeResult:
@@ -189,3 +190,42 @@ async def test_directed_neighbor_provider_rejects_non_string_node_ids():
         await _storage(driver).get_directed_neighbor_edges_batch(["Anchor", 7])
 
     assert driver.session_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_assertion_expansion_is_explicit_and_preserves_each_direction(monkeypatch):
+    assertions = [
+        {
+            "semantic_src_id": "A", "semantic_tgt_id": "B",
+            "relation_type": "causes", "directionality": "directed",
+            "source_id": "chunk-a", "ontology_iri": "urn:causes",
+        },
+        {
+            "semantic_src_id": "B", "semantic_tgt_id": "A",
+            "relation_type": "influences", "directionality": "directed",
+            "source_id": "chunk-b", "ontology_iri": "",
+        },
+    ]
+    candidate = {
+        "properties": {
+            "relation_type": "causes",
+            "relation_assertions_json": serialize_relation_assertions(assertions),
+        },
+        "physical_src_id": "A", "physical_tgt_id": "B",
+    }
+    driver = _FakeDriver([{"requested_id": "A", "candidates": [candidate]}])
+    monkeypatch.delenv("ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED", raising=False)
+    baseline = await _storage(driver).get_directed_neighbor_edges_batch(["A"])
+    assert len(baseline["A"]) == 1
+
+    driver = _FakeDriver([{"requested_id": "A", "candidates": [candidate]}])
+    monkeypatch.setenv("ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED", "true")
+    expanded = await _storage(driver).get_directed_neighbor_edges_batch(["A"])
+    assert {(edge["semantic_src_id"], edge["relation_type"], edge["semantic_tgt_id"])
+            for edge in expanded["A"]} == {
+        ("A", "causes", "B"), ("B", "influences", "A")
+    }
+    assert next(edge for edge in expanded["A"] if edge["relation_type"] == "influences")[
+        "ontology_iri"
+    ] == ""

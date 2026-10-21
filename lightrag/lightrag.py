@@ -134,6 +134,14 @@ from lightrag.utils import (
     normalize_source_ids_limit_method,
     normalize_string_list,
 )
+from lightrag.relation_assertions import (
+    RELATION_ASSERTIONS_FIELD,
+    parse_relation_assertions,
+)
+from lightrag.relation_identity import (
+    make_directional_relation_chunk_key,
+    make_directional_relation_vdb_id,
+)
 from lightrag.types import KnowledgeGraph
 from dotenv import load_dotenv
 from lightrag.pipeline import _PipelineMixin
@@ -157,6 +165,17 @@ from lightrag.storage_migrations import _StorageMigrationMixin
 # allows to use different .env file for each lightrag instance
 # the OS environment variables take precedence over the .env file
 load_dotenv(dotenv_path=".env", override=False)
+
+
+def _parse_relation_assertions_for_cleanup(
+    edge_data: Mapping[str, Any], source: str, target: str
+) -> list[dict[str, Any]]:
+    try:
+        return parse_relation_assertions(edge_data, source, target)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid relation assertions for `{source}`~`{target}`: {exc}"
+        ) from exc
 
 
 @final
@@ -2455,6 +2474,57 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         # Return the dictionary containing statuses only for the found document IDs
         return found_statuses
 
+    async def _delete_relation_storage_records(
+        self,
+        relation_pairs: set[tuple[str, str]],
+        edge_data_by_pair: Mapping[tuple[str, str], Mapping[str, Any]] | None = None,
+        *,
+        include_legacy: bool = True,
+    ) -> None:
+        """Delete discoverable v2 and legacy records for graph relation pairs."""
+        if not relation_pairs:
+            return
+
+        normalized_pairs = {tuple(sorted(pair)) for pair in relation_pairs}
+        edge_snapshots: dict[tuple[str, str], Mapping[str, Any]] = {
+            tuple(sorted(pair)): edge_data
+            for pair, edge_data in (edge_data_by_pair or {}).items()
+        }
+        missing_pairs = normalized_pairs - edge_snapshots.keys()
+        if missing_pairs:
+            fetched_edges = await self.chunk_entity_relation_graph.get_edges_batch(
+                [{"src": src, "tgt": tgt} for src, tgt in sorted(missing_pairs)]
+            )
+            for pair in missing_pairs:
+                edge_data = fetched_edges.get(pair)
+                if edge_data:
+                    edge_snapshots[pair] = edge_data
+
+        relation_vdb_ids: set[str] = set()
+        relation_storage_keys: set[str] = set()
+        for src, tgt in normalized_pairs:
+            if include_legacy:
+                relation_vdb_ids.update(make_relation_vdb_ids(src, tgt))
+                relation_storage_keys.add(make_relation_chunk_key(src, tgt))
+
+            edge_data = edge_snapshots.get((src, tgt))
+            if not edge_data:
+                continue
+            assertions = _parse_relation_assertions_for_cleanup(edge_data, src, tgt)
+
+            for assertion in assertions:
+                relation_vdb_ids.add(
+                    make_directional_relation_vdb_id(src, tgt, assertion)
+                )
+                relation_storage_keys.add(
+                    make_directional_relation_chunk_key(src, tgt, assertion)
+                )
+
+        if relation_vdb_ids:
+            await self.relationships_vdb.delete(sorted(relation_vdb_ids))
+        if self.relation_chunks and relation_storage_keys:
+            await self.relation_chunks.delete(sorted(relation_storage_keys))
+
     async def _purge_doc_chunks_and_kg(
         self,
         doc_id: str,
@@ -2520,6 +2590,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         relationships_to_rebuild: dict[tuple[str, str], list[str]] = {}
         entity_chunk_updates: dict[str, list[str]] = {}
         relation_chunk_updates: dict[tuple[str, str], list[str]] = {}
+        relation_edge_snapshots: dict[tuple[str, str], Mapping[str, Any]] = {}
 
         try:
             doc_entities_data = await self.full_entities.get_by_id(doc_id)
@@ -2627,6 +2698,10 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     continue
 
                 edge_tuple = tuple(sorted((src, tgt)))
+                assertions = _parse_relation_assertions_for_cleanup(
+                    edge_data, src, tgt
+                )
+                relation_edge_snapshots.setdefault(edge_tuple, edge_data)
                 if (
                     edge_tuple in relationships_to_delete
                     or edge_tuple in relationships_to_rebuild
@@ -2652,6 +2727,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         if chunk_id
                     ]
 
+                if RELATION_ASSERTIONS_FIELD in edge_data:
+                    existing_sources = sorted(
+                        {
+                            str(assertion.get("source_id"))
+                            for assertion in assertions
+                            if assertion.get("source_id")
+                        }
+                    )
                 if not existing_sources:
                     existing_sources = graph_sources
 
@@ -2742,27 +2825,31 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 pipeline_status["latest_message"] = log_message
                 pipeline_status["history_messages"].append(log_message)
 
-        # ---- 4. Delete relationships with no remaining sources ----
+        # ---- 4. Clear relation records before delete/rebuild ----
+        if relationships_to_delete or relationships_to_rebuild:
+            try:
+                if relationships_to_delete:
+                    await self._delete_relation_storage_records(
+                        relationships_to_delete, relation_edge_snapshots
+                    )
+                if relationships_to_rebuild:
+                    await self._delete_relation_storage_records(
+                        set(relationships_to_rebuild),
+                        relation_edge_snapshots,
+                        include_legacy=False,
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[purge] Failed to clean relationship records for {doc_id}: {e}"
+                )
+                raise Exception(f"Failed to clean relationship records: {e}") from e
+
+        # ---- 5. Delete relationships with no remaining sources ----
         if relationships_to_delete:
             try:
-                rel_ids_to_delete = []
-                for src, tgt in relationships_to_delete:
-                    rel_ids_to_delete.extend(
-                        [
-                            compute_mdhash_id(src + tgt, prefix="rel-"),
-                            compute_mdhash_id(tgt + src, prefix="rel-"),
-                        ]
-                    )
-                await self.relationships_vdb.delete(rel_ids_to_delete)
                 await self.chunk_entity_relation_graph.remove_edges(
                     list(relationships_to_delete)
                 )
-                if self.relation_chunks:
-                    relation_storage_keys = [
-                        make_relation_chunk_key(src, tgt)
-                        for src, tgt in relationships_to_delete
-                    ]
-                    await self.relation_chunks.delete(relation_storage_keys)
                 async with pipeline_status_lock:
                     log_message = (
                         f"[purge] {doc_id}: deleted "
@@ -2777,7 +2864,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 )
                 raise Exception(f"Failed to delete relationships: {e}") from e
 
-        # ---- 5. Delete entities with no remaining sources ----
+        # ---- 6. Delete entities with no remaining sources ----
         if entities_to_delete:
             try:
                 nodes_edges_dict = (
@@ -2793,21 +2880,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                             edges_to_delete.add(tuple(sorted((src, tgt))))
 
                 if edges_to_delete:
-                    rel_ids_to_delete = []
-                    for src, tgt in edges_to_delete:
-                        rel_ids_to_delete.extend(
-                            [
-                                compute_mdhash_id(src + tgt, prefix="rel-"),
-                                compute_mdhash_id(tgt + src, prefix="rel-"),
-                            ]
-                        )
-                    await self.relationships_vdb.delete(rel_ids_to_delete)
-                    if self.relation_chunks:
-                        relation_storage_keys = [
-                            make_relation_chunk_key(src, tgt)
-                            for src, tgt in edges_to_delete
-                        ]
-                        await self.relation_chunks.delete(relation_storage_keys)
+                    await self._delete_relation_storage_records(edges_to_delete)
                     logger.info(
                         f"[purge] {doc_id}: cleaned {len(edges_to_delete)} residual "
                         f"edge(s) from VDB and chunk-tracking storage"
@@ -2838,14 +2911,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 logger.error(f"[purge] Failed to delete entities for {doc_id}: {e}")
                 raise Exception(f"Failed to delete entities: {e}") from e
 
-        # ---- 6. Persist pre-rebuild changes ----
+        # ---- 7. Persist pre-rebuild changes ----
         try:
             await self._insert_done()
         except Exception as e:
             logger.error(f"[purge] Failed to persist pre-rebuild changes: {e}")
             raise Exception(f"Failed to persist pre-rebuild changes: {e}") from e
 
-        # ---- 7. Rebuild entities/relations that still have remaining sources ----
+        # ---- 8. Rebuild entities/relations that still have remaining sources ----
         if entities_to_rebuild or relationships_to_rebuild:
             try:
                 await rebuild_knowledge_from_chunks(
@@ -2866,7 +2939,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 logger.error(f"[purge] Failed to rebuild knowledge from chunks: {e}")
                 raise Exception(f"Failed to rebuild knowledge graph: {e}") from e
 
-        # ---- 8. Delete per-doc full_entities / full_relations index rows ----
+        # ---- 9. Delete per-doc full_entities / full_relations index rows ----
         try:
             await self.full_entities.delete([doc_id])
             await self.full_relations.delete([doc_id])
@@ -3349,6 +3422,9 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             relationships_to_rebuild = {}  # (src, tgt) -> remaining chunk id list
             entity_chunk_updates: dict[str, list[str]] = {}
             relation_chunk_updates: dict[tuple[str, str], list[str]] = {}
+            relation_edge_snapshots: dict[
+                tuple[str, str], Mapping[str, Any]
+            ] = {}
 
             try:
                 deletion_stage = "analyze_graph_dependencies"
@@ -3475,6 +3551,10 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         continue
 
                     edge_tuple = tuple(sorted((src, tgt)))
+                    assertions = _parse_relation_assertions_for_cleanup(
+                        edge_data, src, tgt
+                    )
+                    relation_edge_snapshots.setdefault(edge_tuple, edge_data)
                     if (
                         edge_tuple in relationships_to_delete
                         or edge_tuple in relationships_to_rebuild
@@ -3504,6 +3584,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                             if chunk_id
                         ]
 
+                    if RELATION_ASSERTIONS_FIELD in edge_data:
+                        existing_sources = sorted(
+                            {
+                                str(assertion.get("source_id"))
+                                for assertion in assertions
+                                if assertion.get("source_id")
+                            }
+                        )
                     if not existing_sources:
                         existing_sources = graph_sources
 
@@ -3600,33 +3688,34 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     logger.error(f"Failed to delete chunks: {e}")
                     raise Exception(f"Failed to delete document chunks: {e}") from e
 
-            # 6. Delete relationships that have no remaining sources
+            # 6. Clear relation records before delete/rebuild
+            if relationships_to_delete or relationships_to_rebuild:
+                try:
+                    deletion_stage = "clean_relationship_records"
+                    if relationships_to_delete:
+                        await self._delete_relation_storage_records(
+                            relationships_to_delete, relation_edge_snapshots
+                        )
+                    if relationships_to_rebuild:
+                        await self._delete_relation_storage_records(
+                            set(relationships_to_rebuild),
+                            relation_edge_snapshots,
+                            include_legacy=False,
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to clean relationship records: {e}")
+                    raise Exception(
+                        f"Failed to clean relationship records: {e}"
+                    ) from e
+
+            # 7. Delete relationships that have no remaining sources
             if relationships_to_delete:
                 try:
                     deletion_stage = "delete_relationships"
-                    # Delete from relation vdb
-                    rel_ids_to_delete = []
-                    for src, tgt in relationships_to_delete:
-                        rel_ids_to_delete.extend(
-                            [
-                                compute_mdhash_id(src + tgt, prefix="rel-"),
-                                compute_mdhash_id(tgt + src, prefix="rel-"),
-                            ]
-                        )
-                    await self.relationships_vdb.delete(rel_ids_to_delete)
-
                     # Delete from graph
                     await self.chunk_entity_relation_graph.remove_edges(
                         list(relationships_to_delete)
                     )
-
-                    # Delete from relation_chunks storage
-                    if self.relation_chunks:
-                        relation_storage_keys = [
-                            make_relation_chunk_key(src, tgt)
-                            for src, tgt in relationships_to_delete
-                        ]
-                        await self.relation_chunks.delete(relation_storage_keys)
 
                     async with pipeline_status_lock:
                         log_message = f"Successfully deleted {len(relationships_to_delete)} relations"
@@ -3638,7 +3727,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     logger.error(f"Failed to delete relationships: {e}")
                     raise Exception(f"Failed to delete relationships: {e}") from e
 
-            # 7. Delete entities that have no remaining sources
+            # 8. Delete entities that have no remaining sources
             if entities_to_delete:
                 try:
                     deletion_stage = "delete_entities"
@@ -3684,24 +3773,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
                     # Clean residual edges from VDB and storage before deleting nodes
                     if edges_to_delete:
-                        # Delete from relationships_vdb
-                        rel_ids_to_delete = []
-                        for src, tgt in edges_to_delete:
-                            rel_ids_to_delete.extend(
-                                [
-                                    compute_mdhash_id(src + tgt, prefix="rel-"),
-                                    compute_mdhash_id(tgt + src, prefix="rel-"),
-                                ]
-                            )
-                        await self.relationships_vdb.delete(rel_ids_to_delete)
-
-                        # Delete from relation_chunks storage
-                        if self.relation_chunks:
-                            relation_storage_keys = [
-                                make_relation_chunk_key(src, tgt)
-                                for src, tgt in edges_to_delete
-                            ]
-                            await self.relation_chunks.delete(relation_storage_keys)
+                        await self._delete_relation_storage_records(edges_to_delete)
 
                         logger.info(
                             f"Cleaned {len(edges_to_delete)} residual edges from VDB and chunk-tracking storage"
@@ -3743,7 +3815,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 logger.error(f"Failed to persist pre-rebuild changes: {e}")
                 raise Exception(f"Failed to persist pre-rebuild changes: {e}") from e
 
-            # 8. Rebuild entities and relationships from remaining chunks
+            # 9. Rebuild entities and relationships from remaining chunks
             if entities_to_rebuild or relationships_to_rebuild:
                 try:
                     deletion_stage = "rebuild_knowledge_graph"
@@ -3766,7 +3838,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     logger.error(f"Failed to rebuild knowledge from chunks: {e}")
                     raise Exception(f"Failed to rebuild knowledge graph: {e}") from e
 
-            # 9. Delete LLM cache while the document status still exists so a failure
+            # 10. Delete LLM cache while the document status still exists so a failure
             # remains retryable via the same doc_id.
             log_message = f"Document {doc_id} successfully deleted"
             if delete_llm_cache and doc_llm_cache_ids:

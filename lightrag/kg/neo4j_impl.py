@@ -21,6 +21,11 @@ from ..graph_cypher import (
     validate_read_only_cypher,
 )
 from ..types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
+from ..relation_assertions import (
+    RELATION_ASSERTIONS_FIELD,
+    assertion_retrieval_enabled,
+    parse_relation_assertions,
+)
 from ..kg.shared_storage import get_data_init_lock
 import pipmaster as pm
 
@@ -1276,7 +1281,31 @@ class Neo4JStorage(BaseGraphStorage):
                             properties.setdefault("tgt_id", physical_tgt_id)
                             properties["physical_tgt_id"] = physical_tgt_id
 
-                        edges_by_node.setdefault(requested_id, []).append(properties)
+                        if (
+                            assertion_retrieval_enabled()
+                            and RELATION_ASSERTIONS_FIELD in properties
+                        ):
+                            assertions = parse_relation_assertions(
+                                properties,
+                                str(physical_src_id or ""),
+                                str(physical_tgt_id or ""),
+                            )
+                            for assertion in assertions:
+                                record = {
+                                    "src_id": physical_src_id,
+                                    "tgt_id": physical_tgt_id,
+                                    "physical_src_id": physical_src_id,
+                                    "physical_tgt_id": physical_tgt_id,
+                                    **assertion,
+                                }
+                                record.setdefault(
+                                    "relation_importance",
+                                    properties.get("relation_importance", 0.5),
+                                )
+                                record.setdefault("weight", properties.get("weight", 1.0))
+                                edges_by_node.setdefault(requested_id, []).append(record)
+                        else:
+                            edges_by_node.setdefault(requested_id, []).append(properties)
 
                 return edges_by_node
         except Exception as e:
