@@ -18,6 +18,7 @@ from lightrag.constants import (
 )
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
 from lightrag.kg.shared_storage import get_namespace_data, get_namespace_lock
+from lightrag.ontology_annotation import ontology_annotation_revision
 from lightrag.operate import (
     _process_extraction_result,
     _process_json_extraction_result,
@@ -41,6 +42,20 @@ class AzureBatchOutputValidationError(ValueError):
     """
 
     pass
+
+
+def _validate_ontology_batch_snapshot(job: dict[str, Any]) -> None:
+    submitted_revision = (job.get("submission_manifest") or {}).get(
+        "extraction_revision"
+    ) or {}
+    submitted_ontology = submitted_revision.get(
+        "ontology_annotation", {"enabled": False}
+    )
+    if submitted_ontology != ontology_annotation_revision():
+        raise AzureBatchOutputValidationError(
+            "Ontology mapping changed since Batch submission; import requires "
+            "the original mapping snapshot"
+        )
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -795,6 +810,7 @@ async def import_azure_batch_extraction(rag, doc_id: str) -> dict[str, Any]:
         raise AzureBatchOutputValidationError("Document has no expected batch chunk ids")
 
     try:
+        _validate_ontology_batch_snapshot(job)
         await _validate_current_chunk_manifest(rag, job, expected_chunk_ids)
         parsed = await _parse_output_jsonl(
             rag,

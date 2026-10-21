@@ -1,9 +1,9 @@
 # Ontology Integration Plan
 
-Status: ONT-01 audit, ONT-01B source-snapshot reconciliation, ONT-02 offline
-mapping candidate and ONT-03 read-only resolver implemented,
-2026-10-21. The ontology has not been integrated
-into the runtime or deployed.
+Status (2026-10-21): ONT-01 through ONT-03 complete. ONT-04 has an
+experimental, default-off graph annotation path and ONT-05 has optional
+benchmark diagnostics. Neither has passed a staging pilot or domain review;
+ONT-04 through ONT-06 remain open. No production deployment.
 
 ## Goal And Baseline
 
@@ -13,11 +13,14 @@ document evidence intact. The ontology provides candidate concepts, aliases,
 hierarchies and constraints; it does not establish that a relation extracted
 from a document is true.
 
-Runtime today uses `lightrag/relation_ontology.py` for conservative label
-normalization and benchmark similarity. Extraction is in `lightrag/operate.py`
+Runtime uses `lightrag/relation_ontology.py` for conservative label
+normalization and benchmark similarity. Experimental annotations are in
+`lightrag/ontology_annotation.py` and require `ONTOLOGY_ANNOTATION_ENABLED=true`.
+Extraction is in `lightrag/operate.py`
 and `prompts/entity_type/*.yml`; directed paths use
 `lightrag/directed_retrieval.py`, and Neo4j storage is in
-`lightrag/kg/neo4j_impl.py`. No runtime module currently reads `ontology/`.
+`lightrag/kg/neo4j_impl.py`. The optional annotation module reads the pinned
+`ontology/pem_mapping_v1.json`; it does not load the RDF graph at runtime.
 Normal retrieval remains the default.
 
 ## Local Material Review
@@ -133,6 +136,18 @@ even if ontology normalization succeeds. Test an isolated staging workspace
 with retained chunks and preserved source URLs. Estimated work: 2-4 days;
 assertion-preservation migration may require the separate P4 project.
 
+Partial implementation: optional flat-string `ontology_mapping_version`,
+`ontology_mapping_status`, `ontology_iri` and `ontology_source` properties are
+written at entity/relation merge. Only `status=mapped` asserts an IRI;
+conditional and ambiguous rows clear stale IRIs. The source mapping is copied
+into the API image. Batch import rejects a changed mapping snapshot before
+graph writes. New opt-in extractions also retain the extracted raw entity type
+and predicate where available; legacy rows cannot recover already discarded
+raw labels. Default-off extraction remains unchanged. These are **not**
+acceptance evidence: the current graph still collapses multiple predicates
+for one unordered entity pair, and deletion/rebuild paths use older relation
+keys. Source URLs remain on document metadata, not individual edges.
+
 ### ONT-05: Benchmark And Retrieval Pilot
 
 Add reporting for raw-label exactness, mapped-IRI exactness, alias/inverse
@@ -145,6 +160,13 @@ and context budgets. Only then add optional ontology-aware predicate expansion
 to `adaptive_retrieval.py` and `directed_retrieval.py`. Estimated work: 2-4
 days plus gold-data review.
 
+Partial implementation: `ontology_diagnostics=true` in a benchmark enables
+separate per-case raw, mapped-IRI, alias, inverse, hierarchy and false-positive
+diagnostics. It does not change Overall, Graph or Directed scores. Conditional
+mappings do not receive IRI equivalence credit. No reviewed hierarchy entries
+or held-out staging comparisons exist yet. Ontology-aware directed retrieval
+remains disabled pending domain review and measured false positives.
+
 ### ONT-06: Decision And Rollout
 
 Version ontology source, mapping schema and extraction algorithm separately.
@@ -153,6 +175,9 @@ the change alters only labels or changes assertions. Write a staging migration
 and rollback runbook with counts of mapped/unmapped edges, document-level
 completion and a no-data-loss check. Gate production promotion on measured
 quality and backward compatibility. Estimated work: 1-2 days.
+
+The staging procedure and decision template are in
+`docs/ONTOLOGY_STAGING_PILOT.md`. Its go/no-go remains pending real pilot data.
 
 ## Acceptance For The Overall Effort
 

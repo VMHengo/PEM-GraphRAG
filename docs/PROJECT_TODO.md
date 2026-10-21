@@ -103,6 +103,16 @@ asserting an IRI. Placeholder records are excluded. Ontology and extraction
 regressions: 33 passed; Ruff passed. Extraction and retrieval do not import
 the resolver, so the disabled baseline is unchanged.
 
+ONT-04/05 partial work (2026-10-21): a default-off, scalar graph annotation
+adapter records mapping status/version and only reviewed mapped IRIs. Azure
+Batch import checks the submitted mapping snapshot before merge. An opt-in
+benchmark diagnostic reports raw, IRI, alias, inverse and hierarchy matches
+without changing existing scores. See `docs/ONTOLOGY_STAGING_PILOT.md` for
+the pending measurements. **Do not mark ONT-04/05/06 complete yet:** distinct
+predicates for one unordered node pair can still collapse; deletion/rebuild
+uses legacy relation keys; domain-reviewed gold data and staging comparisons
+are absent. These are gates before ontology-aware retrieval or production.
+
 ## Other Planned Work
 
 The existing quality roadmap remains in

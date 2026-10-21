@@ -79,6 +79,7 @@ ENV UV_SYSTEM_PYTHON=1
 COPY --from=builder /root/.local /root/.local
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/lightrag ./lightrag
+COPY ontology/pem_mapping_v1.json ./ontology/pem_mapping_v1.json
 COPY pyproject.toml .
 COPY setup.py .
 COPY uv.lock .

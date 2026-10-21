@@ -24,6 +24,7 @@ from lightrag.evaluation.semantic_matching import (
     text_match as semantic_text_match,
 )
 from lightrag.relation_ontology import canonical_relation_type
+from lightrag.evaluation.ontology_diagnostics import score_ontology_edges
 from lightrag.utils import logger
 
 
@@ -442,6 +443,22 @@ def score_graph_cases(
                 }
             )
 
+        ontology_diagnostics = None
+        if benchmark.get("ontology_diagnostics") is True:
+            expected_edges = [
+                relation for relation in expected_relations if isinstance(relation, dict)
+            ]
+            case_nodes = {
+                str(relation.get(endpoint) or "")
+                for relation in expected_edges
+                for endpoint in ("source", "target")
+            }
+            local_edges = [
+                edge for edge in edges
+                if _edge_source(edge) in case_nodes and _edge_target(edge) in case_nodes
+            ]
+            ontology_diagnostics = score_ontology_edges(expected_edges, local_edges)
+
         entity_score = (
             sum(_safe_float(check["score"]) / 100 for check in entity_checks)
             / len(entity_checks)
@@ -475,8 +492,7 @@ def score_graph_cases(
         if relation_exact_score is not None:
             relation_exact_scores.append(relation_exact_score)
 
-        results.append(
-            {
+        case_result = {
                 "id": case_id,
                 "question": str(case.get("question") or ""),
                 "entity_score": _format_percent(entity_score)
@@ -494,7 +510,9 @@ def score_graph_cases(
                 "entity_checks": entity_checks,
                 "relation_checks": relation_checks,
             }
-        )
+        if ontology_diagnostics is not None:
+            case_result["ontology_diagnostics"] = ontology_diagnostics
+        results.append(case_result)
 
     summary = {
         "entity_score": _format_percent(sum(entity_scores) / len(entity_scores))

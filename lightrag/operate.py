@@ -58,6 +58,10 @@ from lightrag.base import (
 from lightrag.adaptive_retrieval import route_retrieval_query
 from lightrag.directed_retrieval import DirectedPath, find_directed_paths
 from lightrag.relation_ontology import canonicalize_relation
+from lightrag.ontology_annotation import (
+    annotate_ontology_label,
+    ontology_annotations_enabled,
+)
 from lightrag.relation_identity import (
     legacy_relation_vdb_ids,
     make_directional_relation_chunk_key,
@@ -806,6 +810,7 @@ def _handle_single_entity_extraction(
             )
             return None
 
+        raw_entity_type = entity_type
         # Handle comma-separated entity types by finding the first non-empty token
         if "," in entity_type:
             original = entity_type
@@ -833,7 +838,7 @@ def _handle_single_entity_extraction(
             )
             return None
 
-        return dict(
+        node = dict(
             entity_name=entity_name,
             entity_type=entity_type,
             description=entity_description,
@@ -841,6 +846,9 @@ def _handle_single_entity_extraction(
             file_path=file_path,
             timestamp=timestamp,
         )
+        if ontology_annotations_enabled():
+            node["raw_entity_type"] = raw_entity_type
+        return node
 
     except ValueError as e:
         logger.error(
@@ -1068,6 +1076,7 @@ def _build_relationship_metadata(
     *,
     directionality: object = None,
     relation_type: object = None,
+    raw_relation_type: object = None,
     relation_importance: object = None,
     chain_role: object = None,
     direction_confidence: object = None,
@@ -1097,6 +1106,13 @@ def _build_relationship_metadata(
         "semantic_src_id": semantic_source,
         "semantic_tgt_id": semantic_target,
     }
+    original_type = raw_relation_type if raw_relation_type is not None else relation_type
+    if (
+        ontology_annotations_enabled()
+        and isinstance(original_type, str)
+        and original_type.strip()
+    ):
+        metadata["raw_relation_type"] = original_type.strip()
     if inverse_normalized:
         metadata["relation_inverse_normalized"] = True
 
@@ -1144,6 +1160,7 @@ def _merge_relationship_metadata(
     metadata = _build_relationship_metadata(
         directionality=best_edge.get("directionality"),
         relation_type=best_edge.get("relation_type"),
+        raw_relation_type=best_edge.get("raw_relation_type"),
         relation_importance=best_edge.get("relation_importance"),
         chain_role=best_edge.get("chain_role"),
         direction_confidence=best_edge.get("direction_confidence"),
@@ -1241,6 +1258,7 @@ async def _process_json_extraction_result(
                 )
                 continue
 
+            raw_entity_type = entity_type
             entity_type = entity_type.replace(" ", "").lower()
 
             entity_description = sanitize_and_normalize_extracted_text(
@@ -1267,6 +1285,8 @@ async def _process_json_extraction_result(
                 file_path=file_path,
                 timestamp=timestamp,
             )
+            if ontology_annotations_enabled():
+                node_data["raw_entity_type"] = raw_entity_type
             maybe_nodes[truncated_name].append(node_data)
 
         except Exception as e:
@@ -2611,6 +2631,15 @@ async def _merge_nodes_then_upsert(
                     f"Skipped `{entity_name}`: KEEP old chunks {already_source_ids}/{len(full_source_ids)}"
                 )
                 existing_node_data = dict(already_node)
+                if ontology_annotations_enabled():
+                    existing_node_data.update(
+                        annotate_ontology_label(
+                            existing_node_data.get("entity_type", ""), relation=False
+                        )
+                    )
+                    await knowledge_graph_inst.upsert_node(
+                        entity_name, node_data=existing_node_data
+                    )
                 return existing_node_data
             else:
                 logger.error(
@@ -2782,7 +2811,20 @@ async def _merge_nodes_then_upsert(
             file_path=file_path,
             created_at=int(time.time()),
             truncate=truncation_info,
+            **annotate_ontology_label(entity_type, relation=False),
         )
+        if ontology_annotations_enabled():
+            raw_types = {
+                str(dp["raw_entity_type"])
+                for dp in nodes_data
+                if dp.get("entity_type") == entity_type and dp.get("raw_entity_type")
+            }
+            if already_node and already_node.get("entity_type") == entity_type:
+                previous_raw = already_node.get("raw_entity_type")
+                if previous_raw:
+                    raw_types.add(str(previous_raw))
+            if raw_types:
+                node_data["raw_entity_type"] = sorted(raw_types)[0]
         await knowledge_graph_inst.upsert_node(
             entity_name,
             node_data=node_data,
@@ -2963,6 +3005,15 @@ async def _merge_edges_then_upsert(
                     f"Skipped `{src_id}`~`{tgt_id}`: KEEP old chunks  {already_source_ids}/{len(full_source_ids)}"
                 )
                 existing_edge_data = dict(already_edge)
+                if ontology_annotations_enabled():
+                    existing_edge_data.update(
+                        annotate_ontology_label(
+                            existing_edge_data.get("relation_type", ""), relation=True
+                        )
+                    )
+                    await knowledge_graph_inst.upsert_edge(
+                        src_id, tgt_id, edge_data=existing_edge_data
+                    )
                 return existing_edge_data
             else:
                 logger.error(
@@ -3043,6 +3094,11 @@ async def _merge_edges_then_upsert(
             keywords,
             src_id,
             tgt_id,
+        )
+        relationship_metadata.update(
+            annotate_ontology_label(
+                relationship_metadata["relation_type"], relation=True
+            )
         )
         if relation_chunks_storage is not None and full_source_ids:
             directional_storage_key = make_directional_relation_chunk_key(

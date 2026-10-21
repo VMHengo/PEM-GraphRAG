@@ -13,6 +13,8 @@ import json
 import os
 from typing import Any, Mapping
 
+from lightrag.ontology_annotation import ontology_annotation_revision
+
 
 EXTRACTION_REVISION_METADATA_KEY = "extraction_revision"
 
@@ -85,6 +87,7 @@ def build_extraction_revision(rag: Any) -> dict[str, Any]:
         "model_binding": components["model_binding"],
         "entity_extraction_use_json": components["entity_extraction_use_json"],
         "git_commit": os.getenv("EXTRACTION_GIT_COMMIT", "").strip() or None,
+        "ontology_annotation": ontology_annotation_revision(),
     }
 
 
