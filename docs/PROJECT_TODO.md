@@ -113,6 +113,14 @@ answers; they do not change the long-term roadmap or authorize deployment.
   document status recoverable after a partial merge failure. Done when a
   failure-injection test can rerun import or re-extraction without duplicate
   assertions, orphaned indexes or lost source metadata.
+- [ ] **OPS-01: Isolated staging graph diagnostics MCP.** Implement bounded
+  fixed graph-inspection tools behind a separate Auth0 audience and the
+  `read:graph-diagnostics` permission. Done when unauthorized tokens receive
+  401/403, developer-only Staging queries expose semantic edges with source
+  provenance, and normal/Production MCP tools remain unchanged. Local code,
+  17 focused passing tests and runbook are in place; live Staging authorization,
+  Neo4j behavior and Compose deployment remain unverified. See
+  [Staging Graph Diagnostics](STAGING_GRAPH_DIAGNOSTICS.md).
 
 IMP-01 evidence (2026-10-22): an existing relation endpoint now updates graph
 source IDs without an entity VDB; the guarded VDB path remains covered too.

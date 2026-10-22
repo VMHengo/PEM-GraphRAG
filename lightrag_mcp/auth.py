@@ -45,9 +45,14 @@ class Auth0JWTValidator:
 
 
 class BearerAuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, config: MCPGatewayConfig):
+    def __init__(
+        self, app, config: MCPGatewayConfig, required_permission: str | None = None
+    ):
         super().__init__(app)
         self.config = config
+        if required_permission and not config.auth_required:
+            raise ValueError("Permission-protected MCP tools require authentication")
+        self.required_permission = required_permission
         self.validator = (
             Auth0JWTValidator(
                 domain=config.auth0_domain or "",
@@ -87,6 +92,14 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        if self.required_permission:
+            permissions = claims.get("permissions")
+            if (
+                not isinstance(permissions, list)
+                or self.required_permission not in permissions
+            ):
+                return JSONResponse({"error": "Forbidden"}, status_code=403)
 
         request.state.auth_claims = claims
         return await call_next(request)

@@ -1,0 +1,40 @@
+services:
+  mcp-diagnostics:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.mcp-diagnostics
+    command:
+      - uvicorn
+      - lightrag_mcp.diagnostic_server:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    expose:
+      - "8000"
+    networks:
+      - default
+      - diagnostics_proxy
+    environment:
+      MCP_AUTH_REQUIRED: "true"
+      AUTH0_DOMAIN: "${AUTH0_DOMAIN:?Set AUTH0_DOMAIN}"
+      AUTH0_AUDIENCE: "${MCP_DIAGNOSTICS_AUDIENCE:?Set MCP_DIAGNOSTICS_AUDIENCE}"
+      AUTH0_ALGORITHMS: "RS256"
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USERNAME: "${NEO4J_USERNAME:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?Set NEO4J_PASSWORD}"
+      NEO4J_DATABASE: "${NEO4J_DATABASE:-neo4j}"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TRAEFIK_NETWORK:-n8n-compose_default}"
+      traefik.http.routers.pem-diagnostics-staging.rule: "Host(`${MCP_DIAGNOSTICS_DOMAIN:?Set MCP_DIAGNOSTICS_DOMAIN}`)"
+      traefik.http.routers.pem-diagnostics-staging.entrypoints: "websecure"
+      traefik.http.routers.pem-diagnostics-staging.tls: "true"
+      traefik.http.routers.pem-diagnostics-staging.tls.certresolver: "${TRAEFIK_CERTRESOLVER:-mytlschallenge}"
+      traefik.http.services.pem-diagnostics-staging.loadbalancer.server.port: "8000"
+    restart: unless-stopped
+
+networks:
+  diagnostics_proxy:
+    external: true
+    name: "${TRAEFIK_NETWORK:-n8n-compose_default}"
