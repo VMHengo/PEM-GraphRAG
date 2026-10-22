@@ -2180,7 +2180,7 @@ class Neo4JStorage(BaseGraphStorage):
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             query = f"""
-            MATCH (a:`{workspace_label}`)-[r]-(b:`{workspace_label}`)
+            MATCH (a:`{workspace_label}`)-[r]->(b:`{workspace_label}`)
             RETURN DISTINCT a.entity_id AS source, b.entity_id AS target, properties(r) AS properties
             """
             result = await session.run(query)

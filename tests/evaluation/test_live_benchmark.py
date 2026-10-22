@@ -26,10 +26,12 @@ def test_directed_benchmark_can_compare_optional_path_controls():
         "combined",
     )
     assert (enabled.path_ranking_mode, enabled.allow_evidence_predicates) == (
-        "weakest_link", True
+        "weakest_link",
+        True,
     )
     assert (baseline.path_ranking_mode, baseline.allow_evidence_predicates) == (
-        "mean", False
+        "mean",
+        False,
     )
 
 
@@ -170,6 +172,96 @@ def test_graph_cases_derive_required_entities_from_relation_endpoints():
 
     assert results[0]["entity_score"] == 50.0
     assert summary["entity_score"] == 50.0
+
+
+def test_graph_score_uses_stored_assertions_in_both_directions():
+    from lightrag.relation_assertions import serialize_relation_assertions
+
+    benchmark = {
+        "cases": [
+            {
+                "id": "multi",
+                "expected_relations": [
+                    {
+                        "source": "A",
+                        "relation_type": "causes",
+                        "target": "B",
+                        "directionality": "directed",
+                    },
+                    {
+                        "source": "B",
+                        "relation_type": "prevents",
+                        "target": "A",
+                        "directionality": "directed",
+                    },
+                ],
+            }
+        ]
+    }
+    pair = {
+        "source": "A",
+        "target": "B",
+        "relation_type": "supports",
+        "semantic_src_id": "A",
+        "semantic_tgt_id": "B",
+        "relation_assertions_json": serialize_relation_assertions(
+            [
+                {
+                    "semantic_src_id": "A",
+                    "semantic_tgt_id": "B",
+                    "relation_type": "causes",
+                    "directionality": "directed",
+                    "source_id": "chunk-1",
+                },
+                {
+                    "semantic_src_id": "B",
+                    "semantic_tgt_id": "A",
+                    "relation_type": "prevents",
+                    "directionality": "directed",
+                    "source_id": "chunk-2",
+                },
+            ]
+        ),
+    }
+    mirrored = {**pair, "source": "B", "target": "A"}
+    cases, summary = score_graph_cases(
+        benchmark, [{"entity_id": "A"}, {"entity_id": "B"}], [pair, mirrored]
+    )
+    assert cases[0]["relation_score"] == 100
+    assert summary["physical_pair_count"] == 1
+    assert summary["assertion_count"] == 2
+
+
+def test_graph_score_legacy_edge_still_matches():
+    benchmark = {
+        "cases": [
+            {
+                "id": "old",
+                "expected_relations": [
+                    {
+                        "source": "A",
+                        "relation_type": "causes",
+                        "target": "B",
+                        "directionality": "directed",
+                    }
+                ],
+            }
+        ]
+    }
+    cases, summary = score_graph_cases(
+        benchmark,
+        [],
+        [
+            {
+                "source": "A",
+                "target": "B",
+                "relation_type": "causes",
+                "directionality": "directed",
+            }
+        ],
+    )
+    assert cases[0]["relation_score"] == 100
+    assert summary["assertion_count"] == 1
 
 
 def test_overall_scoring_profiles_exclude_metadata_credit():

@@ -26,8 +26,8 @@ from lightrag.evaluation.semantic_matching import (
 from lightrag.relation_ontology import canonical_relation_type
 from lightrag.evaluation.ontology_diagnostics import score_ontology_edges
 from lightrag.relation_assertions import (
-    RELATION_ASSERTIONS_FIELD,
     parse_relation_assertions,
+    relation_assertion_identity,
 )
 from lightrag.utils import logger
 
@@ -42,7 +42,7 @@ _DIRECTED_STRATEGIES: tuple[DirectedStrategy, ...] = (
     "auto",
 )
 
-_SCORING_VERSION = "2.0.0"
+_SCORING_VERSION = "2.1.0"
 _SCORING_PROFILES: dict[str, dict[str, float]] = {
     "graph_only": {"graph": 100.0},
     "core": {"graph": 80.0, "retrieval": 20.0},
@@ -327,6 +327,24 @@ def _best_relation_match(
     )
 
 
+def _scoring_assertions(
+    edges: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Expand pair edges once, including mirrored Neo4j MATCH orientations."""
+
+    assertions: dict[str, dict[str, Any]] = {}
+    physical_pairs: set[tuple[str, str]] = set()
+    for edge in edges:
+        source, target = _edge_source(edge), _edge_target(edge)
+        physical_pairs.add(tuple(sorted((source, target))))
+        for assertion in parse_relation_assertions(edge, source, target):
+            identity = relation_assertion_identity(
+                _edge_source(assertion), _edge_target(assertion), assertion
+            )
+            assertions.setdefault(identity, assertion)
+    return list(assertions.values()), len(physical_pairs)
+
+
 def _metadata_coverage(edges: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(edges)
     if total == 0:
@@ -395,6 +413,7 @@ def score_graph_cases(
     relation_scores: list[float] = []
     entity_exact_scores: list[float] = []
     relation_exact_scores: list[float] = []
+    scoring_edges, physical_pair_count = _scoring_assertions(edges)
 
     for case in _as_list(benchmark.get("cases")):
         case_id = str(case.get("id") or case.get("question") or "case")
@@ -426,7 +445,7 @@ def score_graph_cases(
         for relation in expected_relations:
             if not isinstance(relation, dict):
                 continue
-            match = _best_relation_match(relation, edges)
+            match = _best_relation_match(relation, scoring_edges)
             relation_checks.append(
                 {
                     "expected": relation,
@@ -450,34 +469,30 @@ def score_graph_cases(
         ontology_diagnostics = None
         if benchmark.get("ontology_diagnostics") is True:
             expected_edges = [
-                relation for relation in expected_relations if isinstance(relation, dict)
+                relation
+                for relation in expected_relations
+                if isinstance(relation, dict)
             ]
             case_nodes = {
                 str(relation.get(endpoint) or "")
                 for relation in expected_edges
                 for endpoint in ("source", "target")
             }
-            local_edges_by_relation: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-            for edge in edges:
-                assertions = (
-                    parse_relation_assertions(
-                        edge, _edge_source(edge), _edge_target(edge)
-                    )
-                    if RELATION_ASSERTIONS_FIELD in edge
-                    else [edge]
+            local_edges_by_relation: dict[
+                tuple[str, str, str, str], dict[str, Any]
+            ] = {}
+            for assertion in scoring_edges:
+                source = _edge_source(assertion)
+                target = _edge_target(assertion)
+                if source not in case_nodes or target not in case_nodes:
+                    continue
+                key = (
+                    source,
+                    str(assertion.get("relation_type") or ""),
+                    target,
+                    str(assertion.get("ontology_iri") or ""),
                 )
-                for assertion in assertions:
-                    source = _edge_source(assertion)
-                    target = _edge_target(assertion)
-                    if source not in case_nodes or target not in case_nodes:
-                        continue
-                    key = (
-                        source,
-                        str(assertion.get("relation_type") or ""),
-                        target,
-                        str(assertion.get("ontology_iri") or ""),
-                    )
-                    local_edges_by_relation[key] = assertion
+                local_edges_by_relation[key] = assertion
             local_edges = list(local_edges_by_relation.values())
             ontology_diagnostics = score_ontology_edges(expected_edges, local_edges)
 
@@ -515,28 +530,30 @@ def score_graph_cases(
             relation_exact_scores.append(relation_exact_score)
 
         case_result = {
-                "id": case_id,
-                "question": str(case.get("question") or ""),
-                "entity_score": _format_percent(entity_score)
-                if entity_score is not None
-                else None,
-                "relation_score": _format_percent(relation_score)
-                if relation_score is not None
-                else None,
-                "entity_exact_score": _format_percent(entity_exact_score)
-                if entity_exact_score is not None
-                else None,
-                "relation_exact_score": _format_percent(relation_exact_score)
-                if relation_exact_score is not None
-                else None,
-                "entity_checks": entity_checks,
-                "relation_checks": relation_checks,
-            }
+            "id": case_id,
+            "question": str(case.get("question") or ""),
+            "entity_score": _format_percent(entity_score)
+            if entity_score is not None
+            else None,
+            "relation_score": _format_percent(relation_score)
+            if relation_score is not None
+            else None,
+            "entity_exact_score": _format_percent(entity_exact_score)
+            if entity_exact_score is not None
+            else None,
+            "relation_exact_score": _format_percent(relation_exact_score)
+            if relation_exact_score is not None
+            else None,
+            "entity_checks": entity_checks,
+            "relation_checks": relation_checks,
+        }
         if ontology_diagnostics is not None:
             case_result["ontology_diagnostics"] = ontology_diagnostics
         results.append(case_result)
 
     summary = {
+        "physical_pair_count": physical_pair_count,
+        "assertion_count": len(scoring_edges),
         "entity_score": _format_percent(sum(entity_scores) / len(entity_scores))
         if entity_scores
         else None,
