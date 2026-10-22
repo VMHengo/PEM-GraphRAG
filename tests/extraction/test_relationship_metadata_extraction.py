@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.operate import (
     _merge_edges_then_upsert,
     _process_extraction_result,
@@ -28,6 +29,14 @@ class _FakeGraphStorage:
 
     async def upsert_edge(self, src_id, tgt_id, edge_data):
         self.edges[(src_id, tgt_id)] = edge_data
+
+
+class _FakeVectorStorage:
+    def __init__(self):
+        self.records = {}
+
+    async def upsert(self, records):
+        self.records.update(records)
 
 
 @pytest.mark.offline
@@ -204,3 +213,64 @@ async def test_relationship_metadata_survives_edge_merge_with_sorted_storage_key
     assert stored_edge["chain_role"] == "root_cause"
     assert stored_edge["semantic_src_id"] == "Residual Solvent"
     assert stored_edge["semantic_tgt_id"] == "Coating Defect"
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_entity_vdb", [False, True])
+async def test_existing_edge_endpoint_updates_with_optional_entity_vdb(
+    monkeypatch, use_entity_vdb
+):
+    async def summarize(_kind, _name, descriptions, _separator, _config, _cache=None, **_kwargs):
+        return " ".join(descriptions), False
+
+    monkeypatch.setattr("lightrag.operate._handle_entity_relation_summary", summarize)
+    graph = _FakeGraphStorage()
+    graph.nodes = {
+        name: {
+            "entity_id": name,
+            "source_id": "chunk-old",
+            "description": name,
+            "entity_type": "concept",
+            "file_path": "old.pdf",
+        }
+        for name in ("Process", "Defect")
+    }
+    entity_vdb = _FakeVectorStorage() if use_entity_vdb else None
+
+    await _merge_edges_then_upsert(
+        "Process",
+        "Defect",
+        [{
+            "src_id": "Process", "tgt_id": "Defect",
+            "description": "Process causes defect.",
+            "keywords": "causes", "weight": 1.0,
+            "source_id": "chunk-new", "file_path": "new.pdf",
+            "directionality": "directed", "relation_type": "causes",
+            "semantic_src_id": "Process", "semantic_tgt_id": "Defect",
+        }],
+        knowledge_graph_inst=graph,
+        relationships_vdb=None,
+        entity_vdb=entity_vdb,
+        global_config={
+            "source_ids_limit_method": "KEEP",
+            "max_source_ids_per_relation": 100,
+            "max_source_ids_per_entity": 100,
+            "max_file_paths": 10,
+        },
+    )
+
+    for node in graph.nodes.values():
+        assert set(node["source_id"].split(GRAPH_FIELD_SEP)) == {
+            "chunk-old", "chunk-new"
+        }
+    assert graph.edges[("Process", "Defect")]["relation_type"] == "causes"
+    if entity_vdb is not None:
+        assert len(entity_vdb.records) == 2
+        assert {row["entity_name"] for row in entity_vdb.records.values()} == {
+            "Process", "Defect"
+        }
+        for row in entity_vdb.records.values():
+            assert set(row["source_id"].split(GRAPH_FIELD_SEP)) == {
+                "chunk-old", "chunk-new"
+            }

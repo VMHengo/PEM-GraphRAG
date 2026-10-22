@@ -3458,18 +3458,18 @@ async def _merge_edges_then_upsert(
                                 ),
                             }
                         }
-                    await safe_vdb_operation_with_exception(
-                        operation=lambda payload=vdb_data: entity_vdb.upsert(payload),
-                        operation_name="existing_entity_update",
-                        entity_name=f"{need_insert_id} [relation:{relation_key}]",
-                        max_retries=3,
-                        retry_delay=0.1,
-                        timeout_seconds=_get_relationship_vdb_timeout_seconds(
-                            global_config
-                        ),
-                        log_start=False,
-                        success_log_threshold_seconds=5.0,
-                    )
+                        await safe_vdb_operation_with_exception(
+                            operation=lambda payload=vdb_data: entity_vdb.upsert(payload),
+                            operation_name="existing_entity_update",
+                            entity_name=f"{need_insert_id} [relation:{relation_key}]",
+                            max_retries=3,
+                            retry_delay=0.1,
+                            timeout_seconds=_get_relationship_vdb_timeout_seconds(
+                                global_config
+                            ),
+                            log_start=False,
+                            success_log_threshold_seconds=5.0,
+                        )
 
                 # 6. Log once at the end if any update occurred
                 if updated:

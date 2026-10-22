@@ -73,6 +73,48 @@ retrieval remain the baseline until a measured staging pilot passes.
   go/no-go decision and repeatable staging procedure exist; production rollout
   requires a separate explicit task.
 
+Implementation hardening identified after the assertion-preservation work.
+These tasks improve ingestion correctness and evidence-grounded multi-hop
+answers; they do not change the long-term roadmap or authorize deployment.
+
+- [x] **IMP-01: Optional entity VDB during edge merge.** Keep the existing-node
+  VDB upsert inside the `entity_vdb is not None` guard in `operate.py`. Done
+  when an existing endpoint can gain a relation source with no entity VDB,
+  its graph provenance updates, and focused regression tests pass.
+- [ ] **IMP-02: Assertion-native indexing.** Specify a stable per-assertion
+  identity and index separately from the pair-level graph edge, with legacy
+  read compatibility. Done when two predicates/opposite directions on one pair
+  remain discoverable in normal and directed retrieval after write, restart,
+  re-extraction and single-document deletion; measure storage and query cost.
+- [ ] **IMP-03: Query-aware Neo4j neighbor selection.** Avoid discarding a
+  relevant assertion when physical pair edges are capped before assertion
+  expansion. Done when high-degree-node fixtures show recall under the
+  candidate limit, the database query remains bounded, and latency is measured.
+- [ ] **IMP-04: Evidence-aware path ranking and predicate coverage.** Compare
+  mean-only path scores with a weakest-link/evidence-aware score; review the
+  router's hard relation-type allowlists. Done when held-out causal and process
+  questions improve supported-path recall without an unacceptable rise in
+  false-positive paths or context size.
+- [ ] **IMP-05: Validate normal extraction completion.** Reject missing,
+  malformed or truncated per-chunk outputs before a document is marked fully
+  extracted. Done when normal-provider and Batch imports enforce equivalent
+  completeness checks and failures identify affected chunk IDs.
+- [ ] **IMP-06: Retry only failed extraction chunks.** Persist per-chunk
+  failure state and retry without repeating successful calls. Done when a
+  partially failed document recovers with bounded duplicate model calls and
+  unchanged provenance for successful chunks.
+- [ ] **IMP-07: Idempotent merge recovery.** Make graph/vector writes and
+  document status recoverable after a partial merge failure. Done when a
+  failure-injection test can rerun import or re-extraction without duplicate
+  assertions, orphaned indexes or lost source metadata.
+
+IMP-01 evidence (2026-10-22): an existing relation endpoint now updates graph
+source IDs without an entity VDB; the guarded VDB path remains covered too.
+Focused relationship/ontology tests: 16 passed; Ruff and `git diff --check`
+passed. The broader extraction subset had 55 passes and two unrelated prompt
+profile assertion failures; the full extraction suite could not collect its
+optional Ollama driver test in the local environment.
+
 ONT-01 evidence (2026-10-21): `python -m ontology.validate_sources` accounted
 for and parsed all 51 files, then correctly exited 1 on the documented source
 snapshot mismatch. `tests/ontology/test_validate_sources.py` covers matching
