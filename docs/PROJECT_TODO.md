@@ -26,6 +26,94 @@ New long-term goals require explicit user input before changing the roadmap.
 
 ## Ordered Queue
 
+### Quality Benchmark Triage (before further extraction changes)
+
+The last shared v2 Staging result was Overall 38.89, Graph 64.31 (Entity
+94.51, Relation 34.11), Retrieval 96.52, Directed 3.81 and Directed Exact 0.
+The formula is correct for the stress profile (Graph 35%, Retrieval 15%,
+Directed 50%), but this is **not** answer accuracy. The saved result and live
+graph were not available for this local audit, so run-specific attribution
+remains provisional. The current stress fixture has 20 expected paths of
+length two or three, not a four/five-hop accuracy test. Complete these checks
+before paying for a broad re-run.
+
+- [ ] **QUAL-01: Freeze and decompose one Staging failure run.** Read an
+  existing `result.json` with `scripts/diagnose_benchmark_run.py`; record the
+  benchmark/scorer/extraction revisions, document scope, active assertion and
+  retrieval flags, and per-case entity, relation, path and citation failures.
+  Use the developer diagnostic connector for bounded read-only graph checks
+  when its tools become available; preserve the run and source evidence.
+  Done when at least ten low-scoring cases are classified as missing graph
+  assertion, present-but-filtered assertion, anchor/pruning miss, provenance
+  failure, gold-granularity mismatch or strict-only scoring mismatch, with
+  counts and representative source chunks. No model calls are needed.
+- [ ] **QUAL-02: Score stored assertions, not only pair summaries.** The graph
+  scorer currently reads physical edges from `get_all_edges()` and ignores
+  `relation_assertions_json` except in optional ontology diagnostics. A local
+  two-assertion example stores `causes` but scores it zero when the pair-level
+  representative says `supports`. Expand valid assertions for graph scoring,
+  retain legacy fallback and report physical-pair versus assertion counts;
+  avoid counting Neo4j's undirected `MATCH` orientations twice. Done when
+  focused tests cover two predicates/opposite directions on one pair and an
+  unchanged graph can be re-scored without extraction or generation calls.
+- [ ] **QUAL-03: Resolve Directed Exact semantics.** `Directed Exact` ignores
+  reviewed `node_aliases` and `accepted_relation_types`, while semantic
+  scoring honors them. Either accept full-credit reviewed alternatives or
+  rename the metric to representation-exact; never accept reversed causes.
+  Done when alias, predicate, direction and citation tests match the name.
+- [ ] **QUAL-04: Review gold path granularity.** Audit the 20 gold paths in
+  18 stress cases against PDF evidence. In the aging source, gas affects
+  electrode spacing before current nonuniformity; the three-hop gold skips
+  that intermediate. Record expert-reviewed alternative paths/conditions or
+  an explicitly justified shortcut, not an invented causal edge. Done when
+  every allowed path has a cited source span and a documented hop policy.
+- [ ] **QUAL-05: Add source-scoped graph scoring.** The active runner reads
+  all graph nodes/edges, while `document_scope` is only a prompt-experiment
+  preflight. Add explicit scoped versus whole-KB coverage and bind scored
+  assertions to declared source documents. Done when an edge from the wrong
+  paper cannot earn scoped credit and legacy whole-KB mode remains available.
+- [ ] **QUAL-06: Expose benchmark denominators and duplicates.** One edge can
+  satisfy multiple gold items and extra wrong edges are not penalized. Report
+  unique-edge/micro and per-case macro coverage, duplicate gold paths, and
+  separate directed/combined/auto scores. Add precision only within a fully
+  annotated scope; do not call other open-world edges false. Done when raw
+  numerators and denominators explain every aggregate.
+- [ ] **QUAL-07: Attribute directed retrieval losses on a frozen graph.** Only
+  five entity-search hits seed paths; importance, Neo4j candidate cap,
+  fanout and beam pruning can then hide a present chain. Add bounded counters
+  for anchors, candidate assertions, predicate/direction rejects, surviving
+  hops and citations. Done when each graph-present failure in QUAL-01 names
+  its first failing retrieval stage without new extraction calls.
+- [ ] **QUAL-08: Align reviewed predicates with traversal.** The router's
+  allowlists exclude some full-credit gold alternatives (`increases`,
+  `produces`, `contributes_to`); evidence fallback is off by default. Test a
+  shared, query-specific predicate policy on held-out causal/process cases.
+  Done when supported-path recall rises without unacceptable false positives,
+  latency or context growth. Normal retrieval stays the default.
+- [ ] **QUAL-09: Audit historic extraction completeness offline.** A local
+  2026-10-16 Staging review found `status=incomplete` in 10/10 sampled
+  aging-paper Batch outputs and 60/74 parameter-paper outputs at a 1,200-token
+  cap; repaired JSON retained entities but lost relations. Current import
+  validation cannot repair already imported data. Identify affected document
+  revisions, finish reasons and output budgets using stored artifacts only.
+  Done when a per-document repair list has source evidence and no new calls.
+- [ ] **QUAL-10: Pilot one paid, reversible re-extraction.** After QUAL-09,
+  re-extract one affected Staging document from retained chunks with a measured
+  output budget, preserving ID, URL and source metadata. Compare completion,
+  grounded edges, cost and rollback with its frozen baseline. Do not run
+  Extract All until this pilot and scorer fixes pass; obtain explicit approval
+  before starting paid model calls.
+- [ ] **QUAL-11: Add claim-level answer checks.** Retrieval 96.52 currently
+  measures `must_include` terms and expected document references, not truth;
+  failed query status does not zero that score. Keep coverage metrics separate,
+  gate failed queries, and score reviewed condition, negation and source
+  support for full answers. Done when a cited but unsupported or reversed
+  causal claim fails a test fixture.
+- [ ] **QUAL-12: Run a paired end-to-end comparison.** On the same held-out
+  documents and fixed scorer, compare normal, combined and directed answers.
+  Done when the report states scorer version, graph/extraction revision,
+  source scope, claim quality, path quality, latency and actual model cost.
+
 Detailed plan: [Ontology Integration Plan](ONTOLOGY_INTEGRATION_PLAN.md).
 These tasks introduce ontology support incrementally; current extraction and
 retrieval remain the baseline until a measured staging pilot passes.
@@ -104,7 +192,12 @@ answers; they do not change the long-term roadmap or authorize deployment.
 - [ ] **IMP-05: Validate normal extraction completion.** Reject missing,
   malformed or truncated per-chunk outputs before a document is marked fully
   extracted. Done when normal-provider and Batch imports enforce equivalent
-  completeness checks and failures identify affected chunk IDs.
+  completeness checks and failures identify affected chunk IDs. Local normal
+  extraction now checks the terminal legacy marker and strict JSON structure
+  before tolerant parsing; invalid initial/gleaning cache entries are evicted
+  without discarding valid earlier calls. Focused mocked tests cover both.
+  Pending: confirm provider finish-reason propagation where
+  available and verify one failed-chunk recovery on Staging.
 - [ ] **IMP-06: Retry only failed extraction chunks.** Persist per-chunk
   failure state and retry without repeating successful calls. Done when a
   partially failed document recovers with bounded duplicate model calls and
@@ -118,8 +211,11 @@ answers; they do not change the long-term roadmap or authorize deployment.
   `read:graph-diagnostics` permission. Done when unauthorized tokens receive
   401/403, developer-only Staging queries expose semantic edges with source
   provenance, and normal/Production MCP tools remain unchanged. Local code,
-  17 focused passing tests and runbook are in place; live Staging authorization,
-  Neo4j behavior and Compose deployment remain unverified. See
+  focused tests and runbook are in place. Staging has returned 200 for health
+  and protected-resource metadata and 401 for unauthenticated MCP access;
+  authorized tool discovery, 403 without the permission, Neo4j behavior and
+  Production isolation remain unverified. The diagnostic tools are not yet
+  available in this Codex session. See
   [Staging Graph Diagnostics](STAGING_GRAPH_DIAGNOSTICS.md).
 
 IMP-01 evidence (2026-10-22): an existing relation endpoint now updates graph
