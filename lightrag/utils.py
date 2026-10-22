@@ -3776,7 +3776,7 @@ def convert_to_user_format(
     for relation in relations_context:
         entity1 = relation.get("entity1", "")
         entity2 = relation.get("entity2", "")
-        relation_key = (entity1, entity2)
+        relation_key = relation.get("assertion_id") or (entity1, entity2)
 
         # Try to get original data first
         original_relation = None
@@ -3785,22 +3785,40 @@ def convert_to_user_format(
 
         if original_relation:
             # Use original database data
-            formatted_relationships.append(
-                {
-                    "src_id": original_relation.get("src_id", entity1),
-                    "tgt_id": original_relation.get("tgt_id", entity2),
-                    "description": original_relation.get("description", ""),
-                    "keywords": original_relation.get("keywords", ""),
-                    "weight": original_relation.get("weight", 1.0),
-                    "source_id": original_relation.get("source_id", ""),
-                    "file_path": original_relation.get("file_path", "unknown_source"),
-                    "created_at": original_relation.get("created_at", ""),
-                }
-            )
+            formatted = {
+                "src_id": (
+                    original_relation.get("semantic_src_id", entity1)
+                    if relation.get("assertion_id")
+                    else original_relation.get("src_id", entity1)
+                ),
+                "tgt_id": (
+                    original_relation.get("semantic_tgt_id", entity2)
+                    if relation.get("assertion_id")
+                    else original_relation.get("tgt_id", entity2)
+                ),
+                "description": original_relation.get("description", ""),
+                "keywords": original_relation.get("keywords", ""),
+                "weight": original_relation.get("weight", 1.0),
+                "source_id": original_relation.get("source_id", ""),
+                "file_path": original_relation.get("file_path", "unknown_source"),
+                "created_at": original_relation.get("created_at", ""),
+            }
+            if relation.get("assertion_id"):
+                formatted.update(
+                    {
+                        "assertion_id": relation["assertion_id"],
+                        "relation_type": original_relation.get(
+                            "relation_type", relation.get("relation_type")
+                        ),
+                        "directionality": original_relation.get(
+                            "directionality", relation.get("directionality")
+                        ),
+                    }
+                )
+            formatted_relationships.append(formatted)
         else:
             # Fallback to LLM context data (for backward compatibility)
-            formatted_relationships.append(
-                {
+            formatted = {
                     "src_id": entity1,
                     "tgt_id": entity2,
                     "description": relation.get("description", ""),
@@ -3810,7 +3828,13 @@ def convert_to_user_format(
                     "file_path": relation.get("file_path", "unknown_source"),
                     "created_at": relation.get("created_at", ""),
                 }
-            )
+            if relation.get("assertion_id"):
+                formatted.update({
+                    key: relation[key]
+                    for key in ("assertion_id", "relation_type", "directionality")
+                    if key in relation
+                })
+            formatted_relationships.append(formatted)
 
     # Convert chunks format (chunks already contain complete data)
     formatted_chunks = []

@@ -352,3 +352,33 @@ async def test_combined_route_falls_back_to_normal_context_when_provider_fails(m
     diagnostics = result.raw_data["metadata"]["directed_paths"]
     assert diagnostics["status"] == "error"
     assert diagnostics["reason"] == "provider_error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_query_aware_provider_receives_route_predicates():
+    class Graph:
+        supports_query_aware_neighbor_selection = True
+
+        def __init__(self):
+            self.target_relation_types = None
+            self.target_chain_roles = None
+
+        async def get_directed_neighbor_edges_batch(
+            self, nodes, *, target_relation_types=(), target_chain_roles=()
+        ):
+            self.target_relation_types = target_relation_types
+            self.target_chain_roles = target_chain_roles
+            return {node: [] for node in nodes}
+
+    graph = Graph()
+    diagnostics, paths = await operate._collect_directed_path_diagnostics(
+        query="What causes defect X?",
+        query_param=QueryParam(retrieval_strategy="auto"),
+        knowledge_graph_inst=graph,
+        final_entities=[{"entity_name": "Defect X"}],
+    )
+    assert diagnostics["status"] == "completed"
+    assert paths == []
+    assert graph.target_relation_types[0] == "causes"
+    assert graph.target_chain_roles == ()

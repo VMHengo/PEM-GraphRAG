@@ -24,6 +24,8 @@ def test_query_request_defaults_preserve_normal_retrieval():
     assert param.chain_fanout == 20
     assert param.chain_top_k_per_prompt == 2
     assert param.min_relation_importance == 0.45
+    assert param.path_ranking_mode == "mean"
+    assert param.allow_evidence_predicates is False
     assert request.include_retrieval_metadata is False
 
 
@@ -48,6 +50,8 @@ def test_query_request_maps_multihop_configuration_to_query_param():
         chain_fanout=8,
         chain_top_k_per_prompt=4,
         min_relation_importance=0.7,
+        path_ranking_mode="weakest_link",
+        allow_evidence_predicates=True,
     )
 
     param = request.to_query_params(is_stream=False)
@@ -59,6 +63,8 @@ def test_query_request_maps_multihop_configuration_to_query_param():
     assert param.chain_fanout == 8
     assert param.chain_top_k_per_prompt == 4
     assert param.min_relation_importance == 0.7
+    assert param.path_ranking_mode == "weakest_link"
+    assert param.allow_evidence_predicates is True
 
 
 @pytest.mark.offline
@@ -72,6 +78,7 @@ def test_query_request_maps_multihop_configuration_to_query_param():
         ("chain_fanout", 51),
         ("chain_top_k_per_prompt", 11),
         ("min_relation_importance", 1.1),
+        ("path_ranking_mode", "random"),
     ],
 )
 def test_query_request_rejects_invalid_multihop_configuration(
@@ -92,6 +99,8 @@ def test_query_request_rejects_invalid_multihop_configuration(
         ("chain_fanout", 0),
         ("chain_top_k_per_prompt", 0),
         ("min_relation_importance", -0.1),
+        ("path_ranking_mode", "random"),
+        ("allow_evidence_predicates", "yes"),
     ],
 )
 def test_query_param_rejects_invalid_multihop_configuration(

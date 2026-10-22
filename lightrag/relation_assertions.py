@@ -15,6 +15,7 @@ from typing import Any
 
 from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.relation_identity import relation_identity
+from lightrag.utils import compute_mdhash_id
 
 
 RELATION_ASSERTIONS_FIELD = "relation_assertions_json"
@@ -120,6 +121,16 @@ def relation_assertion_identity(
         assertion.get("source_id") or assertion.get("source_chunk_id")
     )
     return GRAPH_FIELD_SEP.join((semantic_identity, source_id))
+
+
+def make_assertion_vdb_id(
+    source: str, target: str, assertion: Mapping[str, Any]
+) -> str:
+    """Stable vector key for a predicate, direction and source chunk."""
+
+    return compute_mdhash_id(
+        relation_assertion_identity(source, target, assertion), prefix="assert-"
+    )
 
 
 def _legacy_assertions(

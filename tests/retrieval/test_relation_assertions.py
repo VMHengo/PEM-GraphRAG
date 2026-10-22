@@ -8,8 +8,12 @@ from lightrag.relation_assertions import (
     merge_relation_assertions,
     parse_relation_assertions,
     relation_assertion_identity,
+    make_assertion_vdb_id,
     serialize_relation_assertions,
 )
+from lightrag.base import QueryParam
+from lightrag.operate import _assertion_vector_rows, _get_edge_data
+from lightrag.utils import convert_to_user_format
 
 
 def _assertion(source, target, predicate, chunk_id, **extra):
@@ -39,9 +43,73 @@ def test_preserves_two_predicates_and_opposite_directions_on_same_pair():
         relation_assertion_identity("A", "B", assertion) for assertion in merged
     }
     assert len(identities) == 3
+    assert len({make_assertion_vdb_id("A", "B", item) for item in merged}) == 3
     assert parse_relation_assertions(
         {RELATION_ASSERTIONS_FIELD: serialize_relation_assertions(merged)}, "A", "B"
     ) == merged
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_normal_retrieval_preserves_assertions_on_one_pair():
+    assertions = [
+        _assertion("A", "B", "causes", "chunk-1"),
+        _assertion("B", "A", "influences", "chunk-2"),
+    ]
+    rows = _assertion_vector_rows("A", "B", assertions, {})
+
+    class Vectors:
+        cosine_better_than_threshold = 0.0
+
+        async def query(self, *_args, **_kwargs):
+            return list(rows.values())
+
+    class Graph:
+        async def get_edges_batch(self, _pairs):
+            return {("A", "B"): {
+                "description": "selected pair summary",
+                "relation_type": "causes",
+                "source_id": "chunk-1<SEP>chunk-2",
+            }}
+
+        async def get_nodes_batch(self, _names):
+            return {"A": {}, "B": {}}
+
+    edges, _nodes = await _get_edge_data(
+        "cause", Graph(), Vectors(), QueryParam(mode="global")
+    )
+    assert [(edge["semantic_src_id"], edge["relation_type"],
+             edge["semantic_tgt_id"], edge["source_id"]) for edge in edges] == [
+        ("A", "causes", "B", "chunk-1"),
+        ("B", "influences", "A", "chunk-2"),
+    ]
+
+
+@pytest.mark.offline
+def test_user_format_keeps_two_assertions_on_one_physical_pair():
+    relations = [
+        {"entity1": "A", "entity2": "B", "assertion_id": "assert-1"},
+        {"entity1": "A", "entity2": "B", "assertion_id": "assert-2"},
+        {"entity1": "B", "entity2": "A", "assertion_id": "assert-3"},
+    ]
+    originals = {
+        "assert-1": {"src_id": "A", "tgt_id": "B", "relation_type": "causes",
+                     "source_id": "chunk-1"},
+        "assert-2": {"src_id": "A", "tgt_id": "B", "relation_type": "increases",
+                     "source_id": "chunk-2"},
+        "assert-3": {"src_id": "A", "tgt_id": "B", "semantic_src_id": "B",
+                     "semantic_tgt_id": "A", "relation_type": "influences",
+                     "source_id": "chunk-3"},
+    }
+    response = convert_to_user_format(
+        [], relations, [], [], "global", relation_id_to_original=originals
+    )
+    assert [(item["src_id"], item["relation_type"], item["tgt_id"],
+             item["source_id"]) for item in response["data"]["relationships"]] == [
+        ("A", "causes", "B", "chunk-1"),
+        ("A", "increases", "B", "chunk-2"),
+        ("B", "influences", "A", "chunk-3"),
+    ]
 
 
 @pytest.mark.offline

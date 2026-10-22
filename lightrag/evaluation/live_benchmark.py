@@ -724,6 +724,15 @@ def _directed_query_param(
         only_need_context=True,
         response_type=str(case.get("response_type") or "Multiple Paragraphs"),
         retrieval_strategy=strategy,
+        path_ranking_mode=str(
+            case.get("path_ranking_mode")
+            or benchmark.get("path_ranking_mode")
+            or "mean"
+        ),
+        allow_evidence_predicates=case.get(
+            "allow_evidence_predicates",
+            benchmark.get("allow_evidence_predicates", False),
+        ),
     )
     integer_fields = (
         "top_k",

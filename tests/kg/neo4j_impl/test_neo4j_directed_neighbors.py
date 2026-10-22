@@ -2,6 +2,7 @@ from typing import Any
 
 import pytest
 
+import lightrag.kg.neo4j_impl as neo4j_impl
 from lightrag.kg.neo4j_impl import Neo4JStorage
 from lightrag.relation_assertions import serialize_relation_assertions
 
@@ -111,11 +112,16 @@ async def test_directed_neighbor_provider_returns_semantic_metadata_and_fallback
     assert driver.parameters == {
         "node_ids": ["Defect X", "No Edge"],
         "candidate_limit_per_node": 25,
+        "target_relation_types": [],
+        "target_chain_roles": [],
+        "expand_assertions": False,
     }
     assert "UNWIND $node_ids" in driver.query
     assert "(anchor:`pem``staging` {entity_id: requested_id})" in driver.query
     assert "[r:DIRECTED]-(neighbor:`pem``staging`)" in driver.query
-    assert "$candidate_limit_per_node" in driver.query
+    assert "LIMIT $candidate_limit_per_node" in driver.query
+    assert "CALL {" in driver.query
+    assert "query_relevance DESC" in driver.query
     assert driver.session_calls == [
         {"database": "neo4j", "default_access_mode": "READ"}
     ]
@@ -194,6 +200,25 @@ async def test_directed_neighbor_provider_rejects_non_string_node_ids():
 
 @pytest.mark.asyncio
 @pytest.mark.offline
+@pytest.mark.parametrize(
+    "target_relation_types",
+    ["causes", ["causes", 7], [f"relation-{index}" for index in range(51)]],
+)
+async def test_directed_neighbor_provider_validates_target_relation_types(
+    target_relation_types: object,
+):
+    driver = _FakeDriver([])
+
+    with pytest.raises(ValueError, match="target_relation_types"):
+        await _storage(driver).get_directed_neighbor_edges_batch(
+            ["Anchor"], target_relation_types=target_relation_types
+        )
+
+    assert driver.session_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
 async def test_assertion_expansion_is_explicit_and_preserves_each_direction(monkeypatch):
     assertions = [
         {
@@ -229,3 +254,80 @@ async def test_assertion_expansion_is_explicit_and_preserves_each_direction(monk
     assert next(edge for edge in expanded["A"] if edge["relation_type"] == "influences")[
         "ontology_iri"
     ] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_query_relevant_assertion_is_ranked_before_high_degree_pair_cap(monkeypatch):
+    candidate_limit = 25
+    assertions = [
+        {
+            "semantic_src_id": "Relevant Cause",
+            "semantic_tgt_id": "Defect X",
+            "relation_type": "causes",
+            "directionality": "directed",
+            "source_id": "chunk-relevant",
+        }
+    ]
+    relevant_candidate = {
+        "properties": {
+            "relation_type": "related_to",
+            "relation_importance": 0.1,
+            "relation_assertions_json": serialize_relation_assertions(assertions),
+        },
+        "physical_src_id": "Defect X",
+        "physical_tgt_id": "Relevant Cause",
+    }
+    high_degree_candidates = [
+        {
+            "properties": {
+                "relation_type": "related_to",
+                "relation_importance": 1.0 - index / 1000,
+            },
+            "physical_src_id": "Defect X",
+            "physical_tgt_id": f"Generic Neighbor {index:03d}",
+        }
+        for index in range(300)
+    ]
+    # Neo4j returns the query-ranked bounded slice. The relevant pair started
+    # beyond the physical cap in importance order but is promoted by its
+    # serialized assertion predicate.
+    bounded_candidates = [
+        relevant_candidate,
+        *high_degree_candidates[: candidate_limit - 1],
+    ]
+    driver = _FakeDriver(
+        [{"requested_id": "Defect X", "candidates": bounded_candidates}]
+    )
+    monkeypatch.setenv("ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED", "true")
+    clock = iter((10.0, 10.025))
+    latency_logs: list[tuple[str, tuple[Any, ...]]] = []
+    monkeypatch.setattr(neo4j_impl, "perf_counter", lambda: next(clock))
+    monkeypatch.setattr(
+        neo4j_impl.logger,
+        "info",
+        lambda message, *args: latency_logs.append((message, args)),
+    )
+
+    edges_by_node = await _storage(driver).get_directed_neighbor_edges_batch(
+        ["Defect X"],
+        candidate_limit_per_node=candidate_limit,
+        target_relation_types=[" Causes ", "causes"],
+    )
+
+    assert any(
+        edge.get("relation_type") == "causes"
+        and edge.get("source_id") == "chunk-relevant"
+        for edge in edges_by_node["Defect X"]
+    )
+    assert len(driver.parameters["target_relation_types"]) == 1
+    assert driver.parameters["target_relation_types"] == ["causes"]
+    assert driver.parameters["target_chain_roles"] == []
+    assert len(bounded_candidates) == candidate_limit
+    assert "query_relevance DESC" in driver.query
+    assert driver.query.index("query_relevance DESC") < driver.query.index(
+        "LIMIT $candidate_limit_per_node"
+    ) < driver.query.index("collect(candidate)")
+    assert driver.parameters["expand_assertions"] is True
+    assert "r.relation_assertions_json" in driver.query
+    assert latency_logs[0][1][-1] == 25

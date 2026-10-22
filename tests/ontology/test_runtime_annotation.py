@@ -12,7 +12,7 @@ from lightrag.api.azure_batch import (
     AzureBatchOutputValidationError,
     _validate_ontology_batch_snapshot,
 )
-from lightrag.relation_assertions import parse_relation_assertions
+from lightrag.relation_assertions import make_assertion_vdb_id, parse_relation_assertions
 from lightrag.relation_identity import (
     make_directional_relation_chunk_key,
     make_directional_relation_vdb_id,
@@ -234,7 +234,10 @@ async def test_reselecting_pair_edge_cleans_old_directional_records(
     selected = graph.edges[("A", "B")]
     assert selected["relation_type"] == "causes"
     assert make_directional_relation_chunk_key("A", "B", selected) in relation_chunks.rows
-    assert make_directional_relation_vdb_id("A", "B", selected) in relationships_vdb.rows
+    assert make_directional_relation_vdb_id("A", "B", selected) not in relationships_vdb.rows
+    assertions = parse_relation_assertions(selected, "A", "B")
+    assert {relationships_vdb.rows[make_assertion_vdb_id("A", "B", assertion)]["relation_type"]
+            for assertion in assertions} == {"causes", "influences"}
 
 
 @pytest.mark.offline

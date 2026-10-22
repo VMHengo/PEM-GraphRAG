@@ -31,6 +31,38 @@ async def test_normal_route_does_not_call_neighbor_provider():
 
 @pytest.mark.asyncio
 @pytest.mark.offline
+async def test_weakest_link_ranking_prefers_supported_balanced_chain():
+    graph = {
+        "A": [
+            {"semantic_src_id": "A", "semantic_tgt_id": "B", "relation_type": "causes",
+             "directionality": "directed", "relation_importance": 1.0, "source_id": "chunk-ab"},
+            {"semantic_src_id": "A", "semantic_tgt_id": "D", "relation_type": "causes",
+             "directionality": "directed", "relation_importance": 0.78, "source_id": "chunk-ad"},
+        ],
+        "B": [{"semantic_src_id": "B", "semantic_tgt_id": "C", "relation_type": "causes",
+               "directionality": "directed", "relation_importance": 0.6}],
+        "D": [{"semantic_src_id": "D", "semantic_tgt_id": "E", "relation_type": "causes",
+               "directionality": "directed", "relation_importance": 0.78,
+               "source_id": "chunk-de"}],
+    }
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    async def ranked(mode):
+        param = QueryParam(retrieval_strategy="auto", hop_depth=2,
+                           path_ranking_mode=mode, chain_top_k=10)
+        paths = await find_directed_paths(
+            ["A"], provider, route=_route("What can A lead to?", param), query_param=param
+        )
+        return [path.nodes for path in paths if len(path.edges) == 2]
+
+    assert (await ranked("mean"))[0] == ("A", "B", "C")
+    assert (await ranked("weakest_link"))[0] == ("A", "D", "E")
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
 async def test_outgoing_bfs_returns_a_two_hop_causal_chain_and_batches_frontiers():
     calls: list[tuple[str, ...]] = []
     graph: dict[str, list[dict[str, Any]]] = {

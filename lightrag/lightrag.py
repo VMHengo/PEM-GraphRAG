@@ -136,6 +136,7 @@ from lightrag.utils import (
 )
 from lightrag.relation_assertions import (
     RELATION_ASSERTIONS_FIELD,
+    make_assertion_vdb_id,
     parse_relation_assertions,
 )
 from lightrag.relation_identity import (
@@ -1141,7 +1142,11 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             namespace=NameSpace.VECTOR_STORE_RELATIONSHIPS,
             workspace=self.workspace,
             embedding_func=self.embedding_func,
-            meta_fields={"src_id", "tgt_id", "source_id", "content", "file_path"},
+            meta_fields={
+                "src_id", "tgt_id", "source_id", "content", "file_path",
+                "assertion_id", "relation_type", "directionality",
+                "semantic_src_id", "semantic_tgt_id", "description", "keywords",
+            },
         )
         self.chunks_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=NameSpace.VECTOR_STORE_CHUNKS,
@@ -2513,6 +2518,8 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             assertions = _parse_relation_assertions_for_cleanup(edge_data, src, tgt)
 
             for assertion in assertions:
+                if RELATION_ASSERTIONS_FIELD in edge_data:
+                    relation_vdb_ids.add(make_assertion_vdb_id(src, tgt, assertion))
                 relation_vdb_ids.add(
                     make_directional_relation_vdb_id(src, tgt, assertion)
                 )

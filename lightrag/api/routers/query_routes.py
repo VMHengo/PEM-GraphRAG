@@ -156,6 +156,16 @@ class QueryRequest(BaseModel):
         description="Minimum relationship importance considered by directed retrieval.",
     )
 
+    path_ranking_mode: Literal["mean", "weakest_link"] = Field(
+        default="mean",
+        description="Directed path ranking: established mean or evidence-aware weakest link.",
+    )
+
+    allow_evidence_predicates: bool = Field(
+        default=False,
+        description="Allow strongly evidenced route-relevant predicates outside the fixed list.",
+    )
+
     stream: Optional[bool] = Field(
         default=True,
         description="If True, enables streaming output for real-time responses. Only affects /query/stream endpoint.",

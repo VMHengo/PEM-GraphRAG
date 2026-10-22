@@ -56,7 +56,7 @@ from lightrag.base import (
     QueryContextResult,
 )
 from lightrag.adaptive_retrieval import route_retrieval_query
-from lightrag.directed_retrieval import DirectedPath, find_directed_paths
+from lightrag.directed_retrieval import DirectedPath, find_directed_paths, route_chain_roles
 from lightrag.relation_ontology import canonicalize_relation
 from lightrag.ontology_annotation import (
     annotate_ontology_label,
@@ -69,6 +69,7 @@ from lightrag.relation_identity import (
 )
 from lightrag.relation_assertions import (
     RELATION_ASSERTIONS_FIELD,
+    make_assertion_vdb_id,
     merge_relation_assertions,
     parse_relation_assertions,
     serialize_relation_assertions,
@@ -314,6 +315,8 @@ async def _collect_directed_path_diagnostics(
     diagnostics: dict[str, Any] = {
         "status": "skipped",
         "reason": "strategy_normal",
+        "path_ranking_mode": query_param.path_ranking_mode,
+        "allow_evidence_predicates": query_param.allow_evidence_predicates,
         "anchor_entities": [],
         "path_count": 0,
         "paths": [],
@@ -332,6 +335,15 @@ async def _collect_directed_path_diagnostics(
         diagnostics["status"] = "unsupported"
         diagnostics["reason"] = "storage_has_no_directed_neighbor_provider"
         return diagnostics, []
+
+    if getattr(knowledge_graph_inst, "supports_query_aware_neighbor_selection", False):
+        fetch_edges = partial(
+            fetch_edges,
+            target_relation_types=route.target_relation_types,
+            target_chain_roles=(
+                route_chain_roles(route) if query_param.allow_evidence_predicates else ()
+            ),
+        )
 
     try:
         paths = await find_directed_paths(
@@ -495,6 +507,42 @@ def _truncate_entity_identifier(
         preview,
     )
     return display_value
+
+
+def _assertion_vector_rows(
+    source: str,
+    target: str,
+    assertions: list[dict[str, Any]],
+    global_config: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Index each supported fact independently of its physical graph edge."""
+
+    rows: dict[str, dict[str, Any]] = {}
+    for assertion in assertions:
+        assertion_id = make_assertion_vdb_id(source, target, assertion)
+        semantic_source = assertion["semantic_src_id"]
+        semantic_target = assertion["semantic_tgt_id"]
+        description = str(assertion.get("description") or "")
+        relation_type = assertion["relation_type"]
+        rows[assertion_id] = {
+            "assertion_id": assertion_id,
+            "src_id": source,
+            "tgt_id": target,
+            "semantic_src_id": semantic_source,
+            "semantic_tgt_id": semantic_target,
+            "relation_type": relation_type,
+            "directionality": assertion["directionality"],
+            "source_id": str(assertion.get("source_id") or ""),
+            "file_path": str(assertion.get("file_path") or "unknown_source"),
+            "description": description,
+            "keywords": str(assertion.get("keywords") or ""),
+            "content": _truncate_vdb_content(
+                f"{semantic_source} {relation_type} {semantic_target}\n{description}",
+                global_config,
+                f"assertion:{assertion_id}",
+            ),
+        }
+    return rows
 
 
 def _truncate_vdb_content(content: str, global_config: dict, content_label: str) -> str:
@@ -2531,19 +2579,23 @@ async def _rebuild_single_relationship(
 
         # Insert new vector record
         rel_content = f"{combined_keywords}\t{src}\n{tgt}\n{final_description}"
-        vdb_data = {
-            rel_vdb_id: {
-                "src_id": src,
-                "tgt_id": tgt,
-                "source_id": updated_relationship_data["source_id"],
-                "content": rel_content,
-                "keywords": combined_keywords,
-                "description": final_description,
-                "weight": weight,
-                "file_path": updated_relationship_data["file_path"],
-                **relationship_metadata,
+        if ontology_annotations_enabled():
+            await relationships_vdb.delete([rel_vdb_id])
+            vdb_data = _assertion_vector_rows(src, tgt, assertions, global_config)
+        else:
+            vdb_data = {
+                rel_vdb_id: {
+                    "src_id": src,
+                    "tgt_id": tgt,
+                    "source_id": updated_relationship_data["source_id"],
+                    "content": rel_content,
+                    "keywords": combined_keywords,
+                    "description": final_description,
+                    "weight": weight,
+                    "file_path": updated_relationship_data["file_path"],
+                    **relationship_metadata,
+                }
             }
-        }
 
         # Use safe operation wrapper - VDB failure must throw exception
         await safe_vdb_operation_with_exception(
@@ -3537,19 +3589,25 @@ async def _merge_edges_then_upsert(
                 global_config,
                 f"relationship:{src_id}-{tgt_id}",
             )
-            vdb_data = {
-                rel_vdb_id: {
-                    "src_id": src_id,
-                    "tgt_id": tgt_id,
-                    "source_id": source_id,
-                    "content": rel_content,
-                    "keywords": keywords,
-                    "description": description,
-                    "weight": weight,
-                    "file_path": file_path,
-                    **relationship_metadata,
+            if ontology_annotations_enabled():
+                await relationships_vdb.delete([rel_vdb_id])
+                vdb_data = _assertion_vector_rows(
+                    src_id, tgt_id, assertions, global_config
+                )
+            else:
+                vdb_data = {
+                    rel_vdb_id: {
+                        "src_id": src_id,
+                        "tgt_id": tgt_id,
+                        "source_id": source_id,
+                        "content": rel_content,
+                        "keywords": keywords,
+                        "description": description,
+                        "weight": weight,
+                        "file_path": file_path,
+                        **relationship_metadata,
+                    }
                 }
-            }
             relation_status_message = f"Upserting relation VDB: `{relation_key}`"
             logger.info(relation_status_message)
             if pipeline_status is not None and pipeline_status_lock is not None:
@@ -5248,18 +5306,27 @@ async def _apply_token_truncation(
             entity1, entity2 = relation.get("src_id"), relation.get("tgt_id")
 
         # Store mapping from relation pair to original data
-        relation_key = (entity1, entity2)
+        relation_key = relation.get("assertion_id") or (entity1, entity2)
         relation_id_to_original[relation_key] = relation
 
-        relations_context.append(
-            {
-                "entity1": entity1,
-                "entity2": entity2,
-                "description": relation.get("description", "UNKNOWN"),
-                "created_at": created_at,
-                "file_path": relation.get("file_path", "unknown_source"),
-            }
-        )
+        context_relation = {
+            "entity1": entity1,
+            "entity2": entity2,
+            "description": relation.get("description", "UNKNOWN"),
+            "created_at": created_at,
+            "file_path": relation.get("file_path", "unknown_source"),
+        }
+        if relation.get("assertion_id"):
+            context_relation.update(
+                {
+                    "assertion_id": relation["assertion_id"],
+                    "entity1": relation.get("semantic_src_id", entity1),
+                    "entity2": relation.get("semantic_tgt_id", entity2),
+                    "relation_type": relation.get("relation_type", "related_to"),
+                    "directionality": relation.get("directionality", "unknown"),
+                }
+            )
+        relations_context.append(context_relation)
 
     logger.debug(
         f"Before truncation: {len(entities_context)} entities, {len(relations_context)} relations"
@@ -5322,7 +5389,13 @@ async def _apply_token_truncation(
     filtered_relations = []
     filtered_relation_id_to_original = {}
     if relations_context:
-        final_relation_pairs = {(r["entity1"], r["entity2"]) for r in relations_context}
+        final_assertion_ids = {
+            r["assertion_id"] for r in relations_context if r.get("assertion_id")
+        }
+        final_relation_pairs = {
+            (r["entity1"], r["entity2"])
+            for r in relations_context if not r.get("assertion_id")
+        }
         seen_edges = set()
         for relation in final_relations:
             src, tgt = relation.get("src_id"), relation.get("tgt_id")
@@ -5330,10 +5403,15 @@ async def _apply_token_truncation(
                 src, tgt = relation.get("src_tgt", (None, None))
 
             pair = (src, tgt)
-            if pair in final_relation_pairs and pair not in seen_edges:
+            relation_id = relation.get("assertion_id") or pair
+            selected = (
+                relation_id in final_assertion_ids
+                if relation.get("assertion_id") else pair in final_relation_pairs
+            )
+            if selected and relation_id not in seen_edges:
                 filtered_relations.append(relation)
-                filtered_relation_id_to_original[pair] = relation
-                seen_edges.add(pair)
+                filtered_relation_id_to_original[relation_id] = relation
+                seen_edges.add(relation_id)
 
     return {
         "entities_context": entities_context,
@@ -6111,6 +6189,14 @@ async def _get_edge_data(
                 "created_at": k.get("created_at", None),
                 **edge_props,
             }
+            if k.get("assertion_id"):
+                for field in (
+                    "assertion_id", "semantic_src_id", "semantic_tgt_id",
+                    "relation_type", "directionality", "source_id", "file_path",
+                    "description", "keywords",
+                ):
+                    if field in k:
+                        combined[field] = k[field]
             edge_datas.append(combined)
 
     # Relations maintain vector search order (sorted by similarity)

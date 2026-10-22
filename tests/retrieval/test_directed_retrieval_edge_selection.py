@@ -215,3 +215,29 @@ def test_selection_applies_chain_fanout_after_stable_ranking():
     )
 
     assert [edge.source for edge in edges] == ["Higher Importance Cause"]
+
+
+@pytest.mark.offline
+def test_evidence_predicate_fallback_is_opt_in_and_role_constrained():
+    route = route_retrieval_query(
+        "Describe the production chain", QueryParam(retrieval_strategy="auto")
+    )
+    records = [
+        {"semantic_src_id": "Drying", "semantic_tgt_id": "Solvent",
+         "relation_type": "removes", "directionality": "directed",
+         "relation_importance": 0.88, "source_id": "chunk-drying",
+         "chain_role": "process_output"},
+        {"semantic_src_id": "Drying", "semantic_tgt_id": "Publisher",
+         "relation_type": "studies", "directionality": "directed",
+         "relation_importance": 0.99, "source_id": "chunk-publisher",
+         "chain_role": "organization_context"},
+    ]
+    def selected(enabled):
+        return select_directed_edges(
+            records, anchor="Drying", route=route,
+            query_param=QueryParam(retrieval_strategy="auto",
+                                   allow_evidence_predicates=enabled),
+        )
+
+    assert selected(False) == []
+    assert [edge.relation_type for edge in selected(True)] == ["removes"]

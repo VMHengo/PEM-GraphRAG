@@ -29,6 +29,19 @@ _DIRECTION_RELIABILITY = {
     "unknown": 0.75,
 }
 _GENERIC_RELATION_TYPES = frozenset({"related_to", "co_occurs_with", "unknown"})
+_ROUTE_CHAIN_ROLES = {
+    "root_cause": frozenset({"root_cause", "process_parameter", "defect", "consequence", "quality_outcome"}),
+    "causal_chain": frozenset({"root_cause", "process_parameter", "defect", "consequence", "quality_outcome", "process_improvement"}),
+    "production_chain": frozenset({"process_step", "process_input", "process_output", "material_dependency", "process_improvement"}),
+    "dependency_chain": frozenset({"material_dependency", "process_input", "process_output", "process_step"}),
+    "provenance_chain": frozenset({"evidence", "publication_metadata"}),
+}
+
+
+def route_chain_roles(route: RetrievalRoute) -> tuple[str, ...]:
+    """Return reviewed chain roles that can justify an out-of-list predicate."""
+
+    return tuple(sorted(_ROUTE_CHAIN_ROLES.get(route.query_type, ())))
 _RELATION_TYPE_ALIASES = {
     "affect": "affects",
     "affected_by": "affects",
@@ -249,9 +262,16 @@ def score_directed_edge(edge: DirectedEdge, route: RetrievalRoute) -> float:
         and edge.relation_type in route.target_relation_types
         else 0.0
     )
+    mismatch_penalty = (
+        0.15
+        if route.target_relation_types
+        and edge.relation_type not in route.target_relation_types
+        else 0.0
+    )
     return (
         edge.relation_importance * _DIRECTION_RELIABILITY[edge.directionality]
         + predicate_bonus
+        - mismatch_penalty
     )
 
 
@@ -280,7 +300,15 @@ def select_directed_edges(
         if edge.relation_importance < query_param.min_relation_importance:
             continue
         if target_types and edge.relation_type not in target_types:
-            continue
+            evidence_fallback = (
+                query_param.allow_evidence_predicates
+                and edge.directionality == "directed"
+                and edge.relation_importance >= 0.7
+                and bool(edge.source_ids)
+                and edge.chain_role in _ROUTE_CHAIN_ROLES.get(route.query_type, ())
+            )
+            if not evidence_fallback:
+                continue
         if not edge_matches_traversal(
             edge, anchor=anchor, direction=route.edge_direction
         ):
@@ -334,12 +362,19 @@ def _append_unique(existing: tuple[str, ...], additions: Iterable[str]) -> tuple
     return tuple(values)
 
 
-def _score_path(edges: tuple[DirectedEdge, ...], route: RetrievalRoute) -> float:
+def _score_path(
+    edges: tuple[DirectedEdge, ...], route: RetrievalRoute, mode: str = "mean"
+) -> float:
     """Prefer strong short chains without excluding useful two-hop evidence."""
 
     if not edges:
         return 0.0
-    edge_score = sum(score_directed_edge(edge, route) for edge in edges) / len(edges)
+    scores = [score_directed_edge(edge, route) for edge in edges]
+    edge_score = sum(scores) / len(scores)
+    if mode == "weakest_link":
+        edge_score = 0.55 * edge_score + 0.45 * min(scores)
+        evidence_coverage = sum(bool(edge.source_ids) for edge in edges) / len(edges)
+        edge_score *= 0.65 + 0.35 * evidence_coverage
     hop_penalty = _HOP_PENALTIES.get(len(edges), _HOP_PENALTIES[3])
     return edge_score - hop_penalty
 
@@ -464,7 +499,7 @@ async def find_directed_paths(
                     DirectedPath(
                         nodes=path.nodes + (next_node,),
                         edges=edges,
-                        score=_score_path(edges, route),
+                        score=_score_path(edges, route, query_param.path_ranking_mode),
                         source_ids=_append_unique(path.source_ids, edge.source_ids),
                         file_paths=_append_unique(path.file_paths, edge.file_paths),
                     )

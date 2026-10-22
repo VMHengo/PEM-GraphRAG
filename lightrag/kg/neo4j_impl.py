@@ -74,6 +74,8 @@ READ_RETRY = retry(
 @final
 @dataclass
 class Neo4JStorage(BaseGraphStorage):
+    supports_query_aware_neighbor_selection = True
+
     def __init__(self, namespace, global_config, embedding_func, workspace=None):
         # Read env and override the arg if present
         neo4j_workspace = os.environ.get("NEO4J_WORKSPACE")
@@ -1201,6 +1203,8 @@ class Neo4JStorage(BaseGraphStorage):
         node_ids: Sequence[str],
         *,
         candidate_limit_per_node: int = 200,
+        target_relation_types: Sequence[str] = (),
+        target_chain_roles: Sequence[str] = (),
     ) -> dict[str, list[dict[str, Any]]]:
         """Return semantic relationship records for multiple frontier nodes.
 
@@ -1209,6 +1213,12 @@ class Neo4JStorage(BaseGraphStorage):
         returned ``semantic_src_id`` and ``semantic_tgt_id`` properties remain
         authoritative for directed retrieval; physical endpoints are supplied
         only as ``src_id`` and ``tgt_id`` fallbacks for legacy records.
+
+        ``target_relation_types`` is an optional query-planning hint. Matching
+        pair fields or assertion predicates are ranked before the physical-edge
+        cap so opt-in assertion expansion cannot lose a relevant assertion only
+        because its pair had lower generic importance. Omitting the hint keeps
+        the established importance/weight ordering.
         """
 
         if (
@@ -1217,6 +1227,32 @@ class Neo4JStorage(BaseGraphStorage):
             or not 1 <= candidate_limit_per_node <= 500
         ):
             raise ValueError("candidate_limit_per_node must be an integer between 1 and 500")
+
+        if isinstance(target_relation_types, (str, bytes)):
+            raise ValueError("target_relation_types must be a sequence of strings")
+        normalized_target_types: list[str] = []
+        seen_target_types: set[str] = set()
+        for relation_type in target_relation_types:
+            if not isinstance(relation_type, str):
+                raise ValueError("target_relation_types must contain only strings")
+            normalized_relation_type = relation_type.casefold().strip()
+            if (
+                normalized_relation_type
+                and normalized_relation_type not in seen_target_types
+            ):
+                normalized_target_types.append(normalized_relation_type)
+                seen_target_types.add(normalized_relation_type)
+        if len(normalized_target_types) > 50:
+            raise ValueError("target_relation_types must contain at most 50 values")
+        if isinstance(target_chain_roles, (str, bytes)) or len(target_chain_roles) > 50:
+            raise ValueError("target_chain_roles must be a sequence of at most 50 strings")
+        if any(not isinstance(role, str) for role in target_chain_roles):
+            raise ValueError("target_chain_roles must contain only strings")
+        normalized_chain_roles = sorted({
+            role.casefold().strip()
+            for role in target_chain_roles
+            if role.strip()
+        })
 
         unique_node_ids: list[str] = []
         seen_node_ids: set[str] = set()
@@ -1235,6 +1271,9 @@ class Neo4JStorage(BaseGraphStorage):
         edges_by_node: dict[str, list[dict[str, Any]]] = {
             node_id: [] for node_id in unique_node_ids
         }
+        started_at = perf_counter()
+        physical_candidate_count = 0
+        returned_edge_count = 0
         result = None
 
         try:
@@ -1244,31 +1283,48 @@ class Neo4JStorage(BaseGraphStorage):
                 query = f"""
                 UNWIND $node_ids AS requested_id
                 MATCH (anchor:`{workspace_label}` {{entity_id: requested_id}})
-                OPTIONAL MATCH (anchor)-[r:DIRECTED]-(neighbor:`{workspace_label}`)
-                WITH requested_id, r, neighbor
-                ORDER BY requested_id,
-                         coalesce(r.relation_importance, 0.5) DESC,
-                         coalesce(r.weight, 1.0) DESC,
-                         neighbor.entity_id
-                WITH requested_id, [candidate IN collect(
-                    CASE WHEN r IS NULL THEN NULL ELSE {{
+                CALL {{
+                    WITH anchor
+                    MATCH (anchor)-[r:DIRECTED]-(neighbor:`{workspace_label}`)
+                    WITH r, neighbor,
+                         CASE WHEN any(target_type IN $target_relation_types WHERE
+                             toLower(coalesce(r.relation_type, '')) = target_type OR
+                             ($expand_assertions AND
+                              toLower(coalesce(r.{RELATION_ASSERTIONS_FIELD}, ''))
+                                  CONTAINS ('\"relation_type\":\"' + target_type + '\"'))
+                         ) THEN 2
+                         WHEN any(chain_role IN $target_chain_roles WHERE
+                             toLower(coalesce(r.chain_role, '')) = chain_role OR
+                             ($expand_assertions AND
+                              toLower(coalesce(r.{RELATION_ASSERTIONS_FIELD}, ''))
+                                  CONTAINS ('\"chain_role\":\"' + chain_role + '\"'))
+                         ) THEN 1 ELSE 0 END AS query_relevance
+                    ORDER BY query_relevance DESC,
+                             coalesce(r.relation_importance, 0.5) DESC,
+                             coalesce(r.weight, 1.0) DESC,
+                             neighbor.entity_id
+                    LIMIT $candidate_limit_per_node
+                    RETURN {{
                         properties: properties(r),
                         physical_src_id: startNode(r).entity_id,
                         physical_tgt_id: endNode(r).entity_id
-                    }} END
-                ) WHERE candidate IS NOT NULL] AS candidates
-                RETURN requested_id,
-                       candidates[0..$candidate_limit_per_node] AS candidates
+                    }} AS candidate
+                }}
+                RETURN requested_id, collect(candidate) AS candidates
                 """
                 result = await session.run(
                     query,
                     node_ids=unique_node_ids,
                     candidate_limit_per_node=candidate_limit_per_node,
+                    target_relation_types=normalized_target_types,
+                    target_chain_roles=normalized_chain_roles,
+                    expand_assertions=assertion_retrieval_enabled(),
                 )
 
                 async for record in result:
                     requested_id = record["requested_id"]
                     candidates = record["candidates"] or []
+                    physical_candidate_count += len(candidates)
                     for candidate in candidates:
                         properties = dict(candidate.get("properties") or {})
                         physical_src_id = candidate.get("physical_src_id")
@@ -1304,8 +1360,10 @@ class Neo4JStorage(BaseGraphStorage):
                                 )
                                 record.setdefault("weight", properties.get("weight", 1.0))
                                 edges_by_node.setdefault(requested_id, []).append(record)
+                                returned_edge_count += 1
                         else:
                             edges_by_node.setdefault(requested_id, []).append(properties)
+                            returned_edge_count += 1
 
                 return edges_by_node
         except Exception as e:
@@ -1316,6 +1374,16 @@ class Neo4JStorage(BaseGraphStorage):
         finally:
             if result is not None:
                 await result.consume()
+            logger.info(
+                "[%s] Directed neighbor query completed nodes=%s "
+                "physical_candidates=%s returned_edges=%s target_types=%s duration_ms=%s",
+                self.workspace,
+                len(unique_node_ids),
+                physical_candidate_count,
+                returned_edge_count,
+                len(normalized_target_types),
+                round((perf_counter() - started_at) * 1000),
+            )
 
     @retry(
         stop=stop_after_attempt(3),

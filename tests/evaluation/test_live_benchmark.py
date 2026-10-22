@@ -5,12 +5,32 @@ from pathlib import Path
 from lightrag.evaluation.live_benchmark import (
     _resolve_scoring_model,
     _directed_path_matches,
+    _directed_query_param,
     evaluate_quality_gates,
     list_benchmarks,
     load_benchmark,
     run_live_benchmark,
     score_graph_cases,
 )
+
+
+def test_directed_benchmark_can_compare_optional_path_controls():
+    benchmark = {
+        "path_ranking_mode": "weakest_link",
+        "allow_evidence_predicates": True,
+    }
+    enabled = _directed_query_param({}, benchmark, "combined")
+    baseline = _directed_query_param(
+        {"path_ranking_mode": "mean", "allow_evidence_predicates": False},
+        benchmark,
+        "combined",
+    )
+    assert (enabled.path_ranking_mode, enabled.allow_evidence_predicates) == (
+        "weakest_link", True
+    )
+    assert (baseline.path_ranking_mode, baseline.allow_evidence_predicates) == (
+        "mean", False
+    )
 
 
 def test_directed_path_match_can_require_resolved_source_citations():

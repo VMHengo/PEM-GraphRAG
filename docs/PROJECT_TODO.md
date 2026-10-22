@@ -86,15 +86,21 @@ answers; they do not change the long-term roadmap or authorize deployment.
   read compatibility. Done when two predicates/opposite directions on one pair
   remain discoverable in normal and directed retrieval after write, restart,
   re-extraction and single-document deletion; measure storage and query cost.
+  Local implementation and restart/delete regression tests are in place.
+  Pending: staging cost and query-latency measurements on representative data.
 - [ ] **IMP-03: Query-aware Neo4j neighbor selection.** Avoid discarding a
   relevant assertion when physical pair edges are capped before assertion
   expansion. Done when high-degree-node fixtures show recall under the
   candidate limit, the database query remains bounded, and latency is measured.
+  The query now ranks route predicates before a per-anchor database LIMIT.
+  Pending: live Neo4j EXPLAIN and high-degree recall/latency measurement.
 - [ ] **IMP-04: Evidence-aware path ranking and predicate coverage.** Compare
   mean-only path scores with a weakest-link/evidence-aware score; review the
   router's hard relation-type allowlists. Done when held-out causal and process
   questions improve supported-path recall without an unacceptable rise in
   false-positive paths or context size.
+  Optional ranking and evidence-backed predicate fallback are implemented.
+  Pending: paired held-out benchmark comparison and domain review.
 - [ ] **IMP-05: Validate normal extraction completion.** Reject missing,
   malformed or truncated per-chunk outputs before a document is marked fully
   extracted. Done when normal-provider and Batch imports enforce equivalent

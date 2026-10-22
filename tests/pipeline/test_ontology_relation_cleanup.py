@@ -1,15 +1,22 @@
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import numpy as np
 import pytest
 
 import lightrag.lightrag as lightrag_module
-from lightrag.base import DocStatus
+from lightrag.base import DocStatus, QueryParam
 from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.lightrag import LightRAG
-from lightrag.relation_assertions import serialize_relation_assertions
+from lightrag.operate import _get_edge_data, _merge_edges_then_upsert
+from lightrag.ontology_annotation import _load_mapping
+from lightrag.relation_assertions import (
+    make_assertion_vdb_id,
+    parse_relation_assertions,
+    serialize_relation_assertions,
+)
 from lightrag.relation_identity import (
     make_directional_relation_chunk_key,
     make_directional_relation_vdb_id,
@@ -44,10 +51,10 @@ def _chunking(*args, **kwargs) -> list[dict]:
     return []
 
 
-async def _build_rag(tmp_path, name: str) -> LightRAG:
+async def _build_rag(tmp_path, name: str, workspace: str | None = None) -> LightRAG:
     rag = LightRAG(
         working_dir=str(tmp_path / name),
-        workspace=f"{name}_{uuid4().hex[:8]}",
+        workspace=workspace or f"{name}_{uuid4().hex[:8]}",
         llm_model_func=_llm,
         embedding_func=EmbeddingFunc(
             embedding_dim=8,
@@ -92,6 +99,9 @@ async def _seed_relation_records(
         make_directional_relation_vdb_id(source, target, assertion)
         for assertion in assertions
     ]
+    assertion_ids = [
+        make_assertion_vdb_id(source, target, assertion) for assertion in assertions
+    ]
 
     relation_chunk_rows = {
         key: {"chunk_ids": chunk_ids, "count": len(chunk_ids)}
@@ -113,6 +123,16 @@ async def _seed_relation_records(
         }
         for vdb_id, assertion in zip(vdb_ids, assertions, strict=True)
     }
+    vector_rows.update({
+        assertion_id: {
+            "content": assertion["description"],
+            "src_id": source,
+            "tgt_id": target,
+            "source_id": assertion["source_id"],
+            "assertion_id": assertion_id,
+        }
+        for assertion_id, assertion in zip(assertion_ids, assertions, strict=True)
+    })
     if include_legacy:
         for legacy_id in make_relation_vdb_ids(source, target):
             vector_rows[legacy_id] = {
@@ -122,7 +142,7 @@ async def _seed_relation_records(
                 "source_id": GRAPH_FIELD_SEP.join(chunk_ids),
             }
     await rag.relationships_vdb.upsert(vector_rows)
-    return chunk_keys, vdb_ids
+    return chunk_keys, vdb_ids + assertion_ids
 
 
 async def _seed_edge(
@@ -168,6 +188,69 @@ async def _assert_records_absent(rag: LightRAG, ids: list[str], keys: list[str])
     )
     assert all(record is None for record in vector_records)
     assert all(record is None for record in chunk_records)
+
+
+@pytest.mark.asyncio
+async def test_assertion_vectors_survive_restart_and_replay(tmp_path, monkeypatch):
+    monkeypatch.setenv("ONTOLOGY_ANNOTATION_ENABLED", "true")
+    monkeypatch.setenv(
+        "PEM_ONTOLOGY_MAPPING_PATH",
+        str(Path(__file__).resolve().parents[2] / "ontology" / "pem_mapping_v1.json"),
+    )
+    _load_mapping.cache_clear()
+
+    async def summarize(_kind, _name, descriptions, _separator, _config, _cache=None, **_kwargs):
+        return " ".join(descriptions), False
+
+    monkeypatch.setattr("lightrag.operate._handle_entity_relation_summary", summarize)
+    config = {
+        "source_ids_limit_method": "KEEP",
+        "max_source_ids_per_relation": 100,
+        "max_source_ids_per_entity": 100,
+        "max_file_paths": 10,
+    }
+    source, target = "Assertion A", "Assertion B"
+    assertions = [
+        _assertion(source, target, "causes", "chunk-1"),
+        _assertion(target, source, "influences", "chunk-2"),
+    ]
+    workspace = f"assertions_{uuid4().hex[:8]}"
+    rag = await _build_rag(tmp_path, "assertion_restart", workspace)
+    try:
+        for _ in range(2):
+            await _merge_edges_then_upsert(
+                source, target, assertions,
+                knowledge_graph_inst=rag.chunk_entity_relation_graph,
+                relationships_vdb=rag.relationships_vdb,
+                entity_vdb=None,
+                global_config=config,
+            )
+        await rag._insert_done()
+    finally:
+        await rag.finalize_storages()
+
+    reopened = await _build_rag(tmp_path, "assertion_restart", workspace)
+    try:
+        ids = [make_assertion_vdb_id(source, target, item) for item in assertions]
+        rows = [await reopened.relationships_vdb.get_by_id(item) for item in ids]
+        assert all(row is not None for row in rows)
+        assert [row["source_id"] for row in rows] == ["chunk-1", "chunk-2"]
+        assert await reopened.relationships_vdb.get_by_id(
+            make_directional_relation_vdb_id(source, target, assertions[0])
+        ) is None
+        edge = await reopened.chunk_entity_relation_graph.get_edge(source, target)
+        assert len(parse_relation_assertions(edge, source, target)) == 2
+        retrieved, _ = await _get_edge_data(
+            "influences", reopened.chunk_entity_relation_graph,
+            reopened.relationships_vdb, QueryParam(mode="global", top_k=10),
+        )
+        assert {(item["semantic_src_id"], item["relation_type"],
+                 item["semantic_tgt_id"]) for item in retrieved} == {
+            (source, "causes", target),
+            (target, "influences", source),
+        }
+    finally:
+        await reopened.finalize_storages()
 
 
 @pytest.mark.asyncio
@@ -295,6 +378,8 @@ async def test_delete_one_doc_rebuilds_and_preserves_other_assertion(
         assert await rag.relationships_vdb.get_by_id(v2_ids[0]) is None
         assert await rag.relation_chunks.get_by_id(v2_keys[0]) is None
         assert await rag.relationships_vdb.get_by_id(v2_ids[1]) is not None
+        assert await rag.relationships_vdb.get_by_id(v2_ids[2]) is None
+        assert await rag.relationships_vdb.get_by_id(v2_ids[3]) is not None
         assert await rag.relation_chunks.get_by_id(v2_keys[1]) is not None
     finally:
         await rag.finalize_storages()

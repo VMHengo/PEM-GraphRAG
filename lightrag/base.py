@@ -188,6 +188,12 @@ class QueryParam:
     min_relation_importance: float = 0.45
     """Minimum importance of a relationship to be considered for retrieval."""
 
+    path_ranking_mode: Literal["mean", "weakest_link"] = "mean"
+    """Optional evidence-aware path scoring; mean preserves existing ranking."""
+
+    allow_evidence_predicates: bool = False
+    """Admit source-backed, route-relevant predicates beyond the fixed allowlist."""
+
     def __post_init__(self) -> None:
         """Validate directed-retrieval controls used by direct Python callers."""
         if self.retrieval_strategy not in {"normal", "directed", "combined", "auto"}:
@@ -196,6 +202,10 @@ class QueryParam:
             )
         if self.edge_direction not in {"both", "in", "out"}:
             raise ValueError("edge_direction must be one of: both, in, out")
+        if self.path_ranking_mode not in {"mean", "weakest_link"}:
+            raise ValueError("path_ranking_mode must be mean or weakest_link")
+        if not isinstance(self.allow_evidence_predicates, bool):
+            raise ValueError("allow_evidence_predicates must be a boolean")
 
         bounded_integer_fields = {
             "hop_depth": (self.hop_depth, 1, 3),
