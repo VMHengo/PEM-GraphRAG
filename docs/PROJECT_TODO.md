@@ -37,7 +37,7 @@ remains provisional. The current stress fixture has 20 expected paths of
 length two or three, not a four/five-hop accuracy test. Complete these checks
 before paying for a broad re-run.
 
-- [ ] **QUAL-01: Freeze and decompose one Staging failure run.** Read an
+- [blocked] **QUAL-01: Freeze and decompose one Staging failure run.** Read an
   existing `result.json` with `scripts/diagnose_benchmark_run.py`; record the
   benchmark/scorer/extraction revisions, document scope, active assertion and
   retrieval flags, and per-case entity, relation, path and citation failures.
@@ -47,7 +47,16 @@ before paying for a broad re-run.
   assertion, present-but-filtered assertion, anchor/pruning miss, provenance
   failure, gold-granularity mismatch or strict-only scoring mismatch, with
   counts and representative source chunks. No model calls are needed.
-- [ ] **QUAL-02: Score stored assertions, not only pair summaries.** The graph
+  Partial: the user supplied the saved scorer-2.0.0 run, whose embedded history
+  includes extraction revision 1.0.1. The offline script reports all 18 cases,
+  counts and fixture anchors. See
+  [quality-run audit](QUALITY_RUN_AUDIT_2026-10-22.md): 0/45 exact pair-level
+  relations, 69/96 exact entities and 19/20 document references. Still blocked
+  on bounded live graph assertions and source chunks: the diagnostic connector
+  is not exposed in this session, and the regular Staging document search
+  returned HTTP 422. Do not infer assertion absence from scorer 2.0.0. Resume
+  with read-only graph/chunk checks; no re-extraction is needed.
+- [x] **QUAL-02: Score stored assertions, not only pair summaries.** The graph
   scorer currently reads physical edges from `get_all_edges()` and ignores
   `relation_assertions_json` except in optional ontology diagnostics. A local
   two-assertion example stores `causes` but scores it zero when the pair-level
@@ -56,6 +65,9 @@ before paying for a broad re-run.
   avoid counting Neo4j's undirected `MATCH` orientations twice. Done when
   focused tests cover two predicates/opposite directions on one pair and an
   unchanged graph can be re-scored without extraction or generation calls.
+  Implemented in scorer v2.1.0: expand stored assertions with legacy fallback,
+  report physical-pair and assertion counts, and fetch Neo4j edges once via
+  directed MATCH. Focused reverse/pair tests and 96 evaluation tests pass.
 - [ ] **QUAL-03: Resolve Directed Exact semantics.** `Directed Exact` ignores
   reviewed `node_aliases` and `accepted_relation_types`, while semantic
   scoring honors them. Either accept full-credit reviewed alternatives or
