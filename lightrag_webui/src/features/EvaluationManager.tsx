@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Button from '@/components/ui/Button'
+import Checkbox from '@/components/ui/Checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import {
   Dialog,
@@ -39,7 +40,7 @@ import {
   updateEvaluationRun
 } from '@/api/lightrag'
 import { errorMessage } from '@/lib/utils'
-import { CircleHelpIcon, PencilIcon, PlayIcon, RefreshCwIcon } from 'lucide-react'
+import { ChevronDownIcon, CircleHelpIcon, PencilIcon, PlayIcon, RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import PromptExperimentManager from '@/features/PromptExperimentManager'
 
@@ -97,14 +98,6 @@ const formatScore = (score: number | null | undefined) =>
 const formatRawScore = (score: unknown) => {
   const numeric = typeof score === 'number' ? score : Number(score)
   return Number.isFinite(numeric) ? formatScore(numeric * 100) : '-'
-}
-
-const formatOverallWeights = (result: EvaluationRunResult) => {
-  const weights = result.scoring?.effective_overall_weights || result.scoring?.overall_weights
-  if (!weights) return result.run.mode
-  return Object.entries(weights)
-    .map(([name, weight]) => `${name} ${weight.toFixed(0)}%`)
-    .join(' · ')
 }
 
 const formatDate = (value: string | null | undefined) => {
@@ -177,6 +170,18 @@ function ScoreTile({
       <div className={`mt-2 text-3xl font-semibold ${scoreTone(score)}`}>{formatScore(score)}</div>
       {detail && <div className="text-muted-foreground mt-1 text-xs">{detail}</div>}
     </div>
+  )
+}
+
+function ResultDisclosure({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="group rounded-md border bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDownIcon className="size-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="border-t px-6 py-4">{children}</div>
+    </details>
   )
 }
 
@@ -277,8 +282,7 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
           <div key={graphCase.id} className="rounded-md border bg-background p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="font-medium">{graphCase.question || graphCase.id}</div>
-                <div className="text-muted-foreground text-sm">{graphCase.id}</div>
+                <div className="font-medium">{graphCase.question || 'Untitled question'}</div>
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <CaseMetric label="Entities" score={graphCase.entity_score} />
@@ -321,92 +325,89 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
 function DirectedRetrievalQuality({ result }: { result: EvaluationRunResult }) {
   const summary = result.summary.directed
   const cases = result.cases.directed || []
-  if (!summary || cases.length === 0) return null
 
   return (
-    <Card className="rounded-md">
-      <CardHeader>
-        <CardTitle>Directed Retrieval Quality</CardTitle>
-        <CardDescription>{summary.cases} chain cases across normal, directed, combined, and auto.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          {Object.entries(summary.strategies).map(([strategy, strategySummary]) => (
-            <div key={strategy} className="rounded-md border bg-background p-3">
-              <MetricLabel
-                label={strategy}
-                description={metricDescriptions.Strategy}
-                className="text-muted-foreground text-xs font-medium uppercase"
-              />
-              <div className={`mt-1 text-xl font-semibold ${scoreTone(strategySummary.semantic_path_score ?? strategySummary.path_score)}`}>
-                {formatScore(strategySummary.semantic_path_score ?? strategySummary.path_score)}
+    <ResultDisclosure title="Directed Retrieval Quality">
+      {!summary || cases.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No directed cases in this run.</p>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-muted-foreground text-sm">{summary.cases} chain cases across normal, directed, combined, and auto.</p>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            {Object.entries(summary.strategies).map(([strategy, strategySummary]) => (
+              <div key={strategy} className="rounded-md border bg-background p-3">
+                <MetricLabel
+                  label={strategy}
+                  description={metricDescriptions.Strategy}
+                  className="text-muted-foreground text-xs font-medium uppercase"
+                />
+                <div className={`mt-1 text-xl font-semibold ${scoreTone(strategySummary.semantic_path_score ?? strategySummary.path_score)}`}>
+                  {formatScore(strategySummary.semantic_path_score ?? strategySummary.path_score)}
+                </div>
+                <div className="text-muted-foreground mt-1 text-xs">
+                  {strategySummary.successful_runs}/{strategySummary.runs} successful
+                </div>
+                {strategySummary.exact_path_success_rate != null && <div className="text-muted-foreground mt-1 text-xs">
+                  exact {formatScore(strategySummary.exact_path_success_rate)}
+                </div>}
               </div>
-              <div className="text-muted-foreground mt-1 text-xs">
-                {strategySummary.successful_runs}/{strategySummary.runs} successful
-              </div>
-              {strategySummary.exact_path_success_rate != null && <div className="text-muted-foreground mt-1 text-xs">
-                exact {formatScore(strategySummary.exact_path_success_rate)}
-              </div>}
-            </div>
-          ))}
-        </div>
-        <div className="space-y-2">
-          {cases.map((benchmarkCase) => (
-            <div key={benchmarkCase.id} className="rounded-md border bg-background p-3">
-              <div className="font-medium">{benchmarkCase.question || benchmarkCase.id}</div>
-              <div className="text-muted-foreground mt-1 text-sm">{benchmarkCase.id}</div>
-              <div className="mt-3 grid gap-2 lg:grid-cols-3">
-                {(benchmarkCase.strategies || []).map((strategy: any) => (
-                  <div key={strategy.strategy} className="rounded border px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium capitalize">{strategy.strategy}</span>
-                      <span className={scoreTone(strategy.score)}>{formatScore(strategy.score)}</span>
+            ))}
+          </div>
+          <div className="space-y-2">
+            {cases.map((benchmarkCase) => (
+              <div key={benchmarkCase.id} className="rounded-md border bg-background p-3">
+                <div className="font-medium">{benchmarkCase.question || 'Untitled question'}</div>
+                <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                  {(benchmarkCase.strategies || []).map((strategy: any) => (
+                    <div key={strategy.strategy} className="rounded border px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium capitalize">{strategy.strategy}</span>
+                        <span className={scoreTone(strategy.score)}>{formatScore(strategy.score)}</span>
+                      </div>
+                      <div className="text-muted-foreground mt-1 text-xs">
+                        {strategy.path_status || '-'}; {strategy.path_count || 0} paths
+                      </div>
+                      {strategy.exact_passed != null && <div className="text-muted-foreground mt-1 text-xs">
+                        exact {strategy.exact_passed ? 'passed' : 'not reached'}
+                      </div>}
                     </div>
-                    <div className="text-muted-foreground mt-1 text-xs">
-                      {strategy.path_status || '-'}; {strategy.path_count || 0} paths
-                    </div>
-                    {strategy.exact_passed != null && <div className="text-muted-foreground mt-1 text-xs">
-                      exact {strategy.exact_passed ? 'passed' : 'not reached'}
-                    </div>}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </ResultDisclosure>
   )
 }
 
 function QualityGates({ result }: { result: EvaluationRunResult }) {
   const gates = result.quality_gates
-  if (!gates?.configured) return null
 
   return (
-    <Card className="rounded-md">
-      <CardHeader>
-        <CardTitle>Quality Gates</CardTitle>
-        <CardDescription>
-          {gates.passed
-            ? 'All configured promotion thresholds passed.'
-            : 'At least one configured promotion threshold failed.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {gates.checks.map((check) => (
-          <div key={check.kind} className="flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm">
-            <span className="font-medium">{check.kind.replaceAll('_', ' ')}</span>
-            <span className={check.passed ? 'text-emerald-400' : 'text-red-400'}>
-              {check.passed ? 'Passed' : 'Failed'}
-            </span>
-            <span className="text-muted-foreground text-xs">
-              expected {String(check.expected)}; actual {String(check.actual)}
-            </span>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    <ResultDisclosure title="Quality Gates">
+      {!gates?.configured ? (
+        <p className="text-muted-foreground text-sm">No quality gates configured.</p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-muted-foreground text-sm">
+            {gates.passed ? 'All configured promotion thresholds passed.' : 'At least one configured promotion threshold failed.'}
+          </p>
+          {gates.checks.map((check) => (
+            <div key={check.kind} className="flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm">
+              <span className="font-medium">{check.kind.replaceAll('_', ' ')}</span>
+              <span className={check.passed ? 'text-emerald-400' : 'text-red-400'}>
+                {check.passed ? 'Passed' : 'Failed'}
+              </span>
+              <span className="text-muted-foreground text-xs">
+                expected {String(check.expected)}; actual {String(check.actual)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </ResultDisclosure>
   )
 }
 
@@ -609,6 +610,7 @@ function PromptComparison({
 export default function EvaluationManager() {
   const [activeSection, setActiveSection] = useState<'benchmarks' | 'prompt-experiments'>('benchmarks')
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
+  const [showArchived, setShowArchived] = useState(false)
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
   const [mode, setMode] = useState<EvaluationRunMode>('retrieval')
   const [isLoading, setIsLoading] = useState(false)
@@ -627,6 +629,11 @@ export default function EvaluationManager() {
     () => benchmarks.find((benchmark) => benchmark.id === selectedBenchmark),
     [benchmarks, selectedBenchmark]
   )
+  const visibleBenchmarks = useMemo(
+    () => benchmarks.filter((benchmark) => showArchived || !benchmark.archived),
+    [benchmarks, showArchived]
+  )
+  const archivedCount = benchmarks.filter((benchmark) => benchmark.archived).length
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) || runDetail?.run || null,
     [runDetail?.run, runs, selectedRunId]
@@ -639,7 +646,11 @@ export default function EvaluationManager() {
     try {
       const response = await getEvaluationBenchmarks()
       setBenchmarks(response.benchmarks)
-      setSelectedBenchmark((current) => current || response.benchmarks[0]?.id || '')
+      setSelectedBenchmark((current) =>
+        response.benchmarks.some((benchmark) => benchmark.id === current)
+          ? current
+          : response.benchmarks.find((benchmark) => !benchmark.archived)?.id || ''
+      )
     } catch (error) {
       toast.error(`Failed to load benchmarks: ${errorMessage(error)}`)
     } finally {
@@ -802,9 +813,9 @@ export default function EvaluationManager() {
                       <SelectValue placeholder={isLoading ? 'Loading benchmarks...' : 'Select benchmark'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {benchmarks.map((benchmark) => (
+                      {visibleBenchmarks.map((benchmark) => (
                         <SelectItem key={benchmark.id} value={benchmark.id}>
-                          [{benchmark.tier || 'custom'}] {benchmark.name}
+                          [{benchmark.archived ? 'archived' : benchmark.tier || 'custom'}] {benchmark.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -830,6 +841,18 @@ export default function EvaluationManager() {
                 </Button>
               </div>
             </div>
+            {archivedCount > 0 && (
+              <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                <Checkbox checked={showArchived} onCheckedChange={(checked) => {
+                  const nextShowArchived = checked === true
+                  if (!nextShowArchived && activeBenchmark?.archived) {
+                    setSelectedBenchmark(benchmarks.find((benchmark) => !benchmark.archived)?.id || '')
+                  }
+                  setShowArchived(nextShowArchived)
+                }} />
+                Show archived ({archivedCount})
+              </label>
+            )}
 
             <Card className="rounded-md">
               <CardHeader>
@@ -847,6 +870,9 @@ export default function EvaluationManager() {
                   <span className="text-muted-foreground">Tier:</span>{' '}
                   {activeBenchmark?.tier || 'custom'}
                 </div>
+                {activeBenchmark?.archived && (
+                  <div className="text-sm text-amber-400">Archived</div>
+                )}
                 <div className="text-sm">
                   <span className="text-muted-foreground">Selected mode:</span>{' '}
                   {modeDescriptions[mode]}
@@ -903,7 +929,7 @@ export default function EvaluationManager() {
             {result && (
               <>
                 <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                  <ScoreTile label="Overall" score={result.scores.overall} detail={formatOverallWeights(result)} />
+                  <ScoreTile label="Overall" score={result.scores.overall} />
                   <ScoreTile label="Graph" score={result.scores.graph} detail={`entities ${formatScore(result.summary.graph.entity_score)} · relations ${formatScore(result.summary.graph.relation_score)}`} />
                   <ScoreTile label="Metadata" score={result.scores.metadata} detail="diagnostic" />
                   <ScoreTile label="Retrieval" score={result.scores.retrieval} />
@@ -911,43 +937,33 @@ export default function EvaluationManager() {
                   <ScoreTile label="Directed Exact" score={result.scores.directed_exact} />
                 </div>
 
-                <Card className="rounded-md">
-                  <CardHeader>
-                    <CardTitle>Metadata Coverage</CardTitle>
-                    <CardDescription>
-                      {result.summary.edges} edges and {result.summary.nodes} nodes inspected.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <MetadataCoverage result={result} />
-                  </CardContent>
-                </Card>
+                <ResultDisclosure key={`metadata-${result.run.id}`} title="Metadata Coverage">
+                  <p className="text-muted-foreground mb-4 text-sm">
+                    {result.summary.edges} edges and {result.summary.nodes} nodes inspected.
+                  </p>
+                  <MetadataCoverage result={result} />
+                </ResultDisclosure>
 
-                <DirectedRetrievalQuality result={result} />
+                <DirectedRetrievalQuality key={`directed-${result.run.id}`} result={result} />
 
-                <QualityGates result={result} />
+                <QualityGates key={`gates-${result.run.id}`} result={result} />
 
-                <Card className="rounded-md">
-                  <CardHeader>
-                    <CardTitle>Failed Checks</CardTitle>
-                    <CardDescription>
-                      {result.failed_checks.length === 0
-                        ? 'All configured checks passed.'
-                        : `${result.failed_checks.length} checks need attention.`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {result.failed_checks.length === 0 ? (
-                      <div className="text-sm text-emerald-400">No failed checks.</div>
-                    ) : (
-                      <ul className="max-h-56 list-disc overflow-auto pl-5 text-sm">
-                        {result.failed_checks.map((failure, index) => (
-                          <li key={`${failure}-${index}`}>{failure}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </CardContent>
-                </Card>
+                <ResultDisclosure key={`failures-${result.run.id}`} title="Failed Checks">
+                  <p className="text-muted-foreground mb-4 text-sm">
+                    {result.failed_checks.length === 0
+                      ? 'All configured checks passed.'
+                      : `${result.failed_checks.length} checks need attention.`}
+                  </p>
+                  {result.failed_checks.length === 0 ? (
+                    <div className="text-sm text-emerald-400">No failed checks.</div>
+                  ) : (
+                    <ul className="max-h-56 list-disc overflow-auto pl-5 text-sm">
+                      {result.failed_checks.map((failure, index) => (
+                        <li key={`${failure}-${index}`}>{failure}</li>
+                      ))}
+                    </ul>
+                  )}
+                </ResultDisclosure>
 
                 <Card className="rounded-md">
                   <CardHeader>
@@ -966,7 +982,7 @@ export default function EvaluationManager() {
             value="prompt-experiments"
             className="mt-4 h-auto w-auto data-[state=inactive]:hidden"
           >
-            <PromptExperimentManager benchmarks={benchmarks} />
+            <PromptExperimentManager benchmarks={benchmarks.filter((benchmark) => !benchmark.archived)} />
           </TabsContent>
         </Tabs>
       </div>

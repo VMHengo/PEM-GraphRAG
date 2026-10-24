@@ -25,6 +25,22 @@ deployment-local staging or production Compose file. After the first
 deployment, benchmark updates only need a Git pull; rebuilding the image is
 not required.
 
+### Archived Benchmarks
+
+Set `"archived": true` at the top level of a benchmark JSON to hide it from
+the WebUI's default benchmark selection. The **Show archived** checkbox makes
+it selectable again, including its saved run history. This is a visibility
+filter, not deletion: archived benchmarks remain available through the API and
+can still be run deliberately. Missing or false `archived` means active.
+
+The loader searches every directory above and keeps the first file for each
+benchmark ID. If an ID also exists under `lightrag/evaluation/benchmarks`, mark
+both copies archived (or remove the packaged fallback in a separate migration),
+otherwise the packaged copy can reappear when the mounted file is absent.
+Older ad-hoc Staging variants such as mean/weakest scoring comparisons can be
+marked archived in their own JSON files without losing their saved results.
+Do not change a benchmark's ID just to archive it; run history is keyed by ID.
+
 For staging:
 
 ```bash

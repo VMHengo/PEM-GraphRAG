@@ -58,6 +58,7 @@ class BenchmarkRef:
     path: Path
     case_count: int
     tier: str = "custom"
+    archived: bool = False
 
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -122,7 +123,7 @@ def _default_benchmark_dirs(working_dir: str | None = None) -> list[Path]:
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, dict):
         raise ValueError(f"{path} must contain a JSON object")
     return data
@@ -165,6 +166,7 @@ def list_benchmarks(working_dir: str | None = None) -> list[BenchmarkRef]:
                         + len(_as_list(benchmark.get("directed_cases")))
                     ),
                     tier=str(benchmark.get("benchmark_tier") or "custom"),
+                    archived=benchmark.get("archived") is True,
                 ),
             )
     return sorted(refs.values(), key=lambda item: item.id)

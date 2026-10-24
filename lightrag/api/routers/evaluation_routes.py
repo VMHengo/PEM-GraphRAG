@@ -46,6 +46,7 @@ class BenchmarkListItem(BaseModel):
     description: str
     case_count: int
     tier: str = "custom"
+    archived: bool = False
 
 
 class BenchmarkListResponse(BaseModel):
@@ -196,6 +197,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                         description=ref.description,
                         case_count=ref.case_count,
                         tier=ref.tier,
+                        archived=ref.archived,
                     )
                     for ref in refs
                 ]

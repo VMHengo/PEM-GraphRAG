@@ -308,6 +308,7 @@ export type EvaluationBenchmarkListItem = {
   description: string
   case_count: number
   tier?: 'fixture' | 'core' | 'stress' | 'custom' | string
+  archived?: boolean
 }
 
 export type EvaluationBenchmarkListResponse = {

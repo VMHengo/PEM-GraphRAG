@@ -2,6 +2,8 @@
     "id":  "pem_real_document_quality",
     "name":  "PEM Real Document Quality Benchmark",
     "description":  "Benchmark based on uploaded PEM documents for graph extraction and retrieval quality.",
+    "benchmark_tier":  "legacy",
+    "archived":  true,
     "default_mode":  "mix",
     "cases":  [
                   {
@@ -20,7 +22,7 @@
                                           "slot insulation",
                                           "impregnating the stator"
                                       ],
-                      "expected_entities":  [
+                       "expected_entities":  [
                                                 "Continuous Hairpin Stator",
                                                 "Process Chain",
                                                 "radially open stator slot",

@@ -309,6 +309,43 @@ def test_benchmark_discovery_uses_working_dir_data_folder(tmp_path, monkeypatch)
     assert benchmark["name"] == "Demo"
 
 
+def test_archived_benchmark_remains_loadable_and_override_wins(tmp_path, monkeypatch):
+    benchmark_dir = tmp_path / "evaluation" / "benchmarks"
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / "pem_phase1_directed_quality.json").write_text(
+        json.dumps(
+            {
+                "id": "pem_phase1_directed_quality",
+                "name": "Local archived fixture",
+                "archived": True,
+                "cases": [{"id": "case", "question": "What is tested?"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EVALUATION_BENCHMARK_DIR", str(benchmark_dir))
+
+    refs = list_benchmarks(str(tmp_path / "rag_storage"))
+    matches = [ref for ref in refs if ref.id == "pem_phase1_directed_quality"]
+    assert len(matches) == 1
+    assert matches[0].archived is True
+    assert matches[0].path == benchmark_dir / "pem_phase1_directed_quality.json"
+    assert load_benchmark(matches[0].id, str(tmp_path / "rag_storage"))["name"] == "Local archived fixture"
+
+
+def test_benchmark_discovery_accepts_utf8_bom(tmp_path, monkeypatch):
+    benchmark_dir = tmp_path / "evaluation" / "benchmarks"
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / "archived.json").write_text(
+        json.dumps({"id": "archived", "archived": True, "cases": []}),
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setenv("EVALUATION_BENCHMARK_DIR", str(benchmark_dir))
+
+    refs = list_benchmarks(str(tmp_path / "rag_storage"))
+    assert any(ref.id == "archived" and ref.archived for ref in refs)
+
+
 class _FakeGraph:
     async def get_all_nodes(self):
         return [{"entity_id": "Laser-Based Drying"}, {"entity_id": "Electrode Drying"}]
