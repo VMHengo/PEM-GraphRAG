@@ -208,7 +208,7 @@ class QueryParam:
             raise ValueError("allow_evidence_predicates must be a boolean")
 
         bounded_integer_fields = {
-            "hop_depth": (self.hop_depth, 1, 3),
+            "hop_depth": (self.hop_depth, 1, 5),
             "chain_top_k": (self.chain_top_k, 1, 100),
             "chain_fanout": (self.chain_fanout, 1, 50),
             "chain_top_k_per_prompt": (self.chain_top_k_per_prompt, 1, 10),

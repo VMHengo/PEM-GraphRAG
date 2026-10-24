@@ -55,9 +55,9 @@ def _validate_directed_query_options(
     min_relation_importance: float,
 ) -> None:
     if isinstance(hop_depth, bool) or not isinstance(hop_depth, int):
-        raise ValueError("hop_depth must be an integer between 1 and 3")
-    if not 1 <= hop_depth <= 3:
-        raise ValueError("hop_depth must be between 1 and 3")
+        raise ValueError("hop_depth must be an integer between 1 and 5")
+    if not 1 <= hop_depth <= 5:
+        raise ValueError("hop_depth must be between 1 and 5")
     if isinstance(chain_top_k, bool) or not isinstance(chain_top_k, int):
         raise ValueError("chain_top_k must be an integer between 1 and 100")
     if not 1 <= chain_top_k <= 100:

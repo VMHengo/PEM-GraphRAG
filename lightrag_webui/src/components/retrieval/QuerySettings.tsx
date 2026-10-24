@@ -220,7 +220,7 @@ export default function QuerySettings() {
                       id="hop_depth"
                       type="number"
                       min={1}
-                      max={3}
+                      max={5}
                       className="mt-1 h-9"
                       value={querySettings.hop_depth ?? 2}
                       onChange={(event) => handleChange('hop_depth', Number(event.target.value))}

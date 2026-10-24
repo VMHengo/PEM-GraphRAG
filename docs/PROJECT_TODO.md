@@ -90,12 +90,25 @@ before paying for a broad re-run.
   separate directed/combined/auto scores. Add precision only within a fully
   annotated scope; do not call other open-world edges false. Done when raw
   numerators and denominators explain every aggregate.
+- [x] **QUAL-06B: Repair bounded aging-paper path selection offline.** Review
+  the supplied high-temperature-aging extraction artifact and benchmark result;
+  correct the IC-shift gold traversal direction, accept explicitly reviewed
+  inverse `part_of` component assertions, reject generic-name false matches,
+  and distinguish reference coverage from answer quality. Improve query routing,
+  graph-confirmed anchors, path relevance and short/long hop representation
+  without changing normal retrieval. Keep 1-5 hops bounded, default 2. Done
+  locally: 230 retrieval/evaluation/MCP/API tests pass; a deterministic replay
+  ranks the graph-present decomposition-to-plating three-hop path first within
+  top 20. Staging Neo4j behavior and answer quality are not yet validated. See
+  [aging retrieval repair](HIGH_TEMPERATURE_AGING_RETRIEVAL_REPAIR.md).
 - [ ] **QUAL-07: Attribute directed retrieval losses on a frozen graph.** Only
-  five entity-search hits seed paths; importance, Neo4j candidate cap,
+  eight ranked graph-confirmed entities may seed paths; importance, Neo4j candidate cap,
   fanout and beam pruning can then hide a present chain. Add bounded counters
   for anchors, candidate assertions, predicate/direction rejects, surviving
   hops and citations. Done when each graph-present failure in QUAL-01 names
-  its first failing retrieval stage without new extraction calls.
+  its first failing retrieval stage without new extraction calls. Partial:
+  path-depth counts are now reported; stage-by-stage reject counters and a
+  read-only Staging replay remain open.
 - [ ] **QUAL-08: Align reviewed predicates with traversal.** The router's
   allowlists exclude some full-credit gold alternatives (`increases`,
   `produces`, `contributes_to`); evidence fallback is off by default. Test a
@@ -117,7 +130,8 @@ before paying for a broad re-run.
   before starting paid model calls.
 - [ ] **QUAL-11: Add claim-level answer checks.** Retrieval 96.52 currently
   measures `must_include` terms and expected document references, not truth;
-  failed query status does not zero that score. Keep coverage metrics separate,
+  failed query status now zeros checks, and the aging benchmark opts out of
+  reference-only retrieval scores. Keep coverage metrics separate,
   gate failed queries, and score reviewed condition, negation and source
   support for full answers. Done when a cited but unsupported or reversed
   causal claim fails a test fixture.

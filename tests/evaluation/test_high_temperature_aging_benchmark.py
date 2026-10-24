@@ -53,3 +53,15 @@ def test_new_aging_chains_route_to_combined():
         )
         assert route.effective_strategy == "combined"
         assert route.edge_direction == "out"
+
+
+def test_all_aging_chain_questions_use_the_expected_auto_direction():
+    benchmark = load_benchmark_file(BENCHMARK_PATH)
+    for case in benchmark["cases"]:
+        if not case.get("expected_directed_paths"):
+            continue
+        route = route_retrieval_query(
+            case["question"], QueryParam(retrieval_strategy="auto")
+        )
+        assert route.effective_strategy == case["expected_auto_strategy"], case["id"]
+        assert route.edge_direction == case["expected_edge_direction"], case["id"]

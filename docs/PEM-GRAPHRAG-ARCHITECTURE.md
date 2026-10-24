@@ -20,7 +20,7 @@ effort estimates are in
   Experiments create isolated candidates and retain extraction artefacts;
   they do not merely compare existing benchmark runs.
 - Optional directed retrieval supports `normal`, `directed`, `combined`,
-  and `auto`. Normal remains the default. Public controls allow **1-3 hops**.
+  and `auto`. Normal remains the default. Public controls allow **1-5 hops**.
 - Semantic endpoints drive directed traversal. Physical Neo4j writes still
   merge an unordered node pair; parallel predicates/conditions can be lost.
 - Scoring 2.0.0 excludes Metadata from Overall. Term/reference coverage is
@@ -847,17 +847,20 @@ endpoints supplied by `Neo4JStorage.get_directed_neighbor_edges_batch()`.
 Sources are resolved to stored chunks before path evidence enters the
 answer context; unresolved paths remain diagnostic.
 
-Defaults in `QueryParam`: `hop_depth=2` (allowed 1-3), `chain_top_k=20`,
+Defaults in `QueryParam`: `hop_depth=2` (allowed 1-5), `chain_top_k=20`,
 `chain_fanout=20`, `chain_top_k_per_prompt=2`, and
 `min_relation_importance=0.45`. Upstream/root-cause queries traverse `in`,
 downstream queries `out`. Traversal direction does not reverse the scientific
 meaning of a relationship. The general MCP query defaults to normal through
 `MCP_RETRIEVAL_STRATEGY`; the dedicated trace tool exposes bounded controls.
 
-The initial implementation seeds at most five entities and ranks paths using
-importance plus direction/predicate signals and a hop penalty. It does not
-yet score query-path relevance directly. Causal routing currently excludes
-`increases`, `decreases`, and `prevents` even though prompt samples use them.
+The implementation seeds at most eight graph-confirmed entities from entity
+and relation search results (plus a bounded keyword existence check). It ranks
+paths using importance, direction/predicate signals, keyword coverage, and a
+hop penalty; the top paths retain a mix of short and long hop lengths. These
+lexical relevance signals do not establish scientific correctness. Causal
+routing currently excludes `increases`, `decreases`, and `prevents` even though
+prompt samples use them.
 
 ### Evaluation And Prompt Experiments
 

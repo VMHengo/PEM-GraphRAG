@@ -111,8 +111,10 @@ NeighborProvider = Callable[
 
 _HOP_PENALTIES = {
     1: 0.0,
-    2: 0.15,
-    3: 0.35,
+    2: 0.04,
+    3: 0.08,
+    4: 0.12,
+    5: 0.16,
 }
 
 
@@ -416,6 +418,29 @@ def _deduplicate_paths(paths: Iterable[DirectedPath]) -> list[DirectedPath]:
     return _sort_paths(best_by_key.values())
 
 
+def _diverse_path_lengths(paths: Iterable[DirectedPath], limit: int) -> list[DirectedPath]:
+    """Reserve room for both long mechanisms and short direct evidence."""
+
+    by_depth: dict[int, list[DirectedPath]] = {}
+    for path in _deduplicate_paths(paths):
+        by_depth.setdefault(len(path.edges), []).append(path)
+    depths = sorted(by_depth, reverse=True)
+    if not depths:
+        return []
+    # Alternate longest and shortest available depths; never exceed the shared cap.
+    order: list[int] = []
+    while depths:
+        order.append(depths.pop(0))
+        if depths:
+            order.append(depths.pop())
+    selected: list[DirectedPath] = []
+    while len(selected) < limit and any(by_depth.values()):
+        for depth in order:
+            if by_depth[depth] and len(selected) < limit:
+                selected.append(by_depth[depth].pop(0))
+    return selected
+
+
 def _unique_anchors(anchors: Sequence[str]) -> tuple[str, ...]:
     result: list[str] = []
     seen: set[str] = set()
@@ -433,6 +458,7 @@ async def find_directed_paths(
     *,
     route: RetrievalRoute,
     query_param: QueryParam,
+    focus_entities: Sequence[str] = (),
 ) -> list[DirectedPath]:
     """Expand semantic paths with a bounded, beam-pruned breadth-first search.
 
@@ -448,6 +474,18 @@ async def find_directed_paths(
     initial_anchors = _unique_anchors(anchors)
     if not initial_anchors:
         return []
+    anchor_rank = {anchor.casefold(): index for index, anchor in enumerate(initial_anchors)}
+    focus = {name.casefold().strip() for name in focus_entities if name.strip()}
+
+    def path_score(edges: tuple[DirectedEdge, ...], nodes: tuple[str, ...]) -> float:
+        anchor_bonus = 0.12 * (
+            1 - anchor_rank[nodes[0].casefold()] / len(initial_anchors)
+        )
+        focus_bonus = (
+            0.18 * len({name.casefold() for name in nodes} & focus) / len(focus)
+            if focus else 0.0
+        )
+        return _score_path(edges, route, query_param.path_ranking_mode) + anchor_bonus + focus_bonus
 
     frontier = [
         DirectedPath(
@@ -499,7 +537,7 @@ async def find_directed_paths(
                     DirectedPath(
                         nodes=path.nodes + (next_node,),
                         edges=edges,
-                        score=_score_path(edges, route, query_param.path_ranking_mode),
+                        score=path_score(edges, path.nodes + (next_node,)),
                         source_ids=_append_unique(path.source_ids, edge.source_ids),
                         file_paths=_append_unique(path.file_paths, edge.file_paths),
                     )
@@ -514,4 +552,4 @@ async def find_directed_paths(
         frontier = _deduplicate_paths(next_frontier)[: query_param.chain_top_k]
         discovered.extend(frontier)
 
-    return _deduplicate_paths(discovered)[: query_param.chain_top_k]
+    return _diverse_path_lengths(discovered, query_param.chain_top_k)

@@ -124,7 +124,7 @@ class QueryRequest(BaseModel):
     hop_depth: int = Field(
         default=2,
         ge=1,
-        le=3,
+        le=5,
         description="Maximum number of relationship hops for directed retrieval.",
     )
 

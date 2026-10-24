@@ -2,7 +2,7 @@ from lightrag.evaluation.live_benchmark import (
     benchmark_document_preflight,
     score_graph_cases,
 )
-from lightrag.evaluation.semantic_matching import path_match, relation_match
+from lightrag.evaluation.semantic_matching import path_match, relation_match, text_match
 from lightrag.relation_ontology import canonicalize_relation, predicate_similarity
 
 
@@ -82,6 +82,41 @@ def test_matching_predicate_cannot_compensate_for_a_wrong_endpoint():
     assert match["predicate"]["score"] == 1
     assert match["direction_score"] == 1
     assert match["score"] == 0
+
+
+def test_generic_shared_tokens_do_not_credit_different_battery_concepts():
+    assert text_match("DC Resistance", "Warburg Resistance").score == 0
+    assert text_match("Graphite", "High-Energy NCM/Graphite Pouch Cell").score == 0
+    assert text_match("Graphite", "Graphite Anode").score == 0.85
+
+
+def test_reviewed_structural_inverse_is_credited_but_reverse_cause_is_not():
+    expected = {
+        "source": "Pouch Lithium-Ion Cell",
+        "source_aliases": ["Pouch Lithium-Ion Battery"],
+        "relation_type": "contains",
+        "accepted_inverse_relation_types": {"part_of": 1},
+        "target": "NCM622",
+        "target_aliases": ["NCM622 Cathode"],
+        "directionality": "directed",
+    }
+    actual = {
+        "semantic_src_id": "NCM622 Cathode",
+        "semantic_tgt_id": "Pouch Lithium-Ion Battery",
+        "relation_type": "part_of",
+        "directionality": "directed",
+    }
+
+    match = relation_match(expected, actual)
+    assert match["score"] == 1
+    assert match["inverse_matched"] is True
+    assert relation_match({**expected, "accepted_inverse_relation_types": {}}, actual)["score"] == 0
+    assert relation_match(
+        {"source": "A", "target": "B", "relation_type": "causes",
+         "directionality": "directed"},
+        {"semantic_src_id": "B", "semantic_tgt_id": "A", "relation_type": "causes",
+         "directionality": "directed"},
+    )["score"] == 0
 
 
 def test_graph_case_keeps_exact_status_but_uses_partial_relation_score():

@@ -23,6 +23,11 @@ def _tokens(value: object) -> set[str]:
     return set(canonical_text(value).split())
 
 
+_GENERIC_ENTITY_TOKENS = frozenset(
+    {"resistance", "heat", "cell", "battery", "loss", "content", "material", "process", "reaction", "film", "temperature", "rate", "current", "generation", "change"}
+)
+
+
 def _expected_value(value: object) -> tuple[str, list[str]]:
     if isinstance(value, Mapping):
         name = str(value.get("name") or value.get("value") or value.get("entity") or "")
@@ -62,11 +67,15 @@ def text_match(
         actual_tokens = _tokens(actual_canonical)
         if not expected_tokens or not actual_tokens:
             continue
+        overlap = expected_tokens & actual_tokens
+        if overlap and overlap <= _GENERIC_ENTITY_TOKENS:
+            continue
         if expected_tokens <= actual_tokens or actual_tokens <= expected_tokens:
+            if len(expected_tokens) == 1 and len(actual_tokens) > 2:
+                continue
             best = max(best, 0.85)
             continue
-        overlap = len(expected_tokens & actual_tokens)
-        f1 = (2 * overlap) / (len(expected_tokens) + len(actual_tokens))
+        f1 = (2 * len(overlap)) / (len(expected_tokens) + len(actual_tokens))
         if f1 >= 0.5:
             best = max(best, round(0.35 + 0.5 * f1, 4))
     return TextMatch(
@@ -111,38 +120,66 @@ def relation_match(
     """
 
     source, target, relation_type = edge_semantics(edge)
-    source_match = text_match(
-        expected.get("source"), source, aliases=expected.get("source_aliases")
-    )
-    target_match = text_match(
-        expected.get("target"), target, aliases=expected.get("target_aliases")
-    )
     expected_type = expected.get("relation_type") or ""
-    predicate = predicate_similarity(
-        expected_type,
-        relation_type,
+    direct_predicate = predicate_similarity(
+        expected_type, relation_type,
         accepted_relation_types=expected.get("accepted_relation_types"),
     )
+    orientations = [(source, target, direct_predicate, False)]
+    inverse_types = expected.get("accepted_inverse_relation_types") or {}
+    allowed_inverse = (
+        inverse_types.keys()
+        if isinstance(inverse_types, Mapping)
+        else inverse_types
+        if isinstance(inverse_types, Sequence) and not isinstance(inverse_types, str)
+        else ()
+    )
+    if canonical_relation_type(relation_type) in {
+        canonical_relation_type(item) for item in allowed_inverse
+    }:
+        orientations.append(
+            (
+                target,
+                source,
+                predicate_similarity(
+                    expected_type,
+                    relation_type,
+                    accepted_relation_types=inverse_types,
+                ),
+                True,
+            )
+        )
     expected_direction = canonical_text(expected.get("directionality"))
     actual_direction = canonical_text(edge.get("directionality") or "unknown")
     direction_score = (
         1.0 if not expected_direction else float(expected_direction == actual_direction)
     )
-    # ``min`` is deliberate. A wrong source or target must not be compensated
-    # by a correct predicate label or a populated directionality field.
-    endpoint_score = min(source_match.score, target_match.score)
-    endpoint_average = (source_match.score + target_match.score) / 2
-    score = endpoint_score * predicate.score * direction_score
-    # This is only used to pick the most useful diagnostic candidate when no
-    # graph edge receives score. It is never surfaced as benchmark credit.
-    diagnostic_score = (
-        0.55 * endpoint_average + 0.35 * predicate.score + 0.10 * direction_score
-    )
-    exact = (
-        source_match.exact
-        and target_match.exact
-        and predicate.exact
-        and direction_score == 1.0
+    candidates = []
+    for matched_source, matched_target, predicate, inverse in orientations:
+        source_match = text_match(
+            expected.get("source"), matched_source, aliases=expected.get("source_aliases")
+        )
+        target_match = text_match(
+            expected.get("target"), matched_target, aliases=expected.get("target_aliases")
+        )
+        # A wrong endpoint must not be rescued by a plausible predicate.
+        endpoint_score = min(source_match.score, target_match.score)
+        endpoint_average = (source_match.score + target_match.score) / 2
+        score = endpoint_score * predicate.score * direction_score
+        diagnostic_score = (
+            0.55 * endpoint_average + 0.35 * predicate.score + 0.10 * direction_score
+        )
+        exact = (
+            source_match.exact
+            and target_match.exact
+            and predicate.exact
+            and direction_score == 1.0
+        )
+        candidates.append(
+            (score, exact, diagnostic_score, source_match, target_match, predicate, endpoint_score, endpoint_average, inverse)
+        )
+    score, exact, diagnostic_score, source_match, target_match, predicate, endpoint_score, endpoint_average, inverse = max(
+        candidates, key=lambda item: (item[0], item[1], item[2])
     )
     return {
         "score": round(score, 4),
@@ -154,6 +191,7 @@ def relation_match(
         "endpoint_score": round(endpoint_score, 4),
         "endpoint_average": round(endpoint_average, 4),
         "diagnostic_score": round(diagnostic_score, 4),
+        "inverse_matched": inverse,
         "matched": {
             "source": source,
             "relation_type": relation_type,

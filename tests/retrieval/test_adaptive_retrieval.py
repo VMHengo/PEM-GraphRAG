@@ -193,3 +193,25 @@ def test_router_does_not_mutate_query_param():
     route_retrieval_query("What causes defect X?", param)
 
     assert asdict(param) == before
+
+
+@pytest.mark.offline
+@pytest.mark.parametrize(
+    ("query", "direction"),
+    [
+        ("How can electrolyte decomposition promote lithium plating?", "out"),
+        ("How does local drying affect current distribution?", "out"),
+        ("What mechanism links lithium plating to capacity loss?", "out"),
+        ("Trace the upstream causes of lithium plating.", "in"),
+        ("Why do IC peaks shift toward lower voltages?", "in"),
+        (
+            "What can changing cell geometry lead to, and why does it matter for calorimetry?",
+            "out",
+        ),
+    ],
+)
+def test_aging_mechanism_phrasings_route_to_directed_paths(query: str, direction: str):
+    route = route_retrieval_query(query, QueryParam(retrieval_strategy="auto"))
+
+    assert route.effective_strategy == "combined"
+    assert route.edge_direction == direction

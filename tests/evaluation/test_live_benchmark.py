@@ -463,6 +463,58 @@ def test_run_live_benchmark_graph_mode(tmp_path, monkeypatch):
     assert persisted["run"]["saved_to"] == result["run"]["saved_to"]
 
 
+def test_reference_only_coverage_does_not_credit_retrieval_when_required(
+    tmp_path, monkeypatch
+):
+    benchmark_dir = tmp_path / "evaluation" / "benchmarks"
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / "reference_only.json").write_text(
+        json.dumps(
+            {
+                "id": "reference_only",
+                "scoring": {
+                    "profile": "core",
+                    "require_content_checks_for_retrieval": True,
+                },
+                "cases": [
+                    {
+                        "id": "case",
+                        "question": "What does laser drying do?",
+                        "expected_entities": ["Laser-Based Drying"],
+                        "expected_documents": ["laser.pdf"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("EVALUATION_BENCHMARK_DIR", str(benchmark_dir))
+
+    class Rag(_FakeRag):
+        async def aquery_llm(self, query, param):
+            return {
+                "status": "success",
+                "data": {"chunks": [], "references": [{"file_path": "laser.pdf"}]},
+                "metadata": {},
+                "llm_response": {"content": ""},
+            }
+
+    result = asyncio.run(
+        run_live_benchmark(
+            Rag(tmp_path / "rag_storage"),
+            "reference_only",
+            mode="retrieval",
+            save_result=False,
+        )
+    )
+
+    assert result["summary"]["query"]["reference_score"] == 100.0
+    assert result["summary"]["query"]["content_score"] is None
+    assert result["scores"]["retrieval"] is None
+    assert result["scoring"]["retrieval_basis"] == "reference_only_excluded"
+    assert result["run"]["answer_quality_evaluated"] is False
+
+
 def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
     tmp_path, monkeypatch
 ):

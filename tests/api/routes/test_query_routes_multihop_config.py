@@ -68,12 +68,18 @@ def test_query_request_maps_multihop_configuration_to_query_param():
 
 
 @pytest.mark.offline
+def test_query_request_accepts_bounded_five_hop_paths():
+    request = QueryRequest(query="Trace a five-step failure chain", hop_depth=5)
+    assert request.to_query_params(is_stream=False).hop_depth == 5
+
+
+@pytest.mark.offline
 @pytest.mark.parametrize(
     ("field_name", "invalid_value"),
     [
         ("retrieval_strategy", "unsupported"),
         ("edge_direction", "sideways"),
-        ("hop_depth", 4),
+        ("hop_depth", 6),
         ("chain_top_k", 0),
         ("chain_fanout", 51),
         ("chain_top_k_per_prompt", 11),

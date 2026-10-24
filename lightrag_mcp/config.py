@@ -46,8 +46,8 @@ class MCPGatewayConfig:
             )
         if self.directed_edge_direction not in {"both", "in", "out"}:
             raise ValueError("MCP_DIRECTED_EDGE_DIRECTION must be both, in, or out")
-        if not 1 <= self.directed_hop_depth <= 3:
-            raise ValueError("MCP_DIRECTED_HOP_DEPTH must be between 1 and 3")
+        if not 1 <= self.directed_hop_depth <= 5:
+            raise ValueError("MCP_DIRECTED_HOP_DEPTH must be between 1 and 5")
         if not 1 <= self.directed_chain_top_k <= 100:
             raise ValueError("MCP_DIRECTED_CHAIN_TOP_K must be between 1 and 100")
         if not 0.0 <= self.directed_min_importance <= 1.0:

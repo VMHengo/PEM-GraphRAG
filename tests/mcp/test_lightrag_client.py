@@ -64,10 +64,21 @@ def test_query_payload_keeps_directed_controls_bounded_and_opted_in():
     assert payload["min_relation_importance"] == 0.7
     assert payload["include_retrieval_metadata"] is True
 
+    deeper_payload, _, _ = _build_query_payload(
+        question="Trace a longer chain",
+        mode="mix",
+        retrieval_strategy="directed",
+        edge_direction="out",
+        directed_hop_depth=5,
+        directed_chain_top_k=12,
+        directed_min_importance=0.7,
+    )
+    assert deeper_payload["hop_depth"] == 5
+
 
 @pytest.mark.parametrize(
     ("hop_depth", "chain_top_k", "importance"),
-    [(0, 20, 0.45), (4, 20, 0.45), (2, 0, 0.45), (2, 101, 0.45), (2, 20, 1.1)],
+    [(0, 20, 0.45), (6, 20, 0.45), (2, 0, 0.45), (2, 101, 0.45), (2, 20, 1.1)],
 )
 def test_query_payload_rejects_unbounded_directed_controls(
     hop_depth, chain_top_k, importance

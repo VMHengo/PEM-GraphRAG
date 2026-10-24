@@ -237,3 +237,91 @@ async def test_bfs_prevents_cycles_and_respects_fanout_and_path_limits():
     assert all(len({node.casefold() for node in path.nodes}) == len(path.nodes) for path in paths)
     assert all(path.nodes[1] == "B" for path in paths)
     assert ("A", "B", "D") in [path.nodes for path in paths]
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_top_k_keeps_short_and_long_causal_evidence():
+    graph = {
+        "A": [
+            {"semantic_src_id": "A", "semantic_tgt_id": "B", "relation_type": "causes",
+             "directionality": "directed", "relation_importance": 0.95},
+            {"semantic_src_id": "A", "semantic_tgt_id": "Noise", "relation_type": "causes",
+             "directionality": "directed", "relation_importance": 0.99},
+        ],
+        "B": [{"semantic_src_id": "B", "semantic_tgt_id": "C", "relation_type": "causes",
+               "directionality": "directed", "relation_importance": 0.9}],
+        "C": [{"semantic_src_id": "C", "semantic_tgt_id": "D", "relation_type": "causes",
+               "directionality": "directed", "relation_importance": 0.85}],
+    }
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(retrieval_strategy="directed", edge_direction="out",
+                       hop_depth=3, chain_top_k=2)
+    paths = await find_directed_paths(
+        ["A"], provider, route=_route("What can A lead to?", param), query_param=param
+    )
+
+    assert len(paths) == 2
+    assert {len(path.edges) for path in paths} == {1, 3}
+    assert paths[0].nodes == ("A", "B", "C", "D")
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_five_hops_are_bounded_but_available():
+    graph = {
+        source: [{"semantic_src_id": source, "semantic_tgt_id": target,
+                  "relation_type": "causes", "directionality": "directed",
+                  "relation_importance": 0.9}]
+        for source, target in zip("ABCDE", "BCDEF")
+    }
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(retrieval_strategy="directed", hop_depth=5, chain_top_k=5)
+    paths = await find_directed_paths(
+        ["A"], provider, route=_route("What can A lead to?", param), query_param=param
+    )
+
+    assert len(paths) == 5
+    assert paths[0].nodes == tuple("ABCDEF")
+    assert {len(path.edges) for path in paths} == {1, 2, 3, 4, 5}
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_query_focus_keeps_a_three_hop_chain_among_distractors():
+    names = (
+        "Electrolyte Decomposition", "Gas Generation",
+        "Local Current Nonuniformity", "Lithium Plating",
+    )
+    graph = {
+        source: [{"semantic_src_id": source, "semantic_tgt_id": target,
+                  "relation_type": "causes", "directionality": "directed",
+                  "relation_importance": 0.85}]
+        for source, target in zip(names, names[1:])
+    }
+    graph["High-Temperature Aging"] = [
+        {"semantic_src_id": "High-Temperature Aging", "semantic_tgt_id": f"Other {i}",
+         "relation_type": "causes", "directionality": "directed",
+         "relation_importance": 0.99}
+        for i in range(8)
+    ]
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(retrieval_strategy="auto", hop_depth=3,
+                       chain_top_k=6, chain_fanout=10)
+    paths = await find_directed_paths(
+        [names[0], "High-Temperature Aging"], provider,
+        route=_route("How can electrolyte decomposition cause plating?", param),
+        query_param=param, focus_entities=names,
+    )
+
+    assert names in [path.nodes for path in paths]
+    assert {len(path.edges) for path in paths} == {1, 2, 3}

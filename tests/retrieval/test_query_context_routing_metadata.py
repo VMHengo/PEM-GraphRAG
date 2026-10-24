@@ -382,3 +382,55 @@ async def test_query_aware_provider_receives_route_predicates():
     assert paths == []
     assert graph.target_relation_types[0] == "causes"
     assert graph.target_chain_roles == ()
+
+
+@pytest.mark.offline
+def test_directed_anchors_prioritize_query_entities_over_generic_aging():
+    entities = [
+        {"entity_name": "High-Temperature Aging"},
+        {"entity_name": "Temperature Rise Rate"},
+    ]
+    relations = [
+        {"src_tgt": ["Electrolyte Decomposition", "Gas Generation"]},
+        {"src_tgt": ["Local Current Nonuniformity", "Lithium Plating"]},
+    ]
+    keywords = [
+        "Electrolyte Decomposition", "Gas Generation",
+        "Local Current Nonuniformity", "Lithium Plating",
+    ]
+
+    downstream = operate._directed_path_anchors(
+        entities, relations,
+        "How can electrolyte decomposition during high-temperature aging promote lithium plating?",
+        keywords, [],
+    )
+    upstream = operate._directed_path_anchors(
+        entities, relations,
+        "Trace the upstream causes of plating during high-temperature aging.",
+        keywords, [],
+    )
+
+    assert downstream[0] == "Electrolyte Decomposition"
+    assert upstream[0] == "Lithium Plating"
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_directed_anchor_lookup_accepts_only_existing_keyword_nodes():
+    class Graph:
+        async def get_nodes_batch(self, names):
+            return {"Electrolyte Decomposition": {"entity_id": "Electrolyte Decomposition"}}
+
+        async def get_directed_neighbor_edges_batch(self, nodes):
+            return {node: [] for node in nodes}
+
+    diagnostics, _ = await operate._collect_directed_path_diagnostics(
+        query="How can electrolyte decomposition cause plating?",
+        query_param=QueryParam(retrieval_strategy="directed"),
+        knowledge_graph_inst=Graph(),
+        final_entities=[{"entity_name": "High-Temperature Aging"}],
+        ll_keywords="Electrolyte Decomposition, Invented Entity",
+    )
+
+    assert diagnostics["anchor_entities"][0] == "Electrolyte Decomposition"
+    assert "Invented Entity" not in diagnostics["anchor_entities"]

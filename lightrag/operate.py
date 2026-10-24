@@ -101,7 +101,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=False)
 
 
-_DIRECTED_PATH_ANCHOR_LIMIT = 5
+_DIRECTED_PATH_ANCHOR_LIMIT = 8
 _DIRECTED_PATH_CONTEXT_MAX_TOKENS = 1200
 
 
@@ -129,23 +129,61 @@ def _directed_path_to_diagnostic(path: DirectedPath) -> dict[str, Any]:
     }
 
 
-def _directed_path_anchors(final_entities: list[dict[str, Any]]) -> list[str]:
-    """Take a small, deterministic set of entity-search results as path seeds."""
+def _directed_path_anchors(
+    final_entities: list[dict[str, Any]],
+    final_relations: list[dict[str, Any]],
+    query: str,
+    keywords: list[str],
+    confirmed_keywords: list[str],
+) -> list[str]:
+    """Prioritize query-specific graph nodes without trusting unverified keywords."""
 
-    anchors: list[str] = []
-    seen: set[str] = set()
+    candidates: dict[str, tuple[str, int, int]] = {}
+
+    def add(value: object, source_priority: int) -> None:
+        if not isinstance(value, str) or not value.strip():
+            return
+        name = value.strip()
+        key = name.casefold()
+        if key not in candidates:
+            candidates[key] = (name, source_priority, len(candidates))
+        elif source_priority > candidates[key][1]:
+            candidates[key] = (candidates[key][0], source_priority, candidates[key][2])
+
+    for value in confirmed_keywords:
+        add(value, 2)
     for entity in final_entities:
-        value = entity.get("entity_name") or entity.get("entity_id")
-        if not isinstance(value, str):
-            continue
-        anchor = value.strip()
-        normalized = anchor.casefold()
-        if anchor and normalized not in seen:
-            anchors.append(anchor)
-            seen.add(normalized)
-        if len(anchors) >= _DIRECTED_PATH_ANCHOR_LIMIT:
-            break
-    return anchors
+        add(entity.get("entity_name") or entity.get("entity_id"), 1)
+    for relation in final_relations:
+        endpoints = relation.get("src_tgt") or (
+            relation.get("semantic_src_id") or relation.get("src_id"),
+            relation.get("semantic_tgt_id") or relation.get("tgt_id"),
+        )
+        if isinstance(endpoints, (tuple, list)) and len(endpoints) == 2:
+            for endpoint in endpoints:
+                add(endpoint, 0)
+
+    query_words = set(re.findall(r"\w+", query.casefold()))
+    query_text = " ".join(re.findall(r"\w+", query.casefold()))
+    keyword_names = {name.casefold() for name in keywords}
+
+    def rank(item: tuple[str, tuple[str, int, int]]) -> tuple[float, int]:
+        key, (name, source_priority, original_index) = item
+        words = set(re.findall(r"\w+", name.casefold()))
+        phrase = " ".join(re.findall(r"\w+", name.casefold()))
+        overlap = len(words & query_words) / len(words) if words else 0.0
+        score = (
+            3.0 * (key in keyword_names)
+            + 2.0 * (bool(phrase) and phrase in query_text)
+            + overlap
+            + 0.1 * source_priority
+        )
+        return (-score, original_index)
+
+    return [
+        value[0]
+        for _, value in sorted(candidates.items(), key=rank)[:_DIRECTED_PATH_ANCHOR_LIMIT]
+    ]
 
 
 def _reference_path_key(path: object) -> str:
@@ -303,6 +341,8 @@ async def _collect_directed_path_diagnostics(
     query_param: QueryParam,
     knowledge_graph_inst: BaseGraphStorage,
     final_entities: list[dict[str, Any]],
+    final_relations: list[dict[str, Any]] | None = None,
+    ll_keywords: str = "",
 ) -> tuple[dict[str, Any], list[DirectedPath]]:
     """Collect bounded path evidence while preserving normal retrieval on failure.
 
@@ -324,7 +364,32 @@ async def _collect_directed_path_diagnostics(
     if not route.use_directed_paths:
         return diagnostics, []
 
-    anchors = _directed_path_anchors(final_entities)
+    keywords = [item.strip() for item in ll_keywords.split(", ") if item.strip()]
+    known_names = {
+        str(entity.get("entity_name") or entity.get("entity_id") or "").casefold()
+        for entity in final_entities
+    }
+    for relation in final_relations or []:
+        endpoints = relation.get("src_tgt") or (
+            relation.get("semantic_src_id") or relation.get("src_id"),
+            relation.get("semantic_tgt_id") or relation.get("tgt_id"),
+        )
+        if isinstance(endpoints, (tuple, list)) and len(endpoints) == 2:
+            known_names.update(str(value or "").casefold() for value in endpoints)
+    lookup = getattr(knowledge_graph_inst, "get_nodes_batch", None)
+    confirmed_keywords: list[str] = []
+    missing_keywords = [
+        name for name in keywords[:12] if name.casefold() not in known_names
+    ]
+    if missing_keywords and callable(lookup):
+        try:
+            found = await lookup(missing_keywords)
+            confirmed_keywords = [name for name in missing_keywords if name in found]
+        except Exception as exc:
+            logger.warning("Directed anchor lookup failed; using search results: %s", exc)
+    anchors = _directed_path_anchors(
+        final_entities, final_relations or [], query, keywords, confirmed_keywords
+    )
     diagnostics["anchor_entities"] = anchors
     if not anchors:
         diagnostics["reason"] = "no_entity_anchors"
@@ -351,6 +416,7 @@ async def _collect_directed_path_diagnostics(
             fetch_edges,
             route=route,
             query_param=query_param,
+            focus_entities=keywords,
         )
     except Exception as exc:
         logger.warning("Directed path retrieval failed; preserving normal context: %s", exc)
@@ -361,6 +427,7 @@ async def _collect_directed_path_diagnostics(
     diagnostics["status"] = "completed"
     diagnostics["reason"] = "paths_found" if paths else "no_matching_paths"
     diagnostics["path_count"] = len(paths)
+    diagnostics["path_depth_counts"] = dict(Counter(len(path.edges) for path in paths))
     diagnostics["paths"] = [_directed_path_to_diagnostic(path) for path in paths]
     return diagnostics, paths
 
@@ -1240,6 +1307,59 @@ def _looks_like_json_extraction_result(result: str) -> bool:
         return _strip_markdown_code_fence(stripped).strip().startswith(("{", "["))
 
     return False
+
+
+class ExtractionOutputValidationError(ValueError):
+    """Raised when a normal extraction response is incomplete or malformed."""
+
+
+def _validate_json_extraction_output(result: str) -> None:
+    """Enforce the structured extraction contract before tolerant parsing."""
+
+    if not isinstance(result, str) or not result.strip():
+        raise ExtractionOutputValidationError("extraction response is missing content")
+
+    content = _strip_markdown_code_fence(result).strip()
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ExtractionOutputValidationError(
+            f"JSON extraction response is not valid JSON: {error.msg}"
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise ExtractionOutputValidationError(
+            "JSON extraction response must be an object"
+        )
+
+    expected_keys = {"entities", "relationships"}
+    if set(payload) != expected_keys:
+        raise ExtractionOutputValidationError(
+            "JSON extraction response must contain only entities and relationships"
+        )
+    for key in expected_keys:
+        if not isinstance(payload[key], list):
+            raise ExtractionOutputValidationError(
+                f"JSON extraction response has a non-list {key} field"
+            )
+
+
+def _validate_text_extraction_output(
+    result: str,
+    completion_delimiter: str,
+) -> str:
+    """Return content before a required terminal legacy completion marker."""
+
+    if not isinstance(result, str) or not result.strip():
+        raise ExtractionOutputValidationError("extraction response is missing content")
+
+    stripped = result.strip()
+    if not stripped.lower().endswith(completion_delimiter.lower()):
+        raise ExtractionOutputValidationError(
+            "legacy extraction response is incomplete: "
+            f"missing terminal {completion_delimiter} marker"
+        )
+    return stripped[: -len(completion_delimiter)].strip()
 
 
 async def _process_json_extraction_result(
@@ -4168,6 +4288,19 @@ async def extract_entities(
         # Create cache keys collector for batch processing
         cache_keys_collector = []
 
+        async def discard_invalid_cache(start_index: int) -> None:
+            # Cache writes happen inside use_llm_func_with_cache, before parsing.
+            invalid_keys = cache_keys_collector[start_index:]
+            if llm_response_cache is not None and invalid_keys:
+                try:
+                    await llm_response_cache.delete(invalid_keys)
+                except Exception as error:
+                    logger.warning(
+                        "Could not discard invalid extraction cache for %s: %s",
+                        chunk_key,
+                        error,
+                    )
+
         if use_json_extraction:
             # JSON mode: use JSON prompts and pass entity_extraction flag to LLM provider
             entity_extraction_system_prompt = PROMPTS[
@@ -4191,6 +4324,7 @@ async def extract_entities(
                 "entity_continue_extraction_user_prompt"
             ].format(**{**context_base, "input_text": content})
 
+        initial_cache_start = len(cache_keys_collector)
         final_result, timestamp = await use_llm_func_with_cache(
             entity_extraction_user_prompt,
             use_llm_func,
@@ -4202,6 +4336,18 @@ async def extract_entities(
             response_format=({"type": "json_object"} if use_json_extraction else None),
             llm_cache_identity=get_llm_cache_identity(global_config, "extract"),
         )
+
+        try:
+            if use_json_extraction:
+                _validate_json_extraction_output(final_result)
+                legacy_content = None
+            else:
+                legacy_content = _validate_text_extraction_output(
+                    final_result, context_base["completion_delimiter"]
+                )
+        except ExtractionOutputValidationError:
+            await discard_invalid_cache(initial_cache_start)
+            raise
 
         history = pack_user_ass_to_openai_messages(
             entity_extraction_user_prompt, final_result
@@ -4224,6 +4370,11 @@ async def extract_entities(
                 tuple_delimiter=context_base["tuple_delimiter"],
                 completion_delimiter=context_base["completion_delimiter"],
             )
+            if legacy_content and not maybe_nodes and not maybe_edges:
+                await discard_invalid_cache(initial_cache_start)
+                raise ExtractionOutputValidationError(
+                    "legacy extraction response contains no valid records"
+                )
 
         # Process additional gleaning results only 1 time when entity_extract_max_gleaning is greater than zero.
         run_gleaning = entity_extract_max_gleaning > 0
@@ -4256,6 +4407,7 @@ async def extract_entities(
                 run_gleaning = False
 
         if run_gleaning:
+            glean_cache_start = len(cache_keys_collector)
             glean_result, timestamp = await use_llm_func_with_cache(
                 entity_continue_extraction_user_prompt,
                 use_llm_func,
@@ -4270,6 +4422,18 @@ async def extract_entities(
                 ),
                 llm_cache_identity=get_llm_cache_identity(global_config, "extract"),
             )
+
+            try:
+                if use_json_extraction:
+                    _validate_json_extraction_output(glean_result)
+                    glean_legacy_content = None
+                else:
+                    glean_legacy_content = _validate_text_extraction_output(
+                        glean_result, context_base["completion_delimiter"]
+                    )
+            except ExtractionOutputValidationError:
+                await discard_invalid_cache(glean_cache_start)
+                raise
 
             # Process gleaning result with appropriate parser
             if use_json_extraction:
@@ -4288,6 +4452,11 @@ async def extract_entities(
                     tuple_delimiter=context_base["tuple_delimiter"],
                     completion_delimiter=context_base["completion_delimiter"],
                 )
+                if glean_legacy_content and not glean_nodes and not glean_edges:
+                    await discard_invalid_cache(glean_cache_start)
+                    raise ExtractionOutputValidationError(
+                        "legacy extraction response contains no valid records"
+                    )
 
             # Merge results - compare description lengths to choose better version
             for i, (entity_name, glean_entities) in enumerate(
@@ -5799,6 +5968,8 @@ async def _build_query_context(
         query_param=query_param,
         knowledge_graph_inst=knowledge_graph_inst,
         final_entities=search_result["final_entities"],
+        final_relations=search_result["final_relations"],
+        ll_keywords=ll_keywords,
     )
     path_reference_ids = await _attach_directed_path_sources(
         raw_data,

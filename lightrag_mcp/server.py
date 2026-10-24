@@ -84,7 +84,7 @@ async def trace_pem_graphrag_chain(
         int,
         Field(
             ge=1,
-            le=3,
+            le=5,
             description="Maximum evidence-chain length. Two hops is the recommended default.",
         ),
     ] = 2,

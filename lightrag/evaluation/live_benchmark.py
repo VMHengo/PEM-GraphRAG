@@ -670,6 +670,9 @@ async def score_query_cases(
             if reference_checks
             else None
         )
+        if status != "success":
+            content_score = 0.0 if must_include_checks else None
+            reference_score = 0.0 if reference_checks else None
 
         if status == "success":
             successful_queries += 1
@@ -1502,6 +1505,12 @@ async def run_live_benchmark(
             ),
         ]
     )
+    require_content_checks = bool(
+        _as_mapping(benchmark.get("scoring")).get("require_content_checks_for_retrieval")
+    )
+    reference_only = query_summary.get("content_score") is None
+    if require_content_checks and reference_only:
+        retrieval_score = None
     directed_score = (
         _safe_float(directed_summary["score"]) / 100
         if directed_summary.get("score") is not None
@@ -1517,6 +1526,13 @@ async def run_live_benchmark(
         benchmark,
         run_queries=run_queries,
         directed_score=directed_score,
+    )
+    scoring["retrieval_basis"] = (
+        "reference_only_excluded"
+        if require_content_checks and reference_only
+        else "content_and_reference"
+        if not reference_only
+        else "reference_only"
     )
     score_values = {
         "graph": graph_score,
@@ -1587,6 +1603,7 @@ async def run_live_benchmark(
             "mode": mode,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "query_generation_enabled": generate_answers,
+            "answer_quality_evaluated": False,
             "query_checks_enabled": run_queries,
             "directed_path_checks_enabled": bool(directed_results),
         },

@@ -6,7 +6,8 @@
   "benchmark_tier": "stress",
   "default_mode": "mix",
   "scoring": {
-    "profile": "directed"
+    "profile": "directed",
+    "require_content_checks_for_retrieval": true
   },
   "source_directory": "test_documents/quality_docs",
   "page_numbering": "One-based physical PDF pages. Physical page 1 is printed page 44733; printed page = physical page + 44732.",
@@ -703,7 +704,7 @@
       "expected_documents": [
         "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
       ],
-      "expected_edge_direction": "out",
+      "expected_edge_direction": "in",
       "expected_auto_strategy": "combined",
       "path_requirement": "all",
       "id": "causal_degradation_polarization_ic",
@@ -719,13 +720,14 @@
         "IC Peak Shift to Lower Voltage"
       ],
       "expected_entities": [
-        "Cell Degradation",
+        {"name": "Cell Degradation", "aliases": ["Cell Aging"]},
         "Internal Polarization",
         "IC Peak Shift to Lower Voltage"
       ],
       "expected_relations": [
         {
           "source": "Cell Degradation",
+          "source_aliases": ["Cell Aging"],
           "relation_type": "increases",
           "accepted_relation_types": {
             "raises": 1
@@ -754,26 +756,26 @@
       "expected_directed_paths": [
         {
           "relation_types": [
-            "increases",
-            "causes"
+            "causes",
+            "increases"
           ],
           "accepted_relation_types": [
             {
-              "raises": 1
-            },
-            {
               "leads_to": 1,
               "results_in": 1
+            },
+            {
+              "raises": 1
             }
           ],
           "source_documents": [
             "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
           ],
           "require_citations": true,
-          "nodes": [
-            "Cell Degradation",
+          "traversal_nodes": [
+            "IC Peak Shift to Lower Voltage",
             "Internal Polarization",
-            "IC Peak Shift to Lower Voltage"
+            "Cell Degradation"
           ]
         }
       ],
@@ -1325,20 +1327,23 @@
         "Alumina Ceramic Coating"
       ],
       "expected_entities": [
-        "Pouch Lithium-Ion Cell",
-        "NCM622",
-        "Graphite",
+        {"name": "Pouch Lithium-Ion Cell", "aliases": ["Pouch Lithium-Ion Battery"]},
+        {"name": "NCM622", "aliases": ["NCM622 Cathode"]},
+        {"name": "Graphite", "aliases": ["Graphite Anode"]},
         "PP/PE/PP Separator",
         "Alumina Ceramic Coating"
       ],
       "expected_relations": [
         {
           "source": "Pouch Lithium-Ion Cell",
+          "source_aliases": ["Pouch Lithium-Ion Battery"],
           "relation_type": "contains",
           "accepted_relation_types": {
             "has_component": 1
           },
+          "accepted_inverse_relation_types": {"part_of": 1},
           "target": "NCM622",
+          "target_aliases": ["NCM622 Cathode"],
           "directionality": "directed",
           "evidence_ids": [
             "e1"
@@ -1346,11 +1351,14 @@
         },
         {
           "source": "Pouch Lithium-Ion Cell",
+          "source_aliases": ["Pouch Lithium-Ion Battery"],
           "relation_type": "contains",
           "accepted_relation_types": {
             "has_component": 1
           },
+          "accepted_inverse_relation_types": {"part_of": 1},
           "target": "Graphite",
+          "target_aliases": ["Graphite Anode"],
           "directionality": "directed",
           "evidence_ids": [
             "e1"
@@ -1358,10 +1366,12 @@
         },
         {
           "source": "Pouch Lithium-Ion Cell",
+          "source_aliases": ["Pouch Lithium-Ion Battery"],
           "relation_type": "contains",
           "accepted_relation_types": {
             "has_component": 1
           },
+          "accepted_inverse_relation_types": {"part_of": 1},
           "target": "PP/PE/PP Separator",
           "directionality": "directed",
           "evidence_ids": [
