@@ -1,0 +1,3001 @@
+{
+  "id": "pem_high_temperature_aging_evidence_benchmark",
+  "name": "High-Temperature Aging: Extraction and Directed Mechanisms",
+  "description": "Single-paper benchmark for evidence-grounded entity/relation extraction, directed causal reasoning, experimental conditions, quantitative facts and overclaim detection. Reference answers are grounded only in the supplied paper.",
+  "version": 1,
+  "benchmark_tier": "stress",
+  "default_mode": "mix",
+  "scoring": {
+    "profile": "directed"
+  },
+  "source_directory": "test_documents/quality_docs",
+  "page_numbering": "One-based physical PDF pages. Physical page 1 is printed page 44733; printed page = physical page + 44732.",
+  "evaluation_notes": [
+    "Preserves the supplied top-level and case field structure. English questions and canonical concepts match the supplied fixture style.",
+    "All evidence is confined to the supplied paper. No results from other papers cited in its introduction are treated as this experiment.",
+    "Run extraction diagnostics before retrieval/path diagnostics. Noncausal cases deliberately have empty expected_directed_paths; skip path scoring for those cases, never treat empty paths as an automatic success.",
+    "Category-level macro averages are required: entity_extraction, relation_extraction, experimental_protocol, quantitative_fact, causal_chain, root_cause, synthesis and evidence_boundary. A runner may need support for new category names and empty paths; schema similarity alone does not establish runtime compatibility.",
+    "The inherited directed scorer does not establish entity mention-span/type F1, exact numerical accuracy, signed causality or hallucination rejection. Score expected_entities as concept recall; precision requires inspecting all extracted concepts against source evidence. Numeric and unacceptable_claims checks require a separate answer review.",
+    "Gold relation lists are selected diagnostic relations, not an exhaustive annotation of the paper. Do not label every additional supported edge a false positive.",
+    "Expected paths use at most three adjacent edges. Several cases query different windows of one mechanism: they are correlated, not independent experiments. Do not concatenate windows and claim evaluated five-hop accuracy.",
+    "In root-cause cases traversal_nodes run backward, but expected_relations retain cause-to-effect direction. Relation types on traversal paths follow traversal order.",
+    "The gas/drying/plating mechanism is the authors interpretation supported by post-mortem characterization, not an independently manipulated causal experiment; distinguish interpretation from directly measured observations.",
+    "Accepted relation aliases preserve the effect sign stated in expected_answer; generic influences is not sufficient to establish a signed increase/decrease.",
+    "Values are source-reported, not digitized from graphs. Preserve units, SOH, C-rate, electrode, temperature and measurement type. Table 2 overrides broad prose claims of universally increasing resistance.",
+    "Reversible heat is residual Qr=Q-Qi, not a separately measured chemical heat. Negative/endothermic contribution and magnitude must not be conflated with a signed numerical increase.",
+    "No evidence of thermal runaway thresholds, specific gas composition, direct gas quantification or universal applicability is supplied by these cases.",
+    "Fixed retrieval budget is inherited from the supplied fixture. Quality gates are provisional development targets, not validated scientific thresholds. Report category coverage alongside scores."
+  ],
+  "document_scope": [
+    {
+      "id": "aging",
+      "file": "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging.pdf",
+      "doi": "10.1021/acsomega.2c04093",
+      "sha256": "ae26eaa21694ac3e7ac44ddcabfddfa04bd3486dbe33907da5da1625bc7d18f2"
+    }
+  ],
+  "quality_gates": {
+    "min_scores": {
+      "graph": 65,
+      "metadata": 80,
+      "retrieval": 70,
+      "directed": 55
+    },
+    "min_directed_strategy_scores": {
+      "directed": 50,
+      "combined": 55,
+      "auto": 55
+    },
+    "require_directed_cases": true
+  },
+  "cases": [
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 3,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_gas_current_plating",
+      "category": "causal_chain",
+      "question": "How can electrolyte decomposition during high-temperature aging promote lithium plating on subsequent charging?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Electrolyte Decomposition",
+        "Gas Generation",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_entities": [
+        "Electrolyte Decomposition",
+        "Gas Generation",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrolyte Decomposition",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Gas Generation",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Gas Generation",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Local Current Nonuniformity",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Local Current Nonuniformity",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Lithium Plating",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Electrolyte Decomposition",
+            "Gas Generation",
+            "Local Current Nonuniformity",
+            "Lithium Plating"
+          ]
+        }
+      ],
+      "expected_answer": "The proposed mechanism is decomposition -> gas -> altered electrode spacing and nonuniform local current -> plating during subsequent charging. Local drying is a parallel contributor. This is the authors mechanistic interpretation, not direct gas measurement.",
+      "unacceptable_claims": [
+        "Gas generation alone proves an internal short circuit.",
+        "Lithium plating was measured during the 60 °C discharge itself."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "local current nonuniformity",
+          "support": "Decomposition produces gas; spacing and drying affect current distribution; plating occurs on subsequent charging."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 3,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "in",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "root_plating_upstream",
+      "category": "root_cause",
+      "question": "Trace the upstream causes of plating in the authors high-temperature-aging mechanism.",
+      "hl_keywords": [
+        "root cause",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Electrolyte Decomposition",
+        "Gas Generation",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_entities": [
+        "Electrolyte Decomposition",
+        "Gas Generation",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrolyte Decomposition",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Gas Generation",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Gas Generation",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Local Current Nonuniformity",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Local Current Nonuniformity",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Lithium Plating",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "traversal_nodes": [
+            "Lithium Plating",
+            "Local Current Nonuniformity",
+            "Gas Generation",
+            "Electrolyte Decomposition"
+          ]
+        }
+      ],
+      "expected_answer": "Trace plating backward to local current nonuniformity, then gas/spacing changes and electrolyte decomposition. Reverse search direction must not reverse the physical causal edges. Local drying is another supported branch.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "local current on the electrode",
+          "support": "The discussion explicitly supplies the decomposition/gas/current/plating mechanism."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_drying_potential_current",
+      "category": "causal_chain",
+      "question": "How does local electrolyte drying affect current distribution when the aged cell is recharged?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Local Electrolyte Drying",
+        "Local Potential Change",
+        "Local Current Nonuniformity"
+      ],
+      "expected_entities": [
+        "Local Electrolyte Drying",
+        "Local Potential Change",
+        "Local Current Nonuniformity"
+      ],
+      "expected_relations": [
+        {
+          "source": "Local Electrolyte Drying",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Local Potential Change",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Local Potential Change",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Local Current Nonuniformity",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Local Electrolyte Drying",
+            "Local Potential Change",
+            "Local Current Nonuniformity"
+          ]
+        }
+      ],
+      "expected_answer": "Local drying changes local potential; upon recharging the local electrode current becomes nonuniform. Preserve the charging condition.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "drying will cause the local potential",
+          "support": "Drying changes potential, followed by nonuniform recharge current."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_plating_sei_resistance",
+      "category": "causal_chain",
+      "question": "Why can plated metallic lithium increase SEI film resistance?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Lithium Plating",
+        "SEI Film Thickening",
+        "SEI Film Resistance"
+      ],
+      "expected_entities": [
+        "Lithium Plating",
+        "SEI Film Thickening",
+        "SEI Film Resistance"
+      ],
+      "expected_relations": [
+        {
+          "source": "Lithium Plating",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "SEI Film Thickening",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "SEI Film Thickening",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "SEI Film Resistance",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "increases"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "raises": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Lithium Plating",
+            "SEI Film Thickening",
+            "SEI Film Resistance"
+          ]
+        }
+      ],
+      "expected_answer": "Plated lithium reacts with electrolyte; reaction products thicken the SEI, increasing its resistance. The reaction intermediate is compressed into the first edge; it should be explained in the answer.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "thicken the SEI film",
+          "support": "The paragraph links plated lithium/electrolyte reaction to SEI growth and increased film resistance."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_plating_products_coating",
+      "category": "causal_chain",
+      "question": "What connects plated lithium to the coating observed on aged graphite particles?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Plated Metallic Lithium",
+        "Lithium Salt Reaction Products",
+        "Graphite Surface Coating"
+      ],
+      "expected_entities": [
+        "Plated Metallic Lithium",
+        "Lithium Salt Reaction Products",
+        "Graphite Surface Coating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Plated Metallic Lithium",
+          "relation_type": "produces",
+          "accepted_relation_types": {
+            "forms": 1,
+            "generates": 1
+          },
+          "target": "Lithium Salt Reaction Products",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Lithium Salt Reaction Products",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Graphite Surface Coating",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "produces",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "forms": 1,
+              "generates": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Plated Metallic Lithium",
+            "Lithium Salt Reaction Products",
+            "Graphite Surface Coating"
+          ]
+        }
+      ],
+      "expected_answer": "Reactive plated lithium reacts with electrolyte to form organic and inorganic lithium salts; these products coat graphite and are interpreted as the observed white substance. The coating is not identified as pure metallic lithium.",
+      "unacceptable_claims": [
+        "The white coating consists exclusively of metallic lithium."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.3. Degradation Mechanism",
+          "anchor": "organic lithium salts",
+          "support": "The authors attribute the white graphite coating to products of plated-lithium/electrolyte reactions."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_metals_side_reactions_fade",
+      "category": "causal_chain",
+      "question": "How does cathode transition-metal dissolution contribute to capacity fading?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Transition-Metal Dissolution",
+        "Side Reactions",
+        "Capacity Fading"
+      ],
+      "expected_entities": [
+        "Transition-Metal Dissolution",
+        "Side Reactions",
+        "Capacity Fading"
+      ],
+      "expected_relations": [
+        {
+          "source": "Transition-Metal Dissolution",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Side Reactions",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Side Reactions",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Capacity Fading",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "increases",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "raises": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Transition-Metal Dissolution",
+            "Side Reactions",
+            "Capacity Fading"
+          ]
+        }
+      ],
+      "expected_answer": "Dissolved cathode transition metals aggravate side reactions; side reactions contribute to capacity fading. The paper does not establish a quantitative contribution for individual metals.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "will aggravate the occurrence of side reactions",
+          "support": "Dissolution intensifies side reactions; the following paragraph links side reactions to capacity fading."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_degradation_polarization_ic",
+      "category": "causal_chain",
+      "question": "Why do the incremental-capacity peaks shift toward lower voltages during aging?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Cell Degradation",
+        "Internal Polarization",
+        "IC Peak Shift to Lower Voltage"
+      ],
+      "expected_entities": [
+        "Cell Degradation",
+        "Internal Polarization",
+        "IC Peak Shift to Lower Voltage"
+      ],
+      "expected_relations": [
+        {
+          "source": "Cell Degradation",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Internal Polarization",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Internal Polarization",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "IC Peak Shift to Lower Voltage",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "increases",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "raises": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Cell Degradation",
+            "Internal Polarization",
+            "IC Peak Shift to Lower Voltage"
+          ]
+        }
+      ],
+      "expected_answer": "Degradation increases internal polarization, which shifts IC peaks toward lower voltages. Peak shift and peak-area loss have distinct explanations.",
+      "unacceptable_claims": [
+        "The IC peaks shift toward higher voltages."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "causing the IC",
+          "support": "The discussion attributes lower IC voltage to degradation-induced polarization."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_plating_inventory_ic_area",
+      "category": "causal_chain",
+      "question": "What mechanism links lithium plating to a smaller IC-curve area?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Lithium Plating",
+        "Loss of Lithium Inventory",
+        "IC Curve Area Reduction"
+      ],
+      "expected_entities": [
+        "Lithium Plating",
+        "Loss of Lithium Inventory",
+        "IC Curve Area Reduction"
+      ],
+      "expected_relations": [
+        {
+          "source": "Lithium Plating",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Loss of Lithium Inventory",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Loss of Lithium Inventory",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "IC Curve Area Reduction",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Lithium Plating",
+            "Loss of Lithium Inventory",
+            "IC Curve Area Reduction"
+          ]
+        }
+      ],
+      "expected_answer": "The paper attributes lithium inventory loss mainly to plating; inventory loss and active-material loss reduce IC-curve area. This is an interpretation combining IC and EIS, not unique identification from IC alone.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "loss of lithium inventory is mainly caused",
+          "support": "IC area loss is attributed to inventory and active-material loss; plating is linked to inventory loss."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_sei_active_material_ic",
+      "category": "causal_chain",
+      "question": "How is SEI thickening connected to the reduced area of the IC curve?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "SEI Film Thickening",
+        "Loss of Active Materials",
+        "IC Curve Area Reduction"
+      ],
+      "expected_entities": [
+        "SEI Film Thickening",
+        "Loss of Active Materials",
+        "IC Curve Area Reduction"
+      ],
+      "expected_relations": [
+        {
+          "source": "SEI Film Thickening",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Loss of Active Materials",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Loss of Active Materials",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "IC Curve Area Reduction",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "SEI Film Thickening",
+            "Loss of Active Materials",
+            "IC Curve Area Reduction"
+          ]
+        }
+      ],
+      "expected_answer": "The authors attribute active-material loss mainly to SEI thickening and electrolyte decomposition; active-material loss contributes to reduced IC area.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "loss of active materials is mainly",
+          "support": "The IC interpretation identifies SEI thickening and decomposition as contributors."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_aging_dc_heat",
+      "category": "causal_chain",
+      "question": "How does high-temperature aging change irreversible heat during subsequent adiabatic discharge?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "High-Temperature Aging",
+        "DC Resistance",
+        "Irreversible Heat"
+      ],
+      "expected_entities": [
+        "High-Temperature Aging",
+        "DC Resistance",
+        "Irreversible Heat"
+      ],
+      "expected_relations": [
+        {
+          "source": "High-Temperature Aging",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "DC Resistance",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1",
+            "e2"
+          ]
+        },
+        {
+          "source": "DC Resistance",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Irreversible Heat",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1",
+            "e2"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "increases",
+            "increases"
+          ],
+          "accepted_relation_types": [
+            {
+              "raises": 1
+            },
+            {
+              "raises": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "High-Temperature Aging",
+            "DC Resistance",
+            "Irreversible Heat"
+          ]
+        }
+      ],
+      "expected_answer": "Aging raises DC resistance, increasing irreversible heat at comparable current and duration. This does not imply monotonically increasing integrated total heat at every SOH.",
+      "unacceptable_claims": [
+        "Total temperature rise must increase monotonically from 100% through 95% to 90% SOH."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "increase in both the DC",
+          "support": "Degradation raises DC resistance."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 9,
+          "section": "3.4. Discussion",
+          "anchor": "increase in the irreversible heat",
+          "support": "The continuation directly links DC resistance increase to irreversible heat."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "in",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "root_ic_shift",
+      "category": "root_cause",
+      "question": "What upstream mechanism explains the lower-voltage IC peaks?",
+      "hl_keywords": [
+        "root cause",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "High-Temperature Aging",
+        "Internal Polarization",
+        "IC Peak Shift to Lower Voltage"
+      ],
+      "expected_entities": [
+        "High-Temperature Aging",
+        "Internal Polarization",
+        "IC Peak Shift to Lower Voltage"
+      ],
+      "expected_relations": [
+        {
+          "source": "High-Temperature Aging",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Internal Polarization",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Internal Polarization",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "IC Peak Shift to Lower Voltage",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "causes",
+            "increases"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "raises": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "traversal_nodes": [
+            "IC Peak Shift to Lower Voltage",
+            "Internal Polarization",
+            "High-Temperature Aging"
+          ]
+        }
+      ],
+      "expected_answer": "Trace the lower-voltage peak shift backward to increased internal polarization caused by high-temperature aging. Do not attribute the peak voltage shift solely to active-material loss.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "increased polarization",
+          "support": "The IC paragraph links high-temperature aging, polarization and lower-voltage peaks."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_diffusion_warburg",
+      "category": "causal_chain",
+      "question": "How does aging affect solid-state lithium diffusion and Warburg resistance?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "High-Temperature Aging",
+        "Difficulty of Solid-State Lithium Diffusion",
+        "Warburg Resistance"
+      ],
+      "expected_entities": [
+        "High-Temperature Aging",
+        "Difficulty of Solid-State Lithium Diffusion",
+        "Warburg Resistance"
+      ],
+      "expected_relations": [
+        {
+          "source": "High-Temperature Aging",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Difficulty of Solid-State Lithium Diffusion",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Difficulty of Solid-State Lithium Diffusion",
+          "relation_type": "increases",
+          "accepted_relation_types": {
+            "raises": 1
+          },
+          "target": "Warburg Resistance",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "increases",
+            "increases"
+          ],
+          "accepted_relation_types": [
+            {
+              "raises": 1
+            },
+            {
+              "raises": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "High-Temperature Aging",
+            "Difficulty of Solid-State Lithium Diffusion",
+            "Warburg Resistance"
+          ]
+        }
+      ],
+      "expected_answer": "Aging makes lithium-ion diffusion inside active-material particles more difficult, increasing Warburg resistance relative to fresh cells; Table 2 shows a plateau between 95% and 90% SOH.",
+      "unacceptable_claims": [
+        "Warburg resistance rises strictly at every measured SOH step."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "resulting in increased",
+          "support": "The final EIS paragraph links aging-induced diffusion difficulty to Warburg resistance."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "entities_cell_materials",
+      "category": "entity_extraction",
+      "question": "Identify cell format, cathode, anode and separator materials.",
+      "hl_keywords": [
+        "entity extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Pouch Lithium-Ion Cell",
+        "NCM622",
+        "Graphite",
+        "PP/PE/PP Separator",
+        "Alumina Ceramic Coating"
+      ],
+      "expected_entities": [
+        "Pouch Lithium-Ion Cell",
+        "NCM622",
+        "Graphite",
+        "PP/PE/PP Separator",
+        "Alumina Ceramic Coating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Pouch Lithium-Ion Cell",
+          "relation_type": "contains",
+          "accepted_relation_types": {
+            "has_component": 1
+          },
+          "target": "NCM622",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Pouch Lithium-Ion Cell",
+          "relation_type": "contains",
+          "accepted_relation_types": {
+            "has_component": 1
+          },
+          "target": "Graphite",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Pouch Lithium-Ion Cell",
+          "relation_type": "contains",
+          "accepted_relation_types": {
+            "has_component": 1
+          },
+          "target": "PP/PE/PP Separator",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "The sample is a pouch cell with Li(Ni0.6Co0.2Mn0.2)O2 (NCM622) cathode, graphite anode and alumina-ceramic-coated PP/PE/PP separator. NCM622 and its formula are aliases; do not merge anode and cathode.",
+      "unacceptable_claims": [
+        "The cathode is lithium iron phosphate."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2. Experimental Section",
+          "anchor": "(NCM622)",
+          "support": "Explicit cell and material specifications."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "entities_electrolyte",
+      "category": "entity_extraction",
+      "question": "Extract the electrolyte salt and all four solvent identities, expanding the abbreviations.",
+      "hl_keywords": [
+        "entity extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "LiPF6",
+        "Ethyl Methyl Carbonate",
+        "Ethylene Carbonate",
+        "Diethyl Carbonate",
+        "Propylene Carbonate"
+      ],
+      "expected_entities": [
+        "LiPF6",
+        "Ethyl Methyl Carbonate",
+        "Ethylene Carbonate",
+        "Diethyl Carbonate",
+        "Propylene Carbonate"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Salt: LiPF6. Solvents: EMC=ethyl methyl carbonate, EC=ethylene carbonate, DEC=diethyl carbonate, PC=propylene carbonate. Treat each abbreviation and full name as the same chemical concept.",
+      "unacceptable_claims": [
+        "The solvent is exclusively EC."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2. Experimental Section",
+          "anchor": "electrolyte solvents",
+          "support": "Explicit salt and four-solvent list."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "entities_characterization",
+      "category": "entity_extraction",
+      "question": "Which methods characterize morphology, surface elements and surface composition?",
+      "hl_keywords": [
+        "entity extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Scanning Electron Microscopy",
+        "Energy-Dispersive Spectroscopy",
+        "X-Ray Photoelectron Spectroscopy"
+      ],
+      "expected_entities": [
+        "Scanning Electron Microscopy",
+        "Energy-Dispersive Spectroscopy",
+        "X-Ray Photoelectron Spectroscopy"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrode Morphology",
+          "relation_type": "measured_by",
+          "accepted_relation_types": {
+            "characterized_by": 1
+          },
+          "target": "Scanning Electron Microscopy",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Surface Elements",
+          "relation_type": "measured_by",
+          "accepted_relation_types": {
+            "characterized_by": 1
+          },
+          "target": "Energy-Dispersive Spectroscopy",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Surface Composition",
+          "relation_type": "measured_by",
+          "accepted_relation_types": {
+            "characterized_by": 1
+          },
+          "target": "X-Ray Photoelectron Spectroscopy",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e2"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "SEM observes morphology; EDS analyzes surface elements; XPS analyzes surface composition. SEM, EDS and XPS are distinct techniques, with their full names as aliases.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.5. Characterization Test",
+          "anchor": "scanning electron microscope",
+          "support": "SEM and EDS setup is specified."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 3,
+          "section": "2.5. Characterization Test",
+          "anchor": "surface composition",
+          "support": "XPS is identified for surface composition."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "entities_eis_roles",
+      "category": "relation_extraction",
+      "question": "Map Roh, RSEI, Rct and Rw to their physical meaning and EIS features.",
+      "hl_keywords": [
+        "relation extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Ohmic Resistance",
+        "SEI Film Resistance",
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_entities": [
+        "Ohmic Resistance",
+        "SEI Film Resistance",
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_relations": [
+        {
+          "source": "SEI Film Resistance",
+          "relation_type": "represents",
+          "accepted_relation_types": {
+            "describes": 1
+          },
+          "target": "Lithium-Ion Transport through SEI",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Charge-Transfer Resistance",
+          "relation_type": "represents",
+          "accepted_relation_types": {
+            "describes": 1
+          },
+          "target": "Electrochemical Charge Transfer",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Warburg Resistance",
+          "relation_type": "represents",
+          "accepted_relation_types": {
+            "describes": 1
+          },
+          "target": "Solid-State Lithium Diffusion",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Roh: real-axis intercept, ionic passage through electrolyte/separator/active materials. RSEI: first arc, transport through SEI. Rct: second arc, electrochemical charge transfer. Rw: solid lithium diffusion inside active-material particles.",
+      "unacceptable_claims": [
+        "Rct is the first EIS arc.",
+        "Warburg resistance represents electrolyte salt concentration alone."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "corresponds to the first arc",
+          "support": "Definitions of the four impedance components."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_temperatures",
+      "category": "experimental_protocol",
+      "question": "At what temperatures were capacity calibration, cyclic aging and adiabatic discharge conducted?",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Capacity Calibration",
+        "High-Temperature Cyclic Aging",
+        "Adiabatic Discharge"
+      ],
+      "expected_entities": [
+        "Capacity Calibration",
+        "High-Temperature Cyclic Aging",
+        "Adiabatic Discharge"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Capacity calibration at 25 °C; cyclic aging at 60 °C; adiabatic discharge starts at 30 °C after 90 min calibration and its temperature then rises. Aging temperature is not discharge-test temperature.",
+      "unacceptable_claims": [
+        "Adiabatic discharge was held isothermal at 60 °C."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.1 and 2.3",
+          "anchor": "at 60 °C",
+          "support": "Capacity/aging temperatures and ARC initial conditions."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_capacity_cycling",
+      "category": "experimental_protocol",
+      "question": "Compare standard capacity testing and high-temperature cyclic aging in Table 1.",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Standard Capacity Test",
+        "High-Temperature Cyclic Aging",
+        "Constant-Current Charging",
+        "Constant-Voltage Charging"
+      ],
+      "expected_entities": [
+        "Standard Capacity Test",
+        "High-Temperature Cyclic Aging",
+        "Constant-Current Charging",
+        "Constant-Voltage Charging"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Standard: CC charge 1.4 A to 4.2 V, CV at 4.2 V to 0.021 A, rest 30 min, CC discharge 1.4 A to 2.5 V, rest 30 min; repeat three times and use last discharge capacity. Aging: same voltage/rest/CV cutoffs but CC charge/discharge 2.1 A, blocks of 20 cycles, followed by calibration at 25 °C.",
+      "unacceptable_claims": [
+        "The aging discharge current is 1.4 A."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.1; Table 1",
+          "anchor": "Specific Aging Test Profiles",
+          "support": "Table 1 plus surrounding methods defines both protocols."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_eis",
+      "category": "experimental_protocol",
+      "question": "Extract SOH checkpoints, charge state, AC amplitude and frequency range of the EIS measurements.",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Electrochemical Impedance Spectroscopy",
+        "State of Health"
+      ],
+      "expected_entities": [
+        "Electrochemical Impedance Spectroscopy",
+        "State of Health"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "EIS at 100%, 95%, 90% SOH on fully charged cells; sinusoidal current amplitude 0.1 A; frequency range 0.01–10 kHz as printed (upper endpoint 10 kHz). Electrochemical tests at 25 °C. Do not confuse AC amplitude with the 2.1 A HPPC pulse.",
+      "unacceptable_claims": [
+        "The EIS amplitude is 2.1 A."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.2. Electrochemical Performance Tests",
+          "anchor": "amplitude",
+          "support": "EIS protocol states checkpoints, charge state, amplitude and frequency range."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_hppc",
+      "category": "experimental_protocol",
+      "question": "How is internal resistance obtained from HPPC and combined from charge/discharge pulses?",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Hybrid Pulse Power Characteristic Test",
+        "DC Resistance",
+        "State of Charge"
+      ],
+      "expected_entities": [
+        "Hybrid Pulse Power Characteristic Test",
+        "DC Resistance",
+        "State of Charge"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "At 25 °C: fully charged cell rests 1 h; 2.1 A charge pulse 10 s, rest 60 s, 2.1 A discharge pulse 10 s; reduce SOC by 10% with 1.4 A discharge, rest 1 h, repeat to zero SOC. R uses the average of charge and discharge pulse resistances Rc and Rd, each based on voltage change/current.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.2",
+          "anchor": "for 10 s",
+          "support": "Pulse timing, current and SOC steps."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 3,
+          "section": "3.1; Equations 2–3",
+          "anchor": "taken as the internal resistance of the cell",
+          "support": "Internal resistance uses mean of pulse charge/discharge values."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_arc",
+      "category": "experimental_protocol",
+      "question": "Extract the ARC discharge conditions and distinguish them from IC measurement.",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Accelerating Rate Calorimeter",
+        "Adiabatic Discharge",
+        "Incremental Capacity Curve"
+      ],
+      "expected_entities": [
+        "Accelerating Rate Calorimeter",
+        "Adiabatic Discharge",
+        "Incremental Capacity Curve"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "ARC BTC-130: adiabatic mode, initial 30 °C, 90 min calibration, fully charged cell, discharge 1/4 C, 1/3 C, 1/2 C to 2.5 V. IC curves instead use 0.021 A discharge at 25 °C to 2.5 V.",
+      "unacceptable_claims": [
+        "IC curves were measured at 0.5 C in ARC."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.2–2.3",
+          "anchor": "BTC-130",
+          "support": "ARC and preceding IC protocol provide distinct discharge settings."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "protocol_postmortem",
+      "category": "experimental_protocol",
+      "question": "Which cells were disassembled, in what atmosphere, and why?",
+      "hl_keywords": [
+        "experimental protocol",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Post-Mortem Characterization",
+        "Argon-Filled Glovebox",
+        "Fully Charged Cell"
+      ],
+      "expected_entities": [
+        "Post-Mortem Characterization",
+        "Argon-Filled Glovebox",
+        "Fully Charged Cell"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Fully charged 100% and 90% SOH cells were disassembled in an argon-filled glovebox. Electrodes were transferred for SEM through a vacuum transfer box; controlled atmosphere avoids interference from external factors. No 95% SOH post-mortem group is specified.",
+      "unacceptable_claims": [
+        "All three SOH groups were disassembled."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2.5",
+          "anchor": "100%",
+          "support": "Section 2.5 specifies charged 100% and 90% SOH samples and transfer."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 7,
+          "section": "3.3",
+          "anchor": "interference of external",
+          "support": "The degradation-method paragraph explains avoiding external interference."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "numeric_capacity_mass_soh",
+      "category": "quantitative_fact",
+      "question": "State rated capacity, approximate mass and SOH definition.",
+      "hl_keywords": [
+        "quantitative fact",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Rated Capacity",
+        "Cell Mass",
+        "State of Health"
+      ],
+      "expected_entities": [
+        "Rated Capacity",
+        "Cell Mass",
+        "State of Health"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Rated capacity 4.2 Ah, mass about 63 g; SOH=Ca/C0, actual capacity divided by initial capacity (multiply ratio by 100 to express percent). Rated capacity and actual initial capacity are not explicitly established as identical.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 2,
+          "section": "2. Experimental Section",
+          "anchor": "4.2 Ah",
+          "support": "Rated capacity and mass."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 3,
+          "section": "3.1; Equation 1",
+          "anchor": "is the actual cell capacity",
+          "support": "Equation 1 defines capacity-based SOH."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "numeric_eis_table",
+      "category": "quantitative_fact",
+      "question": "Extract all resistance values in Table 2 with SOH and units.",
+      "hl_keywords": [
+        "quantitative fact",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Ohmic Resistance",
+        "SEI Film Resistance",
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_entities": [
+        "Ohmic Resistance",
+        "SEI Film Resistance",
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "All values in Ω, order Roh/RSEI/Rct/Rw: 100% SOH 0.0308/0.0171/0.0136/0.0041; 95% 0.0418/0.0192/0.0106/0.0057; 90% 0.0437/0.0275/0.0289/0.0057.",
+      "unacceptable_claims": [
+        "At 95% SOH Rct is 0.0192 Ω."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "Table 2",
+          "anchor": "0.0308",
+          "support": "All twelve entries are directly tabulated."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "boundary_rct_monotonic",
+      "category": "evidence_boundary",
+      "question": "Does Table 2 support strictly increasing charge-transfer and Warburg resistances at each aging step?",
+      "hl_keywords": [
+        "evidence boundary",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_entities": [
+        "Charge-Transfer Resistance",
+        "Warburg Resistance"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "No. Rct is 0.0136 -> 0.0106 -> 0.0289 Ω for 100 -> 95 -> 90% SOH, first decreasing. Rw is 0.0041 -> 0.0057 -> 0.0057 Ω, then unchanged. Broad prose about increased impedance must not erase these measured exceptions.",
+      "unacceptable_claims": [
+        "Both resistances strictly increase at every SOH step."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "Table 2",
+          "anchor": "0.0106",
+          "support": "Table 2 contradicts strict monotonicity of Rct and Rw."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "numeric_temperature_table",
+      "category": "quantitative_fact",
+      "question": "Extract Table 3 temperature rises for every SOH and C-rate.",
+      "hl_keywords": [
+        "quantitative fact",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Temperature Rise",
+        "State of Health",
+        "Discharge C-Rate"
+      ],
+      "expected_entities": [
+        "Temperature Rise",
+        "State of Health",
+        "Discharge C-Rate"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "ΔT in °C; columns 0.25 C / 0.33 C / 0.5 C: 100% SOH 28.7/32/42.4; 95% 24.2/30.8/40.3; 90% 31.4/34/47.8. These are temperature rises, not absolute final temperatures.",
+      "unacceptable_claims": [
+        "47.8 °C is the absolute final temperature."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 5,
+          "section": "Table 3",
+          "anchor": "28.7",
+          "support": "All nine values are tabulated temperature rises."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "synthesis_early_late_heating",
+      "category": "synthesis",
+      "question": "Explain why temperature rise first decreases and then increases with aging despite continuous capacity fading.",
+      "hl_keywords": [
+        "synthesis",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Capacity Fading",
+        "Temperature Rise Rate",
+        "Temperature Rise"
+      ],
+      "expected_entities": [
+        "Capacity Fading",
+        "Temperature Rise Rate",
+        "Temperature Rise"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "At 95% SOH the rise rate differs little from fresh, while lower capacity reduces total discharge duration and temperature rise. At 90% severe degradation raises the heating rate enough to dominate capacity loss, so total rise exceeds fresh. At 0.5 C the measured rises are 42.4, 40.3, 47.8 °C for 100, 95, 90% SOH. Do not infer unchanged capacity from higher heating.",
+      "unacceptable_claims": [
+        "All aged cells show less temperature rise than fresh.",
+        "All aged cells show more temperature rise than fresh."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 5,
+          "section": "3.2; Table 3",
+          "anchor": "has not",
+          "support": "The discussion distinguishes early capacity-dominated from later rate-dominated heating."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "numeric_specific_heat",
+      "category": "quantitative_fact",
+      "question": "Give specific heat capacity at the three SOHs and its role in calorimetry.",
+      "hl_keywords": [
+        "quantitative fact",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Specific Heat Capacity",
+        "Total Heat",
+        "Temperature Rise"
+      ],
+      "expected_entities": [
+        "Specific Heat Capacity",
+        "Total Heat",
+        "Temperature Rise"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Cp at 100/95/90% SOH is 1.1352/1.1522/1.2087 J/(g·°C), respectively. Equation 7 uses Q=Cp M ΔT. Do not assume the same Cp across SOHs or compare heat solely using ΔT.",
+      "unacceptable_claims": [],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 6,
+          "section": "3.2; Equation 7",
+          "anchor": "1.1352",
+          "support": "The paragraph gives all Cp values; Equation 7 relates them to heat."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "relations_heat_decomposition",
+      "category": "relation_extraction",
+      "question": "How are total, irreversible and reversible heat obtained and related?",
+      "hl_keywords": [
+        "relation extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Total Heat",
+        "Irreversible Heat",
+        "Reversible Heat",
+        "DC Resistance",
+        "Specific Heat Capacity"
+      ],
+      "expected_entities": [
+        "Total Heat",
+        "Irreversible Heat",
+        "Reversible Heat",
+        "DC Resistance",
+        "Specific Heat Capacity"
+      ],
+      "expected_relations": [
+        {
+          "source": "Total Heat",
+          "relation_type": "contains",
+          "accepted_relation_types": {
+            "has_component": 1
+          },
+          "target": "Irreversible Heat",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Total Heat",
+          "relation_type": "contains",
+          "accepted_relation_types": {
+            "has_component": 1
+          },
+          "target": "Reversible Heat",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Q=Qr+Qi; Q from ARC temperature rise via Cp M ΔT. Qi=I²Rt uses internal resistance from HPPC; Qr=Q−Qi is the residual. For time-varying R the printed expression must be applied appropriately over intervals; no separately measured entropic coefficient is reported.",
+      "unacceptable_claims": [
+        "Reversible heat was independently directly measured by XPS."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 5,
+          "section": "3.2; Equation 4",
+          "anchor": "heat generated by the cell is mainly composed of two parts",
+          "support": "Heat balance."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 6,
+          "section": "3.2; Equations 5–7",
+          "anchor": "reversible heat of the cell can be obtained",
+          "support": "Equations 5–7 and HPPC attribution."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "boundary_endothermic_heat",
+      "category": "evidence_boundary",
+      "question": "Can total released heat be smaller than irreversible heat in this paper, and what does that imply?",
+      "hl_keywords": [
+        "evidence boundary",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Total Heat",
+        "Irreversible Heat",
+        "Reversible Heat"
+      ],
+      "expected_entities": [
+        "Total Heat",
+        "Irreversible Heat",
+        "Reversible Heat"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Yes. Section 3.2 describes endothermic internal reactions offsetting part of irreversible heat, so Q can be lower than Qi. With Q=Qr+Qi, the corresponding Qr contribution is negative. Wording that reversible heat increases must distinguish magnitude from algebraic sign; do not assume all reversible contributions are exothermic.",
+      "unacceptable_claims": [
+        "Total heat must always exceed irreversible heat.",
+        "Reversible heat is always exothermic."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 7,
+          "section": "3.2",
+          "anchor": "endothermic",
+          "support": "The paragraph states endothermic offset and total heat lower than irreversible heat."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 5,
+          "section": "Equation 4",
+          "anchor": "heat generated by the cell is mainly composed of two parts",
+          "support": "Heat balance supports the signed interpretation."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "numeric_soc_resistance",
+      "category": "quantitative_fact",
+      "question": "How does DC resistance vary with SOC, and where is its minimum?",
+      "hl_keywords": [
+        "quantitative fact",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "DC Resistance",
+        "State of Charge"
+      ],
+      "expected_entities": [
+        "DC Resistance",
+        "State of Charge"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "During discharge resistance first decreases with declining SOC, reaches a minimum around 40% SOC, then increases. Aging raises resistance and makes this nonmonotonic SOC dependence more pronounced. This is not a minimum at 40% SOH.",
+      "unacceptable_claims": [
+        "Resistance decreases monotonically down to zero SOC."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 3,
+          "section": "3.1; Figure 2B",
+          "anchor": "40% SOC",
+          "support": "Text explicitly locates resistance minimum and describes SOC dependence."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "entities_xps_species",
+      "category": "entity_extraction",
+      "question": "Identify XPS chemical assignments and binding energies without confusing species with spectral regions.",
+      "hl_keywords": [
+        "entity extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "C 1s Spectrum",
+        "O 1s Spectrum",
+        "F 1s Spectrum",
+        "Lithium Carbonate",
+        "Lithium Fluoride",
+        "P–F Bond"
+      ],
+      "expected_entities": [
+        "C 1s Spectrum",
+        "O 1s Spectrum",
+        "F 1s Spectrum",
+        "Lithium Carbonate",
+        "Lithium Fluoride",
+        "P–F Bond"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "C 1s: C–C/C–H 284.8 eV, C–O 286.2 eV, Li2CO3 289.7 eV. O 1s: O–C 531.5 eV and Li2CO3 533.3 eV. F 1s: LiF 685 eV and P–F 687.1 eV. Li2CO3 and LiF are distinct compounds; C 1s/O 1s/F 1s are spectral regions.",
+      "unacceptable_claims": [
+        "LiF is assigned to 687.1 eV."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.3; Figure 10",
+          "anchor": "284.8",
+          "support": "All binding energies and assignments are listed in the XPS paragraph."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "observed_eds_anode",
+      "category": "relation_extraction",
+      "question": "What differences did EDS show between fresh and aged anodes, and how are they interpreted?",
+      "hl_keywords": [
+        "relation extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Aged Anode",
+        "Carbon Content",
+        "Oxygen Content",
+        "Graphite Surface Coating"
+      ],
+      "expected_entities": [
+        "Aged Anode",
+        "Carbon Content",
+        "Oxygen Content",
+        "Graphite Surface Coating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Aged Anode",
+          "relation_type": "has_decreased",
+          "accepted_relation_types": {},
+          "target": "Carbon Content",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Aged Anode",
+          "relation_type": "has_increased",
+          "accepted_relation_types": {},
+          "target": "Oxygen Content",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Carbon dominates fresh anode. Relative carbon content is lower and oxygen content higher on the aged anode; authors attribute this to oxygen-rich products coating graphite after electrolyte/plated-lithium side reactions. Relative surface elemental signals are not proof of a measured bulk carbon mass loss.",
+      "unacceptable_claims": [
+        "EDS proves bulk graphite mass loss quantitatively."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.3; Figure 9",
+          "anchor": "carbon content in the aged anode",
+          "support": "Direct EDS observations and subsequent reaction-product interpretation."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "boundary_cathode_not_unchanged",
+      "category": "evidence_boundary",
+      "question": "Does the small cathode surface change imply the cathode had no role in degradation?",
+      "hl_keywords": [
+        "evidence boundary",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Cathode",
+        "Transition-Metal Dissolution",
+        "Anode"
+      ],
+      "expected_entities": [
+        "Cathode",
+        "Transition-Metal Dissolution",
+        "Anode"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "No. Cathode appearance/morphology and measured surface composition change comparatively little, but small amounts of transition metals on the anode support cathode dissolution as a degradation contributor. Do not identify particular dissolved metals or amounts that are not specified.",
+      "unacceptable_claims": [
+        "The cathode remains entirely chemically unchanged.",
+        "The study quantifies each dissolved transition-metal concentration."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.3",
+          "anchor": "small",
+          "support": "Cathode comparison and transition metals detected on the anode are discussed together."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 1,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "observed_xps_organic_lif",
+      "category": "relation_extraction",
+      "question": "How does XPS distinguish changes in aged-anode SEI composition from LiF behavior?",
+      "hl_keywords": [
+        "relation extraction",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "SEI Film",
+        "Organic SEI Components",
+        "Inorganic SEI Components",
+        "Lithium Fluoride"
+      ],
+      "expected_entities": [
+        "SEI Film",
+        "Organic SEI Components",
+        "Inorganic SEI Components",
+        "Lithium Fluoride"
+      ],
+      "expected_relations": [],
+      "must_include": [],
+      "expected_directed_paths": [],
+      "expected_answer": "Authors infer SEI thickening, increased proportion of organic components and decreased proportion of inorganic components on aged anode. LiF is detected and its content does not change significantly. This does not support claiming a large LiF increase or an absolute mass balance.",
+      "unacceptable_claims": [
+        "LiF content increases significantly."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.3; Figure 10",
+          "anchor": "content of LiF has not changed",
+          "support": "XPS interpretation distinguishes organic/inorganic proportions and LiF stability."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 3,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_gas_spacing_current_plating",
+      "category": "causal_chain",
+      "question": "What can gas generation lead to through altered electrode spacing when an aged cell is recharged?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Gas Generation",
+        "Electrode Spacing Change",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_entities": [
+        "Gas Generation",
+        "Electrode Spacing Change",
+        "Local Current Nonuniformity",
+        "Lithium Plating"
+      ],
+      "expected_relations": [
+        {
+          "source": "Gas Generation",
+          "relation_type": "causes",
+          "accepted_relation_types": {"affects": 1, "changes": 1},
+          "target": "Electrode Spacing Change",
+          "directionality": "directed",
+          "evidence_ids": ["e1"]
+        },
+        {
+          "source": "Electrode Spacing Change",
+          "relation_type": "leads_to",
+          "accepted_relation_types": {"causes": 1, "results_in": 1},
+          "target": "Local Current Nonuniformity",
+          "directionality": "directed",
+          "evidence_ids": ["e1"]
+        },
+        {
+          "source": "Local Current Nonuniformity",
+          "relation_type": "results_in",
+          "accepted_relation_types": {"causes": 1, "leads_to": 1},
+          "target": "Lithium Plating",
+          "directionality": "directed",
+          "evidence_ids": ["e1"]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": ["causes", "leads_to", "results_in"],
+          "accepted_relation_types": [
+            {"affects": 1, "changes": 1},
+            {"causes": 1, "results_in": 1},
+            {"causes": 1, "leads_to": 1}
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Gas Generation",
+            "Electrode Spacing Change",
+            "Local Current Nonuniformity",
+            "Lithium Plating"
+          ]
+        }
+      ],
+      "expected_answer": "In the authors proposed mechanism, gas changes the distance between electrodes. On subsequent charging, local electrode current becomes nonuniform and plating can occur. This is a mechanistic interpretation, not a directly manipulated gas experiment.",
+      "unacceptable_claims": [
+        "The paper experimentally quantifies the electrode-distance change."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "generated gas will change the distance between the electrodes",
+          "support": "Gas changes electrode distance; the next sentences link nonuniform recharge current to plating."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 3,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "causal_consumption_drying_current",
+      "category": "causal_chain",
+      "question": "What can electrolyte consumption lead to through local drying when the aged cell is recharged?",
+      "hl_keywords": [
+        "causal chain",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Electrolyte Consumption",
+        "Local Electrolyte Drying",
+        "Local Potential Change",
+        "Local Current Nonuniformity"
+      ],
+      "expected_entities": [
+        "Electrolyte Consumption",
+        "Local Electrolyte Drying",
+        "Local Potential Change",
+        "Local Current Nonuniformity"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrolyte Consumption",
+          "relation_type": "causes",
+          "accepted_relation_types": {"leads_to": 1, "results_in": 1},
+          "target": "Local Electrolyte Drying",
+          "directionality": "directed",
+          "evidence_ids": ["e1"]
+        },
+        {
+          "source": "Local Electrolyte Drying",
+          "relation_type": "causes",
+          "accepted_relation_types": {"leads_to": 1, "results_in": 1},
+          "target": "Local Potential Change",
+          "directionality": "directed",
+          "evidence_ids": ["e2"]
+        },
+        {
+          "source": "Local Potential Change",
+          "relation_type": "leads_to",
+          "accepted_relation_types": {"causes": 1, "results_in": 1},
+          "target": "Local Current Nonuniformity",
+          "directionality": "directed",
+          "evidence_ids": ["e2"]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": ["causes", "causes", "leads_to"],
+          "accepted_relation_types": [
+            {"leads_to": 1, "results_in": 1},
+            {"leads_to": 1, "results_in": 1},
+            {"causes": 1, "results_in": 1}
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Electrolyte Consumption",
+            "Local Electrolyte Drying",
+            "Local Potential Change",
+            "Local Current Nonuniformity"
+          ]
+        }
+      ],
+      "expected_answer": "Electrolyte consumption locally dries the anode. In the proposed mechanism, local drying changes local potential; during subsequent recharge the local current becomes nonuniform. The first link is stated in section 3.1 and the remaining links in the discussion.",
+      "unacceptable_claims": [
+        "Local drying was independently manipulated to prove its effect on current distribution."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 4,
+          "section": "3.1. Electrochemical Performances",
+          "anchor": "electrolyte consumption will cause the anode to dry up locally",
+          "support": "Electrolyte consumption is stated as the cause of local anode drying."
+        },
+        {
+          "id": "e2",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "local electrolyte drying will cause the local potential to change",
+          "support": "Drying changes local potential; the following sentence links this to nonuniform recharge current."
+        }
+      ]
+    },
+    {
+      "top_k": 40,
+      "chunk_top_k": 20,
+      "hop_depth": 2,
+      "chain_top_k": 20,
+      "chain_fanout": 10,
+      "chain_top_k_per_prompt": 6,
+      "min_relation_importance": 0.35,
+      "expected_documents": [
+        "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+      ],
+      "expected_edge_direction": "out",
+      "expected_auto_strategy": "combined",
+      "path_requirement": "all",
+      "id": "synthesis_two_side_reaction_routes",
+      "category": "synthesis",
+      "question": "Compare two distinct routes by which electrolyte degradation contributes to SEI thickening.",
+      "hl_keywords": [
+        "synthesis",
+        "high-temperature aging"
+      ],
+      "ll_keywords": [
+        "Electrolyte Decomposition",
+        "Lithium Plating",
+        "SEI Film Thickening"
+      ],
+      "expected_entities": [
+        "Electrolyte Decomposition",
+        "Lithium Plating",
+        "SEI Film Thickening"
+      ],
+      "expected_relations": [
+        {
+          "source": "Electrolyte Decomposition",
+          "relation_type": "produces",
+          "accepted_relation_types": {
+            "forms": 1,
+            "generates": 1
+          },
+          "target": "Electrolyte Decomposition Products",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Electrolyte Decomposition Products",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "SEI Film Thickening",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Lithium Plating",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "Lithium–Electrolyte Side Reactions",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        },
+        {
+          "source": "Lithium–Electrolyte Side Reactions",
+          "relation_type": "causes",
+          "accepted_relation_types": {
+            "leads_to": 1,
+            "results_in": 1
+          },
+          "target": "SEI Film Thickening",
+          "directionality": "directed",
+          "evidence_ids": [
+            "e1"
+          ]
+        }
+      ],
+      "must_include": [],
+      "expected_directed_paths": [
+        {
+          "relation_types": [
+            "produces",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "forms": 1,
+              "generates": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Electrolyte Decomposition",
+            "Electrolyte Decomposition Products",
+            "SEI Film Thickening"
+          ]
+        },
+        {
+          "relation_types": [
+            "causes",
+            "causes"
+          ],
+          "accepted_relation_types": [
+            {
+              "leads_to": 1,
+              "results_in": 1
+            },
+            {
+              "leads_to": 1,
+              "results_in": 1
+            }
+          ],
+          "source_documents": [
+            "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging"
+          ],
+          "require_citations": true,
+          "nodes": [
+            "Lithium Plating",
+            "Lithium–Electrolyte Side Reactions",
+            "SEI Film Thickening"
+          ]
+        }
+      ],
+      "expected_answer": "Route A: decomposition produces gas/drying, nonuniform recharge current and plating; plated lithium reacts with electrolyte and thickens SEI. Route B: electrolyte decomposition products also directly contribute to SEI thickening. They converge at SEI growth; do not assert that all SEI growth requires plating.",
+      "unacceptable_claims": [
+        "All SEI growth requires prior lithium plating."
+      ],
+      "evidence": [
+        {
+          "id": "e1",
+          "document": "aging",
+          "page": 8,
+          "section": "3.4. Discussion",
+          "anchor": "decomposition products of the electrolyte",
+          "support": "Discussion explicitly describes plating-mediated and decomposition-product contributions."
+        }
+      ]
+    }
+  ]
+}
