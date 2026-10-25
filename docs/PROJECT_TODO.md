@@ -26,6 +26,39 @@ New long-term goals require explicit user input before changing the roadmap.
 
 ## Ordered Queue
 
+### Exploratory Discovery Demo (explicit 2026-10-25 priority)
+
+Detailed plan: [Exploratory Discovery Plan](EXPLORATORY_DISCOVERY_PLAN.md).
+This reprioritization does not cancel the quality, ontology or ingestion queue
+below. No bulk re-extraction is authorized.
+
+- [x] **EXP-01: Bounded read-only MCP prototype.** Add cross-area 2-4-hop
+  path candidates with per-edge source chunks and explicit unreviewed status.
+  Keep normal retrieval and existing MCP tools unchanged. Done locally when
+  source/direction/predicate and domain filtering have focused tests; live
+  Staging operation remains unverified.
+- [ ] **EXP-02: Staging smoke and top-20 expert review.** Deploy backend and
+  gateway together, confirm source chunks against originals, and have experts
+  score 20 diverse candidates using the review sheet. Report support and
+  interest separately, plus latency and failed/empty seeds. No Production
+  promotion until results are reviewed.
+- [ ] **EXP-03: Reviewed domain taxonomy and entity disambiguation.** Replace
+  provisional single-label keywords with versioned multi-label battery subject
+  areas and source-aware concept mapping. Done when unknown/ambiguous nodes
+  remain explicit and layout coordinates cannot change ranking.
+- [ ] **EXP-04: Sentence-level evidence and condition checks.** Propose source
+  spans, check direction, negation, sign and incompatible conditions, and retain
+  full chunks for review. Done when false causal bridges found in EXP-02 fail
+  on frozen artifacts without silently removing valid paths.
+- [ ] **EXP-05: Path diversity and five-hop pilot.** Compare reranking and
+  bounded search on reviewed seeds, then permit five hops if evidence support,
+  interest and operating cost warrant it. Keep shorter valid paths visible.
+- [ ] **EXP-06: Human review with optional model triage.** Show each assertion,
+  proposed source span and complete path; store immutable human labels by
+  assertion/extraction revision. Model suggestions are optional, shown after
+  some blind human judgments, and never counted as human verification. Keep a
+  random audit sample in addition to the high-priority review queue.
+
 ### Quality Benchmark Triage (before further extraction changes)
 
 The last shared v2 Staging result was Overall 38.89, Graph 64.31 (Entity

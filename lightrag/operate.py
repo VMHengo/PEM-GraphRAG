@@ -121,6 +121,8 @@ def _directed_path_to_diagnostic(path: DirectedPath) -> dict[str, Any]:
                 "relation_importance": edge.relation_importance,
                 "chain_role": edge.chain_role,
                 "description": edge.description,
+                "source_ids": list(edge.source_ids),
+                "file_paths": list(edge.file_paths),
             }
             for edge in path.edges
         ],

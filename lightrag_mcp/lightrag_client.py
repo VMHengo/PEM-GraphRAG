@@ -407,6 +407,46 @@ async def query_lightrag(
     return mapped_response
 
 
+async def query_exploration_data(
+    *,
+    base_url: str,
+    start: str,
+    hop_depth: int,
+    api_key: str | None = None,
+    timeout: float = 120,
+) -> dict[str, Any]:
+    """Fetch structured directed paths without answer generation."""
+
+    if not 3 <= len(start.strip()) <= 200:
+        raise ValueError("start must contain 3 to 200 characters")
+    if isinstance(hop_depth, bool) or not 2 <= hop_depth <= 4:
+        raise ValueError("hop_depth must be between 2 and 4")
+    payload, _, _ = _build_query_payload(
+        question=f"What can {start.strip()} cause or influence downstream?",
+        mode="mix",
+        retrieval_strategy="directed",
+        edge_direction="out",
+        directed_hop_depth=hop_depth,
+        directed_chain_top_k=100,
+        directed_min_importance=0.45,
+    )
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{base_url.rstrip('/')}/query/data",
+                json=payload,
+                headers=_headers(api_key),
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise LightRAGQueryError(
+            f"LightRAG exploration failed with HTTP {exc.response.status_code}"
+        ) from exc
+    except httpx.RequestError as exc:
+        raise LightRAGQueryError("LightRAG exploration service is unavailable") from exc
+    return response.json()
+
+
 async def search_documents(
     *,
     base_url: str,

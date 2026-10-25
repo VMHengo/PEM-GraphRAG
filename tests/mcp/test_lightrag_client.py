@@ -18,6 +18,7 @@ from lightrag_mcp.lightrag_client import (
     normalize_mode,
     normalize_retrieval_strategy,
     query_lightrag,
+    query_exploration_data,
 )
 
 
@@ -164,6 +165,52 @@ def test_query_lightrag_sends_explicit_chain_direction(monkeypatch):
     }
     assert result["retrieval"]["edge_direction"] == "in"
     assert result["retrieval_diagnostics"]["directed_paths"]["path_count"] == 1
+
+
+def test_query_exploration_data_uses_read_only_structured_endpoint(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"status": "success", "data": {}, "metadata": {}}
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            captured["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, json, headers):
+            captured.update(url=url, payload=json, headers=headers)
+            return FakeResponse()
+
+    monkeypatch.setattr("lightrag_mcp.lightrag_client.httpx.AsyncClient", FakeClient)
+    result = asyncio.run(query_exploration_data(
+        base_url="http://lightrag:9621", start="Electrode Calendering",
+        hop_depth=4, api_key="test-key",
+    ))
+    assert result["status"] == "success"
+    assert captured["url"] == "http://lightrag:9621/query/data"
+    assert captured["headers"] == {"X-API-Key": "test-key"}
+    assert captured["payload"]["retrieval_strategy"] == "directed"
+    assert captured["payload"]["edge_direction"] == "out"
+    assert captured["payload"]["hop_depth"] == 4
+
+
+@pytest.mark.parametrize("depth", [1, 5, True])
+def test_query_exploration_data_rejects_out_of_scope_depth(depth):
+    with pytest.raises(ValueError):
+        asyncio.run(query_exploration_data(
+            base_url="http://lightrag:9621", start="Electrode Calendering",
+            hop_depth=depth,
+        ))
 
 
 def test_map_lightrag_response_returns_answer_references_and_mode():

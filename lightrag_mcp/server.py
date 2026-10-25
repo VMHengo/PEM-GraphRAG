@@ -11,10 +11,12 @@ from starlette.routing import Mount, Route
 
 from lightrag_mcp.auth import BearerAuthMiddleware
 from lightrag_mcp.config import get_config
+from lightrag_mcp.exploration import format_exploration
 from lightrag_mcp.lightrag_client import (
     LightRAGQueryError,
     fetch_document_context,
     query_lightrag,
+    query_exploration_data,
     search_documents,
 )
 
@@ -126,6 +128,40 @@ async def trace_pem_graphrag_chain(
             "edge_direction": direction,
             "hop_depth": hop_depth,
         }
+
+
+@mcp.tool()
+async def explore_pem_connections(
+    start: Annotated[
+        str,
+        Field(min_length=3, max_length=200, description="Exact starting graph node name."),
+    ],
+    hop_depth: Annotated[
+        int,
+        Field(ge=2, le=4, description="Maximum directed path length."),
+    ] = 3,
+    limit: Annotated[
+        int,
+        Field(ge=1, le=10, description="Maximum diverse cross-domain connections."),
+    ] = 5,
+) -> dict:
+    """Explore unreviewed cross-domain connections with per-hop source chunks.
+
+    Present each result as an indirect path, never as a verified direct X-to-Z
+    relation. Show every hop and its source; flag missing or unclear evidence.
+    """
+
+    try:
+        payload = await query_exploration_data(
+            base_url=config.lightrag_base_url,
+            start=start,
+            hop_depth=hop_depth,
+            api_key=config.lightrag_api_key,
+            timeout=config.lightrag_timeout,
+        )
+        return format_exploration(payload, start=start.strip(), limit=limit)
+    except (LightRAGQueryError, ValueError) as exc:
+        return {"error": str(exc), "start": start}
 
 
 @mcp.tool()

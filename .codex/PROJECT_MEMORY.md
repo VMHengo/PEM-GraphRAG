@@ -21,7 +21,11 @@ Keep secrets and private document content out of memory.
   `lightrag/directed_retrieval.py`; graph storage: `lightrag/kg/neo4j_impl.py`.
 - Batch: `lightrag/api/azure_batch.py`; evaluation: `lightrag/evaluation/`.
 - Directed/combined/auto retrieval is optional; public directed paths are
-  bounded to 1-3 hops. Neo4j pair-based merge can lose parallel assertions.
+  bounded to 1-5 hops (default 2). Neo4j pair-based merge needs per-assertion
+  handling for parallel claims.
+- Exploratory MCP prototype: `explore_pem_connections` uses `/query/data` and
+  provisional domain labels in `lightrag_mcp/exploration.py`; see
+  `docs/EXPLORATORY_DISCOVERY_PLAN.md`. It is not expert-validated.
 
 ## Extraction And Batch State
 
@@ -38,6 +42,8 @@ Keep secrets and private document content out of memory.
   samples; Validation uses all chunks without gleaning; Final includes gleaning.
 - Scoring v2 excludes Metadata from Overall. Entity precision and answer-level
   support remain limited; directed-path scores are not end-to-end answer quality.
+- The product North Star now prioritizes evidence-visible, cross-subject-area
+  discovery of *unreviewed* indirect battery-engineering connections.
 
 ## Ontology Material
 

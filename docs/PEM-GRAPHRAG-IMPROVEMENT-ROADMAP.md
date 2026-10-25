@@ -5,7 +5,24 @@ ideas below are possible means to reach them. The ordered,
 implementable tasks live in [Project TODO](PROJECT_TODO.md); technical design
 and research details live in the linked plans.
 
-## North Star: Evidence-Grounded Battery Engineering Multi-Hop Retrieval
+## North Star: Exploratory Battery Engineering Discovery
+
+The user-defined product goal (2026-10-25) is an exploratory tool for finding
+previously unknown, interesting connections across battery-engineering topics.
+A user can start from a concept, inspect diverse directed multi-hop routes to
+other subject areas, and verify every hop in its source. A path proposes an
+investigation; it does not create a proven direct causal edge between its
+endpoints. The graph map should group related subject areas spatially, while
+interestingness is measured independently of screen coordinates. See
+[Exploratory Discovery Plan](EXPLORATORY_DISCOVERY_PLAN.md).
+
+The near-term milestone is a bounded 2-4-hop, read-only MCP demonstration
+on Staging, using provisional subject-area labels and source chunks. A small
+expert review of the top 20 candidates determines whether it is useful. Five
+hops, calibrated ranking, a full visual map and Human/Model-in-the-Loop review
+follow only after this pilot; no bulk re-extraction is a prerequisite.
+
+## Evidence-Grounded Battery Engineering Multi-Hop Retrieval
 
 PEM GraphRAG should help battery engineers discover and check meaningful
 connections across documents: how manufacturing steps and process parameters
@@ -104,6 +121,9 @@ specific multi-hop retrieval and useful causal chains the primary quality
 goal. The user then added market-ready product quality, a ChatGPT connector
 through MCP, and seamless developer/ingestion and end-user experiences as
 long-term product goals.
+Decision 2026-10-25: exploratory, cross-subject-area connection discovery is
+the primary user-facing purpose of the multi-hop capability. Expert-reviewed
+novelty and traceable per-hop evidence matter alongside answer accuracy.
 
 ## Status Update: 2026-10-19
 
@@ -117,7 +137,7 @@ reuse, effort estimates, and acceptance tests.
 | Area | Verified code status | Remaining work |
 | --- | --- | --- |
 | Source/download URLs (1.4) | Editing, REST reference enrichment and MCP citation mapping implemented | Claim-level/page-level attribution and link availability checks |
-| Directed retrieval | Optional normal/directed/combined/auto, bounded Neo4j BFS, citations | Predicate alignment, query relevance, assertion preservation; currently max 3 hops |
+| Directed retrieval | Optional normal/directed/combined/auto, bounded Neo4j BFS, citations | Predicate alignment, query relevance and evidence validation; current controls allow 1-5 hops, not verified 5-hop quality |
 | WebUI batch controls (3.3) | Start/status/import and Advance All bulk operations; Batch JSON output validation and submission manifests implemented | Per-chunk retry and idempotent recovery after graph merge |
 | Evaluation (3.5) | Versioned benchmarks, partial/exact scoring, saved runs and notes | Precision, claim/condition checks and controlled strategy answer comparisons |
 | Prompt comparison | Isolated retained-chunk candidates, three cost modes and gated promotion implemented | Representative evidence-aware sampling, held-out evaluation, optional two-stage adapter |

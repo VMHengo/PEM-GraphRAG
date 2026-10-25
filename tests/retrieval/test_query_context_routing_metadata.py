@@ -312,6 +312,8 @@ async def test_directed_path_sources_are_merged_into_citeable_references(monkeyp
     path_diagnostic = result.raw_data["metadata"]["directed_paths"]["paths"][0]
     assert path_diagnostic["reference_ids"] == ["1"]
     assert path_diagnostic["unresolved_source_ids"] == []
+    assert path_diagnostic["edges"][0]["source_ids"] == ["chunk-coating"]
+    assert path_diagnostic["edges"][0]["file_paths"] == ["defects.pdf"]
 
 
 @pytest.mark.asyncio
