@@ -43,6 +43,7 @@ import { errorMessage } from '@/lib/utils'
 import { ChevronDownIcon, CircleHelpIcon, PencilIcon, PlayIcon, RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import PromptExperimentManager from '@/features/PromptExperimentManager'
+import { evaluationEntityLabel } from '@/features/evaluationEntityLabel'
 
 const modeDescriptions: Record<EvaluationRunMode, string> = {
   graph: 'Graph metadata only, no query calls',
@@ -230,15 +231,21 @@ function EntityChecks({ checks }: { checks: Array<Record<string, any>> }) {
     <div>
       <div className="text-muted-foreground mb-2 text-xs font-medium uppercase">Expected Entities</div>
       <div className="space-y-2">
-        {checks.map((check, index) => (
-          <div key={`${check.expected}-${index}`} className="rounded border px-3 py-2 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-medium">{check.expected}</span>
-              <MatchStatus score={check.score} exact={check.passed} />
+        {checks.map((check, index) => {
+          const expected = evaluationEntityLabel(check.expected)
+          return (
+            <div key={`${expected.name}-${index}`} className="rounded border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{expected.name}</span>
+                <MatchStatus score={check.score} exact={check.passed} />
+              </div>
+              {expected.aliases.length > 0 && (
+                <div className="text-muted-foreground mt-1 text-xs">Aliases: {expected.aliases.join(', ')}</div>
+              )}
+              {check.matched && <div className="text-muted-foreground mt-1 text-xs">Matched: {check.matched}</div>}
             </div>
-            {check.matched && <div className="text-muted-foreground mt-1 text-xs">Matched: {check.matched}</div>}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
