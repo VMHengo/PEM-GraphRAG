@@ -68,11 +68,17 @@ before paying for a broad re-run.
   Implemented in scorer v2.1.0: expand stored assertions with legacy fallback,
   report physical-pair and assertion counts, and fetch Neo4j edges once via
   directed MATCH. Focused reverse/pair tests and 96 evaluation tests pass.
-- [ ] **QUAL-03: Resolve Directed Exact semantics.** `Directed Exact` ignores
+- [x] **QUAL-03: Resolve Directed Exact semantics.** `Directed Exact` ignores
   reviewed `node_aliases` and `accepted_relation_types`, while semantic
   scoring honors them. Either accept full-credit reviewed alternatives or
   rename the metric to representation-exact; never accept reversed causes.
   Done when alias, predicate, direction and citation tests match the name.
+  Scorer v2.2.0 now accepts only contiguous paths with exact labels or
+  explicitly reviewed full-credit aliases/predicates. Semantic edge direction
+  is checked when endpoints are present; documents and citations remain
+  required when configured. Offline replay of the frozen
+  15-case aging Validation run finds two reviewed-exact paths instead of zero;
+  the stored v2.1.0 result is unchanged.
 - [ ] **QUAL-04: Review gold path granularity.** Audit the 20 gold paths in
   18 stress cases against PDF evidence. In the aging source, gas affects
   electrode spacing before current nonuniformity; the three-hop gold skips
@@ -115,6 +121,8 @@ before paying for a broad re-run.
   shared, query-specific predicate policy on held-out causal/process cases.
   Done when supported-path recall rises without unacceptable false positives,
   latency or context growth. Normal retrieval stays the default.
+  Partial: causal traversal now includes `increases`, which appears in the
+  aging graph. Other predicates and held-out recall/latency checks remain open.
 - [ ] **QUAL-09: Audit historic extraction completeness offline.** A local
   2026-10-16 Staging review found `status=incomplete` in 10/10 sampled
   aging-paper Batch outputs and 60/74 parameter-paper outputs at a 1,200-token

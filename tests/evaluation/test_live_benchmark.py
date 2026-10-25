@@ -54,6 +54,75 @@ def test_directed_path_match_can_require_resolved_source_citations():
     assert checks[-1]["passed"] is False
 
 
+def test_directed_exact_honors_reviewed_per_hop_alternatives_and_aliases():
+    expected = {
+        "nodes": ["Electrolyte Decomposition", "Gas Generation", "Lithium Plating"],
+        "node_aliases": {"1": ["Gas Evolution"]},
+        "relation_types": ["causes", "causes"],
+        "accepted_relation_types": [
+            {"results_in": 1},
+            {"leads_to": 1},
+        ],
+        "source_documents": ["aging.pdf"],
+        "require_citations": True,
+    }
+    actual = {
+        "nodes": ["Precursor", "Electrolyte Decomposition", "Gas Evolution", "Lithium Plating"],
+        "edges": [
+            {"source": "Precursor", "target": "Electrolyte Decomposition", "relation_type": "causes"},
+            {"source": "Electrolyte Decomposition", "target": "Gas Evolution", "relation_type": "results_in"},
+            {"source": "Gas Evolution", "target": "Lithium Plating", "relation_type": "leads_to"},
+        ],
+        "file_paths": ["aging.pdf"],
+        "reference_ids": ["chunk-3"],
+    }
+
+    assert _directed_path_matches(expected, actual, traversal_direction="out")[0]
+    assert not _directed_path_matches(
+        {**expected, "accepted_relation_types": [{"results_in": 0.9}, {"leads_to": 1}]},
+        actual,
+        traversal_direction="out",
+    )[0]
+    assert not _directed_path_matches(
+        {**expected, "node_aliases": {}}, actual, traversal_direction="out"
+    )[0]
+    assert not _directed_path_matches(
+        expected, {**actual, "reference_ids": []}, traversal_direction="out"
+    )[0]
+
+
+def test_directed_exact_rejects_reverse_or_disconnected_causal_edges():
+    expected = {"nodes": ["A", "B", "C"], "relation_types": ["causes", "causes"]}
+    actual = {
+        "nodes": ["A", "B", "C"],
+        "edges": [
+            {"source": "B", "target": "A", "relation_type": "causes"},
+            {"source": "B", "target": "C", "relation_type": "causes"},
+        ],
+    }
+    assert not _directed_path_matches(expected, actual, traversal_direction="out")[0]
+
+    separated = {
+        "nodes": ["A", "B", "Detour", "C"],
+        "edges": [
+            {"source": "A", "target": "B", "relation_type": "causes"},
+            {"source": "B", "target": "Detour", "relation_type": "causes"},
+            {"source": "Detour", "target": "C", "relation_type": "causes"},
+        ],
+    }
+    assert not _directed_path_matches(expected, separated, traversal_direction="out")[0]
+
+
+def test_directed_exact_accepts_inbound_traversal_of_forward_cause():
+    expected = {"traversal_nodes": ["Effect", "Cause"], "relation_types": ["causes"]}
+    actual = {
+        "nodes": ["Effect", "Cause"],
+        "edges": [{"source": "Cause", "target": "Effect", "relation_type": "causes"}],
+    }
+    assert _directed_path_matches(expected, actual, traversal_direction="in")[0]
+    assert not _directed_path_matches(expected, actual, traversal_direction="out")[0]
+
+
 def test_quality_gates_report_a_failed_threshold():
     gates = evaluate_quality_gates(
         {"quality_gates": {"min_scores": {"directed": 90}}},

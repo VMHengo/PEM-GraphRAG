@@ -91,6 +91,7 @@ async def test_query_context_exposes_root_cause_route_metadata(monkeypatch):
             "leads_to",
             "results_in",
             "degrades",
+            "increases",
         ),
         "matched_rule": "root_cause",
     }

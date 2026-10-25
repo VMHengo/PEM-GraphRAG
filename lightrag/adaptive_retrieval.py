@@ -32,6 +32,7 @@ CAUSAL_RELATIONS = (
     "leads_to",
     "results_in",
     "degrades",
+    "increases",
 )
 PRODUCTION_RELATIONS = (
     "precedes",

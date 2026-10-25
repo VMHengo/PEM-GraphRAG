@@ -71,7 +71,9 @@ def text_match(
         if overlap and overlap <= _GENERIC_ENTITY_TOKENS:
             continue
         if expected_tokens <= actual_tokens or actual_tokens <= expected_tokens:
-            if len(expected_tokens) == 1 and len(actual_tokens) > 2:
+            if (len(expected_tokens) == 1 and len(actual_tokens) > 2) or (
+                len(actual_tokens) == 1 and len(expected_tokens) > 2
+            ):
                 continue
             best = max(best, 0.85)
             continue

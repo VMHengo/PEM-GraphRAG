@@ -151,6 +151,55 @@ async def test_incoming_bfs_traces_a_root_cause_chain_in_reverse_semantic_order(
 
 @pytest.mark.asyncio
 @pytest.mark.offline
+async def test_causal_bfs_traverses_increases_but_not_unrelated_predicates():
+    graph = {
+        "Cell Aging": [
+            {
+                "semantic_src_id": "Cell Aging",
+                "semantic_tgt_id": "Resistance",
+                "relation_type": "increases",
+                "directionality": "directed",
+                "relation_importance": 0.9,
+            },
+            {
+                "semantic_src_id": "Cell Aging",
+                "semantic_tgt_id": "Paper",
+                "relation_type": "published_by",
+                "directionality": "directed",
+                "relation_importance": 0.9,
+            },
+        ],
+        "Resistance": [
+            {
+                "semantic_src_id": "Resistance",
+                "semantic_tgt_id": "Irreversible Heat",
+                "relation_type": "causes",
+                "directionality": "directed",
+                "relation_importance": 0.9,
+            }
+        ],
+    }
+
+    async def provider(nodes: Sequence[str]):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(retrieval_strategy="auto", hop_depth=2)
+    paths = await find_directed_paths(
+        ["Cell Aging"],
+        provider,
+        route=_route("What can cell aging lead to?", param),
+        query_param=param,
+    )
+
+    assert any(
+        path.nodes == ("Cell Aging", "Resistance", "Irreversible Heat")
+        for path in paths
+    )
+    assert all("Paper" not in path.nodes for path in paths)
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
 async def test_unknown_edges_remain_traversable_for_backward_compatibility():
     async def provider(nodes: Sequence[str]):
         return {

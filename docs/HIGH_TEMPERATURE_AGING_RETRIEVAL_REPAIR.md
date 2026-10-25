@@ -39,6 +39,23 @@ inverse relations, false entity matches, and benchmark scoring. A local replay
 of the supplied extracted chain put its three-hop path first within top 20.
 This replay is not a Staging Neo4j or answer-quality result.
 
+## Validation follow-up (scorer v2.2.0)
+
+The one-document isolated Validation candidate contains 210 physical edge
+pairs and 223 assertions. Its graph includes the reviewed decomposition -> gas
+generation -> local current nonuniformity -> plating chain, but the saved
+v2.1.0 run reported Directed Exact 0 because it compared literal `causes`
+labels against full-credit `results_in` and `leads_to` alternatives. Replaying
+its stored paths through the v2.2.0 exact matcher finds two of 15 directed
+cases with reviewed-exact paths, without another model call. Historical saved
+scores remain immutable; rerun the benchmark to see the new metric in WebUI.
+
+Causal traversal now admits `increases` edges. The entity scorer no longer
+credits a lone token such as `Voltage` for a longer technical entity name
+unless the benchmark explicitly declares that alias. These changes do not
+repair genuinely absent graph concepts, and the added predicate still needs
+held-out Staging recall/latency validation before broadening the allowlist.
+
 Before paying for another extraction, deploy only to Staging and run the same
 benchmark against the frozen graph. Compare per-case path nodes, direction,
 evidence chunks, score components, path-depth counts, latency and citations

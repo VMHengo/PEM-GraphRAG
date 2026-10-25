@@ -19,11 +19,13 @@ from typing import Any, Literal
 
 from lightrag.base import QueryParam
 from lightrag.evaluation.semantic_matching import (
+    _path_accepted_types,
+    edge_semantics,
     path_match as semantic_path_match,
     relation_match as semantic_relation_match,
     text_match as semantic_text_match,
 )
-from lightrag.relation_ontology import canonical_relation_type
+from lightrag.relation_ontology import canonical_relation_type, predicate_similarity
 from lightrag.evaluation.ontology_diagnostics import score_ontology_edges
 from lightrag.relation_assertions import (
     parse_relation_assertions,
@@ -42,7 +44,7 @@ _DIRECTED_STRATEGIES: tuple[DirectedStrategy, ...] = (
     "auto",
 )
 
-_SCORING_VERSION = "2.1.0"
+_SCORING_VERSION = "2.2.0"
 _SCORING_PROFILES: dict[str, dict[str, float]] = {
     "graph_only": {"graph": 100.0},
     "core": {"graph": 80.0, "retrieval": 20.0},
@@ -778,49 +780,84 @@ def _directed_query_param(
     return param
 
 
-def _sequence_matches(expected: list[Any], actual: list[Any]) -> bool:
-    """Allow an expected chain to occur within a longer bounded path."""
-
-    if not expected:
-        return True
-    next_expected = 0
-    for actual_value in actual:
-        if term_matches(expected[next_expected], actual_value):
-            next_expected += 1
-            if next_expected == len(expected):
-                return True
-    return False
-
-
 def _directed_path_matches(
-    expected: dict[str, Any], actual: dict[str, Any]
+    expected: dict[str, Any], actual: dict[str, Any], *, traversal_direction: str = "both"
 ) -> tuple[bool, list[dict[str, Any]]]:
-    """Score a path by order, predicate sequence, and optional provenance."""
+    """Require one contiguous, directionally valid, reviewed-exact chain."""
 
     checks: list[dict[str, Any]] = []
     expected_nodes = _as_list(expected.get("traversal_nodes") or expected.get("nodes"))
     actual_nodes = _as_list(actual.get("nodes"))
+    expected_relation_types = _as_list(expected.get("relation_types"))
+    actual_edges = [
+        edge for edge in _as_list(actual.get("edges")) if isinstance(edge, dict)
+    ]
+    aliases = expected.get("node_aliases")
+    aliases = aliases if isinstance(aliases, dict) else {}
+
+    node_match = False
+    relation_match = False
+    valid_shape = len(expected_nodes) == len(expected_relation_types) + 1
+    for offset in range(max(0, len(actual_edges) - len(expected_relation_types) + 1)):
+        if not valid_shape or offset + len(expected_nodes) > len(actual_nodes):
+            continue
+        nodes_ok = all(
+            semantic_text_match(
+                node,
+                actual_nodes[offset + index],
+                aliases=aliases.get(str(index)),
+            ).exact
+            for index, node in enumerate(expected_nodes)
+        )
+        node_match |= nodes_ok
+        if not nodes_ok:
+            continue
+
+        edges_ok = True
+        for index, expected_type in enumerate(expected_relation_types):
+            edge = actual_edges[offset + index]
+            source, target, relation_type = edge_semantics(edge)
+            if not predicate_similarity(
+                expected_type,
+                relation_type,
+                accepted_relation_types=_path_accepted_types(expected, index),
+            ).exact:
+                edges_ok = False
+                break
+            if source and target:
+                traversal_source = canonical_text(actual_nodes[offset + index])
+                traversal_target = canonical_text(actual_nodes[offset + index + 1])
+                semantic_pair = (canonical_text(source), canonical_text(target))
+                forward = semantic_pair == (traversal_source, traversal_target)
+                backward = semantic_pair == (traversal_target, traversal_source)
+                if not (
+                    (traversal_direction == "out" and forward)
+                    or (traversal_direction == "in" and backward)
+                    or (traversal_direction == "both" and (forward or backward))
+                ):
+                    edges_ok = False
+                    break
+        relation_match |= edges_ok
+        if edges_ok:
+            break
     checks.append(
         {
             "kind": "nodes",
             "expected": expected_nodes,
             "actual": actual_nodes,
-            "passed": _sequence_matches(expected_nodes, actual_nodes),
+            "passed": node_match,
         }
     )
 
-    expected_relation_types = _as_list(expected.get("relation_types"))
     actual_relation_types = [
-        edge.get("relation_type")
-        for edge in _as_list(actual.get("edges"))
-        if isinstance(edge, dict)
+        edge.get("relation_type") for edge in actual_edges
     ]
     checks.append(
         {
             "kind": "relation_types",
             "expected": expected_relation_types,
             "actual": actual_relation_types,
-            "passed": _sequence_matches(expected_relation_types, actual_relation_types),
+            "passed": relation_match,
         }
     )
 
@@ -1006,7 +1043,11 @@ async def score_directed_retrieval_cases(
                             best_partial = partial
                             best_actual = actual_path
                         strict_passed, candidate_checks = _directed_path_matches(
-                            expected_path, actual_path
+                            expected_path,
+                            actual_path,
+                            traversal_direction=str(
+                                case.get("expected_edge_direction") or "both"
+                            ),
                         )
                         if strict_passed:
                             strict_actual = actual_path

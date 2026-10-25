@@ -35,6 +35,18 @@ def test_auto_routes_root_cause_queries_inward(query: str, expected_type: str):
 
 
 @pytest.mark.offline
+def test_causal_router_includes_increases_without_widening_other_routes():
+    causal = route_retrieval_query(
+        "What causes higher irreversible heat?", QueryParam(retrieval_strategy="auto")
+    )
+    production = route_retrieval_query(
+        "Which manufacturing steps produce the cell?", QueryParam(retrieval_strategy="auto")
+    )
+    assert "increases" in causal.target_relation_types
+    assert "increases" not in production.target_relation_types
+
+
+@pytest.mark.offline
 @pytest.mark.parametrize(
     "query",
     [

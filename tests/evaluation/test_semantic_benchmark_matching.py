@@ -90,6 +90,14 @@ def test_generic_shared_tokens_do_not_credit_different_battery_concepts():
     assert text_match("Graphite", "Graphite Anode").score == 0.85
 
 
+def test_single_token_does_not_match_a_longer_engineering_concept():
+    assert text_match("IC Peak Shift to Lower Voltage", "Voltage").score == 0
+    assert text_match("Solid-State Lithium Diffusion", "Lithium").score == 0
+    assert text_match(
+        "IC Peak Shift to Lower Voltage", "Voltage", aliases=["Voltage"]
+    ).exact
+
+
 def test_reviewed_structural_inverse_is_credited_but_reverse_cause_is_not():
     expected = {
         "source": "Pouch Lithium-Ion Cell",
