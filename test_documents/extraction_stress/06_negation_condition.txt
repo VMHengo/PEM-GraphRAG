@@ -1,0 +1,1 @@
+At 25 C, the tested electrolyte additive did not increase gas generation. At 70 C, electrolyte decomposition produced gas generation in the pouch cell. No gas-generation increase was attributed to the additive at either temperature.

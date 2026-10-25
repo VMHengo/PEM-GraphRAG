@@ -1,0 +1,1 @@
+During adiabatic discharge, total heat Q equals irreversible heat Qi plus reversible heat Qr: Q = Qi + Qr. Irreversible heat arises from internal resistance; reversible heat arises from reversible cell reactions. These two heat terms are components of total heat, not causes of one another.

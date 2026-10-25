@@ -1,0 +1,1 @@
+High-temperature storage of the pouch cell increased its DC resistance. The increase in DC resistance raised irreversible heat during the subsequent adiabatic discharge. Irreversible heat did not cause the earlier storage exposure.

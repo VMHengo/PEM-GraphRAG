@@ -1,0 +1,1 @@
+A previous fast-charge-aging study reported a decrease in total discharge heat. In this experiment, high-temperature cycling increased DC resistance, which increased irreversible heat during discharge. The fast-charge result is background literature, not a result of the high-temperature cycling experiment.

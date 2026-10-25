@@ -1,0 +1,176 @@
+{
+  "id": "pem_extraction_stress_v1",
+  "name": "PEM Extraction Stress: Direction and Evidence",
+  "description": "Nine isolated, synthetic battery-engineering passages testing entity boundaries, directed predicates, negation, ambiguity, composition, attribution, and a four-edge mechanism.",
+  "version": 1,
+  "benchmark_tier": "stress",
+  "source_directory": "test_documents/extraction_stress",
+  "scoring": {"profile": "graph_only"},
+  "evaluation_notes": [
+    "Synthetic, expert-authored passages; do not present them as published experimental evidence.",
+    "Select all nine completed source files in an isolated Prompt Experiment. Each file is intended to produce one chunk.",
+    "Questions are empty to avoid query and answer-generation calls. Case titles remain visible in the WebUI.",
+    "Graph scores measure expected coverage, not precision. Run scripts/evaluate_extraction_stress.py on the extraction artifact for per-document forbidden-edge checks.",
+    "Forbidden edges are narrowly reviewed errors, not an exhaustive closed-world annotation. Other extracted claims require manual evidence review.",
+    "The four-edge case checks extraction of adjacent assertions, not directed-path retrieval or answer quality."
+  ],
+  "document_scope": [
+    {"id": "aging_direction", "file": "01_aging_direction.txt"},
+    {"id": "indirect_porosity", "file": "02_indirect_porosity.txt"},
+    {"id": "ambiguous_this", "file": "03_ambiguous_this.txt"},
+    {"id": "heat_components", "file": "04_heat_components.txt"},
+    {"id": "passive_methods", "file": "05_passive_methods.txt"},
+    {"id": "negation_condition", "file": "06_negation_condition.txt"},
+    {"id": "background_attribution", "file": "07_background_attribution.txt"},
+    {"id": "four_hop_mechanism", "file": "08_four_hop_mechanism.txt"},
+    {"id": "signed_drying", "file": "09_signed_drying.txt"}
+  ],
+  "cases": [
+    {
+      "id": "aging_direction",
+      "title": "Aging, resistance, and irreversible heat",
+      "question": "",
+      "source_document": "aging_direction",
+      "evidence": [{"id": "e1", "anchor": "increased its DC resistance", "support": "Storage causes a resistance increase, followed by more irreversible heat."}],
+      "expected_entities": ["High-Temperature Storage", "DC Resistance", "Irreversible Heat"],
+      "expected_relations": [
+        {"source": "High-Temperature Storage", "relation_type": "increases", "target": "DC Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "DC Resistance", "relation_type": "increases", "target": "Irreversible Heat", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "DC Resistance", "relation_type": "increases", "target": "High-Temperature Storage", "reason": "Reverses the time and causal direction."},
+        {"source": "Irreversible Heat", "relation_type": "causes", "target": "High-Temperature Storage", "reason": "Explicitly denied in the text."}
+      ]
+    },
+    {
+      "id": "indirect_porosity",
+      "title": "Indirect subject and reduced porosity",
+      "question": "",
+      "source_document": "indirect_porosity",
+      "evidence": [{"id": "e1", "anchor": "This reduction in cathode porosity", "support": "The demonstrative refers to the decrease caused by calendering."}],
+      "expected_entities": ["Electrode Calendering", "Cathode Porosity", {"name": "Reduced Cathode Porosity", "aliases": ["Reduction In Cathode Porosity"]}, "Ionic Transport Resistance"],
+      "expected_relations": [
+        {"source": "Electrode Calendering", "relation_type": "decreases", "target": "Cathode Porosity", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Reduced Cathode Porosity", "source_aliases": ["Reduction In Cathode Porosity"], "relation_type": "increases", "target": "Ionic Transport Resistance", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Ionic Transport Resistance", "relation_type": "decreases", "target": "Electrode Calendering", "reason": "Reverses the process-to-outcome direction."},
+        {"source": "Cathode Porosity", "relation_type": "increases", "target": "Ionic Transport Resistance", "reason": "Loses the explicit reduced-porosity sign."}
+      ]
+    },
+    {
+      "id": "ambiguous_this",
+      "title": "Ambiguous demonstrative without invented cause",
+      "question": "",
+      "source_document": "ambiguous_this",
+      "evidence": [{"id": "e1", "anchor": "Calendering reduced electrode roughness", "support": "Only the calendering-to-roughness direction is unambiguous."}],
+      "expected_entities": ["Calendering", "Electrode Roughness", "Binder Formulation", "Contact Resistance"],
+      "expected_relations": [
+        {"source": "Calendering", "relation_type": "decreases", "target": "Electrode Roughness", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Calendering", "relation_type": "improves", "relation_types": ["causes", "affects", "leads_to", "results_in"], "target": "Contact Resistance", "reason": "The referent of 'This' is not identified."},
+        {"source": "Binder Formulation", "relation_type": "improves", "relation_types": ["causes", "affects", "leads_to", "results_in"], "target": "Contact Resistance", "reason": "The referent of 'This' is not identified."},
+        {"source": "Electrode Roughness", "relation_type": "improves", "relation_types": ["causes", "affects", "leads_to", "results_in"], "target": "Contact Resistance", "reason": "The referent of 'This' is not identified."}
+      ]
+    },
+    {
+      "id": "heat_components",
+      "title": "Heat balance is composition, not causation",
+      "question": "",
+      "source_document": "heat_components",
+      "evidence": [{"id": "e1", "anchor": "Q = Qi + Qr", "support": "Total heat has irreversible and reversible components."}],
+      "expected_entities": ["Total Heat", "Irreversible Heat", "Reversible Heat"],
+      "expected_relations": [
+        {"source": "Total Heat", "relation_type": "contains", "accepted_relation_types": {"has_component": 1}, "accepted_inverse_relation_types": {"part_of": 1}, "target": "Irreversible Heat", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Total Heat", "relation_type": "contains", "accepted_relation_types": {"has_component": 1}, "accepted_inverse_relation_types": {"part_of": 1}, "target": "Reversible Heat", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Irreversible Heat", "relation_type": "causes", "target": "Reversible Heat", "reason": "The equation expresses composition, not causation."},
+        {"source": "Reversible Heat", "relation_type": "causes", "target": "Irreversible Heat", "reason": "The equation expresses composition, not causation."},
+        {"source": "Irreversible Heat", "relation_type": "contains", "target": "Total Heat", "reason": "Reverses the part-whole orientation."}
+      ]
+    },
+    {
+      "id": "passive_methods",
+      "title": "Passive measurement verbs and orientation",
+      "question": "",
+      "source_document": "passive_methods",
+      "evidence": [{"id": "e1", "anchor": "was examined with scanning electron microscopy", "support": "The method measures morphology; the measured property does not measure the method."}],
+      "expected_entities": ["Electrode Morphology", {"name": "Scanning Electron Microscopy", "aliases": ["SEM"]}, "Surface Element Distributions", {"name": "Energy-Dispersive Spectroscopy", "aliases": ["EDS"]}, "Surface Chemical Composition", {"name": "X-Ray Photoelectron Spectroscopy", "aliases": ["XPS"]}],
+      "expected_relations": [
+        {"source": "Scanning Electron Microscopy", "source_aliases": ["SEM"], "relation_type": "measures", "accepted_relation_types": {"characterizes": 1, "examines": 1}, "target": "Electrode Morphology", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Energy-Dispersive Spectroscopy", "source_aliases": ["EDS"], "relation_type": "measures", "accepted_relation_types": {"maps": 1, "characterizes": 1}, "target": "Surface Element Distributions", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "X-Ray Photoelectron Spectroscopy", "source_aliases": ["XPS"], "relation_type": "measures", "accepted_relation_types": {"characterizes": 1}, "target": "Surface Chemical Composition", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Electrode Morphology", "relation_type": "measures", "target": "Scanning Electron Microscopy", "reason": "Reversed measurement direction."},
+        {"source": "Scanning Electron Microscopy", "relation_type": "causes", "target": "Electrode Morphology", "reason": "Measurement is not the origin of the measured property."}
+      ]
+    },
+    {
+      "id": "negation_condition",
+      "title": "Negation and temperature condition",
+      "question": "",
+      "source_document": "negation_condition",
+      "evidence": [{"id": "e1", "anchor": "At 70 C, electrolyte decomposition produced gas generation", "support": "Gas generation is attributed to decomposition, not the tested additive."}],
+      "expected_entities": ["Electrolyte Decomposition", "Gas Generation", "Electrolyte Additive"],
+      "expected_relations": [
+        {"source": "Electrolyte Decomposition", "relation_type": "produces", "accepted_relation_types": {"results_in": 1, "causes": 1}, "target": "Gas Generation", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Electrolyte Additive", "relation_type": "increases", "target": "Gas Generation", "reason": "Explicitly negated at both temperatures."},
+        {"source": "Electrolyte Additive", "relation_type": "causes", "target": "Gas Generation", "reason": "No gas-generation effect was attributed to the additive."}
+      ]
+    },
+    {
+      "id": "background_attribution",
+      "title": "Background literature versus current experiment",
+      "question": "",
+      "source_document": "background_attribution",
+      "evidence": [{"id": "e1", "anchor": "In this experiment, high-temperature cycling increased DC resistance", "support": "The current experiment concerns cycling, resistance, and irreversible heat."}],
+      "expected_entities": ["High-Temperature Cycling", "DC Resistance", "Irreversible Heat"],
+      "expected_relations": [
+        {"source": "High-Temperature Cycling", "relation_type": "increases", "target": "DC Resistance", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "DC Resistance", "relation_type": "increases", "target": "Irreversible Heat", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "High-Temperature Cycling", "relation_type": "decreases", "target": "Total Discharge Heat", "reason": "Transfers a cited fast-charge result to the current experiment."},
+        {"source": "DC Resistance", "relation_type": "decreases", "target": "Total Discharge Heat", "reason": "Mixes the cited result with this experiment's mechanism."}
+      ]
+    },
+    {
+      "id": "four_hop_mechanism",
+      "title": "Four-step drying-to-plating mechanism",
+      "question": "",
+      "source_document": "four_hop_mechanism",
+      "evidence": [{"id": "e1", "anchor": "The potential change made recharge current nonuniform", "support": "Four adjacent directed assertions connect decomposition to plating."}],
+      "expected_entities": ["Electrolyte Decomposition", "Local Electrolyte Drying", "Local Electrode Potential Change", "Recharge Current Nonuniformity", "Lithium Plating"],
+      "expected_relations": [
+        {"source": "Electrolyte Decomposition", "relation_type": "causes", "accepted_relation_types": {"results_in": 1}, "target": "Local Electrolyte Drying", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Local Electrolyte Drying", "relation_type": "causes", "accepted_relation_types": {"results_in": 1}, "target": "Local Electrode Potential Change", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Local Electrode Potential Change", "relation_type": "causes", "accepted_relation_types": {"leads_to": 1, "results_in": 1}, "target": "Recharge Current Nonuniformity", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Recharge Current Nonuniformity", "relation_type": "increases", "accepted_relation_types": {"promotes": 1, "leads_to": 1}, "target": "Lithium Plating", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Lithium Plating", "relation_type": "causes", "target": "Electrolyte Decomposition", "reason": "Reverses the described mechanism."}
+      ]
+    },
+    {
+      "id": "signed_drying",
+      "title": "Signed drying-temperature effects",
+      "question": "",
+      "source_document": "signed_drying",
+      "evidence": [{"id": "e1", "anchor": "lowered residual solvent", "support": "A hotter drying condition lowers solvent, and lower solvent lowers defects."}],
+      "expected_entities": ["Higher Drying Temperature", "Residual Solvent", "Reduced Residual Solvent", "Coating Defects"],
+      "expected_relations": [
+        {"source": "Higher Drying Temperature", "relation_type": "decreases", "target": "Residual Solvent", "directionality": "directed", "evidence_ids": ["e1"]},
+        {"source": "Reduced Residual Solvent", "relation_type": "decreases", "target": "Coating Defects", "directionality": "directed", "evidence_ids": ["e1"]}
+      ],
+      "forbidden_relations": [
+        {"source": "Higher Drying Temperature", "relation_type": "increases", "target": "Residual Solvent", "reason": "Reverses the stated effect sign."},
+        {"source": "Higher Drying Temperature", "relation_type": "increases", "target": "Electrode Coating Thickness", "reason": "Explicitly negated in the passage."}
+      ]
+    }
+  ]
+}

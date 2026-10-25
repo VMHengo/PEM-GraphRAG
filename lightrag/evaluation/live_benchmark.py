@@ -535,6 +535,7 @@ def score_graph_cases(
 
         case_result = {
             "id": case_id,
+            "title": str(case.get("title") or ""),
             "question": str(case.get("question") or ""),
             "entity_score": _format_percent(entity_score)
             if entity_score is not None

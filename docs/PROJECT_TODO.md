@@ -79,6 +79,13 @@ before paying for a broad re-run.
   required when configured. Offline replay of the frozen
   15-case aging Validation run finds two reviewed-exact paths instead of zero;
   the stored v2.1.0 result is unchanged.
+- [x] **QUAL-03B: Add isolated extraction stress controls.** Nine authored
+  one-chunk battery passages and a graph-only benchmark cover direction,
+  indirect/ambiguous subjects, negation, signed effects, composition,
+  passive measurement, source attribution and four adjacent edges. A separate
+  source-scoped artifact audit reports positive exact coverage and narrowly
+  reviewed forbidden assertions; it is not a full extraction-precision metric. See
+  [Extraction Stress Benchmark](EXTRACTION_STRESS_BENCHMARK.md).
 - [ ] **QUAL-04: Review gold path granularity.** Audit the 20 gold paths in
   18 stress cases against PDF evidence. In the aging source, gas affects
   electrode spacing before current nonuniformity; the three-hop gold skips

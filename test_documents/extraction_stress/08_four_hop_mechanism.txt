@@ -1,0 +1,1 @@
+Electrolyte decomposition caused local electrolyte drying. That drying caused a local electrode potential change. The potential change made recharge current nonuniform. Nonuniform recharge current promoted lithium plating. Lithium plating was not the cause of the earlier electrolyte decomposition.

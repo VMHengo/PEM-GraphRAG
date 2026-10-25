@@ -289,7 +289,7 @@ function CaseDetails({ result }: { result: EvaluationRunResult }) {
           <div key={graphCase.id} className="rounded-md border bg-background p-4">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="font-medium">{graphCase.question || 'Untitled question'}</div>
+                <div className="font-medium">{graphCase.question || graphCase.title || 'Untitled question'}</div>
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <CaseMetric label="Entities" score={graphCase.entity_score} />
