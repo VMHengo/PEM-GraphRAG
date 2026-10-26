@@ -33,8 +33,15 @@ system with a FastAPI backend and React WebUI. Preserve existing user changes.
   WebUI changes when applicable.
 - Do not deploy, restart services or commit unless requested. For changes,
   give one `git add <path>` per changed file, commit/push commands, and
-  relevant staging update commands separately; inspect untracked files before
-  suggesting a pull. See `docs/STAGING_TO_PRODUCTION.md` for deployment.
+  complete staging update commands separately, even when the user does not
+  explicitly ask for deployment commands. Include the applicable local WebUI
+  build/SCP, VPS Git pull, container code or image update, restart/recreate,
+  and verification steps; clearly separate local PowerShell from VPS Bash.
+  Inspect untracked files before suggesting a pull. Never assume Compose
+  `--build` rebuilds LightRAG: check the resolved staging service for `build`
+  and avoid replacing an image tag shared with production. If no image build
+  is configured, give a working staging-only copy/restart or uniquely tagged
+  image procedure. See `docs/STAGING_TO_PRODUCTION.md` for deployment.
 - For substantial independent work, delegate bounded, disjoint tasks to
   `gpt-5.6-sol` at medium effort when available. The coordinator reviews all
   changes and owns final verification. Never claim an unavailable model ran.
