@@ -77,10 +77,10 @@ const inferenceVerdictOptions: Array<{ value: ExplorationInferenceVerdict; label
 ]
 
 const rubricDescriptions = {
-  hop: 'Judge whether the extracted source text supports this relation with the stated direction and sign or polarity.',
-  interest: 'Rate scientific relevance or novelty independently from correctness. Interest identifies claims worth validating; it does not make an unvalidated or incorrect chain supported.',
-  correctness: 'Judge the multi-hop chain as a whole. Consider whether every hop works together and supports the overall path.',
-  conditions: 'Judge whether the source contexts are compatible enough to combine, including scope, time, population, and qualifiers.'
+  hop: 'Does the document text support this one arrow? Check which thing affects which, and whether it increases or decreases.',
+  interest: 'Would this connection be useful or surprising to investigate? Judge interest separately from whether it is correct.',
+  correctness: 'Do all arrows form a believable chain from the first topic to the last? A wrong arrow makes the whole chain questionable.',
+  conditions: 'Can these arrows be combined? Check whether they refer to the same kind of cell, situation, and time.'
 } as const
 
 const formatDate = (value?: string) => {
@@ -278,7 +278,7 @@ function ReviewEditor({
               <div className="max-w-sm space-y-1">
                 <RubricLabel
                   label="Inferred-claim verdict"
-                  description="Judge whether the indirect X-to-Z conclusion follows from the reviewed hops and compatible conditions. This is separate from judging each extracted edge."
+                  description="Do the checked arrows really imply the suggested connection between the first and last topic? The documents do not state this connection directly."
                 />
                 <Select
                   value={inferenceVerdict}
@@ -638,8 +638,12 @@ export default function HumanReviewManager() {
               <Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} placeholder="October path review" />
             </label>
             <label className="space-y-1 text-sm font-medium">
-              <span>Starting subjects</span>
-              <Input value={startsText} onChange={(event) => setStartsText(event.target.value)} placeholder="Comma-separated entity names" />
+              <span>Starting nodes</span>
+              <Input value={startsText} onChange={(event) => setStartsText(event.target.value)} placeholder="e.g. Heat Generation" list="review-start-nodes" />
+              <datalist id="review-start-nodes">
+                <option value="Heat Generation" />
+                <option value="Electrode Calendering" />
+              </datalist>
             </label>
             <label className="space-y-1 text-sm font-medium">
               <span>Hop depth</span>
@@ -684,6 +688,12 @@ export default function HumanReviewManager() {
               {failure.start}: {failure.error}
             </p>
           ))}
+          {session.status === 'completed' && candidates.length < session.limit && (
+            <p className="text-muted-foreground text-sm">
+              Only {candidates.length} eligible {candidates.length === 1 ? 'path' : 'paths'} found for {session.starts.join(', ')}.
+              A new session with another starting node, such as Heat Generation, may find different paths.
+            </p>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3 text-sm">
