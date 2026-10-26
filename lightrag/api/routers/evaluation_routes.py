@@ -5,9 +5,21 @@ from __future__ import annotations
 import asyncio
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, Field, field_validator
 
+from lightrag.base import QueryParam
+from lightrag.evaluation.human_review import (
+    add_review,
+    create_session,
+    list_sessions,
+    load_session,
+    recover_interrupted_sessions,
+    render_review_sheet,
+    select_review_candidates,
+    update_session,
+)
+from lightrag_mcp.exploration import format_exploration
 from lightrag.api.utils_api import get_combined_auth_dependency
 from lightrag.evaluation.live_benchmark import (
     list_benchmarks,
@@ -130,6 +142,36 @@ class PromptExperimentPromotionRequest(BaseModel):
     profile_file: str = Field(min_length=1, max_length=255)
 
 
+class ExplorationSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    starts: list[str] = Field(min_length=1, max_length=5)
+    hop_depth: int = Field(default=3, ge=2, le=4)
+    limit: int = Field(default=20, ge=1, le=20)
+
+    @field_validator("starts")
+    @classmethod
+    def validate_starts(cls, starts: list[str]) -> list[str]:
+        cleaned = [start.strip() for start in starts]
+        if any(not 3 <= len(start) <= 200 for start in cleaned):
+            raise ValueError("Each start node must contain 3 to 200 characters")
+        if len({start.casefold() for start in cleaned}) != len(cleaned):
+            raise ValueError("Start nodes must be distinct")
+        return cleaned
+
+
+class ExplorationReviewRequest(BaseModel):
+    candidate_id: str = Field(min_length=1, max_length=80)
+    reviewer: str = Field(min_length=1, max_length=80)
+    interest: Literal["interesting", "neutral", "not_interesting", "unclear"]
+    correctness: Literal["supported", "partial", "contradicted", "unclear"]
+    hop_verdicts: list[Literal["supported", "partial", "contradicted", "unclear"]] = Field(
+        min_length=2, max_length=4
+    )
+    conditions: Literal["compatible", "incompatible", "unclear"]
+    follow_up: bool = False
+    note: str = Field(default="", max_length=4000)
+
+
 def create_evaluation_routes(rag, api_key: Optional[str] = None):
     router = APIRouter(prefix="/evaluation", tags=["evaluation"])
     combined_auth = get_combined_auth_dependency(api_key)
@@ -138,6 +180,8 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     run_lock = asyncio.Lock()
     active_prompt_experiments: dict[str, asyncio.Task[None]] = {}
     prompt_experiment_lock = asyncio.Lock()
+    active_exploration: dict[str, asyncio.Task[None]] = {}
+    exploration_lock = asyncio.Lock()
 
     def get_active_extraction_revision() -> dict | None:
         """Return provenance when the supplied RAG implementation supports it."""
@@ -154,6 +198,9 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             "Marked %s interrupted prompt experiments after server restart",
             recovered_experiments,
         )
+    recovered_reviews = recover_interrupted_sessions(working_dir)
+    if recovered_reviews:
+        logger.warning("Marked %s interrupted exploration reviews after restart", recovered_reviews)
 
     async def execute_run(run_id: str, benchmark_id: str, mode: str) -> None:
         try:
@@ -180,6 +227,124 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             await execute_prompt_experiment(rag, experiment_id)
         finally:
             active_prompt_experiments.pop(experiment_id, None)
+
+    async def execute_exploration(session_id: str, starts: list[str], hop_depth: int, limit: int) -> None:
+        discoveries: list[dict] = []
+        seed_errors: list[dict[str, str]] = []
+        try:
+            update_session(working_dir, session_id, status="running")
+            for index, start in enumerate(starts, start=1):
+                try:
+                    param = QueryParam(
+                        mode="mix",
+                        retrieval_strategy="directed",
+                        edge_direction="out",
+                        hop_depth=hop_depth,
+                        chain_top_k=100,
+                        ll_keywords=[start],
+                        hl_keywords=[start],
+                        include_references=True,
+                        stream=False,
+                    )
+                    payload = await rag.aquery_data(
+                        f"What can {start} cause or influence downstream?", param=param
+                    )
+                    discoveries.append(format_exploration(payload, start=start, limit=limit))
+                except Exception as exc:
+                    logger.warning("Exploration seed %s failed: %s", start, exc)
+                    seed_errors.append({"start": start, "error": "Seed query failed; check server logs"})
+                update_session(
+                    working_dir, session_id,
+                    completed_starts=index, seed_errors=seed_errors,
+                )
+            candidates = select_review_candidates(discoveries, limit=limit)
+            update_session(
+                working_dir, session_id,
+                status="completed" if discoveries else "failed",
+                candidates=candidates,
+                seed_errors=seed_errors,
+                error=None if discoveries else "All start-node queries failed",
+            )
+        except Exception as exc:
+            logger.error("Exploration session %s failed: %s", session_id, exc, exc_info=True)
+            update_session(working_dir, session_id, status="failed", error="Discovery failed; check server logs")
+        finally:
+            active_exploration.pop(session_id, None)
+
+    @router.get("/exploration/sessions", dependencies=[Depends(combined_auth)])
+    async def get_exploration_sessions():
+        return {"sessions": list_sessions(working_dir)}
+
+    @router.post(
+        "/exploration/sessions", status_code=status.HTTP_202_ACCEPTED,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def start_exploration_session(request: ExplorationSessionRequest):
+        if not request.title.strip():
+            raise HTTPException(status_code=422, detail="A title is required")
+        if not callable(getattr(rag, "aquery_data", None)):
+            raise HTTPException(status_code=503, detail="Structured retrieval is unavailable")
+        async with exploration_lock:
+            if any(not task.done() for task in active_exploration.values()):
+                raise HTTPException(status_code=409, detail="Another exploration is running")
+            session = create_session(
+                working_dir,
+                title=request.title.strip(),
+                starts=request.starts,
+                hop_depth=request.hop_depth,
+                limit=request.limit,
+                extraction_revision=get_active_extraction_revision(),
+            )
+            active_exploration[session["id"]] = asyncio.create_task(
+                execute_exploration(session["id"], request.starts, request.hop_depth, request.limit),
+                name=f"evaluation-exploration-{session['id']}",
+            )
+        return {"session": session}
+
+    @router.get("/exploration/sessions/{session_id}", dependencies=[Depends(combined_auth)])
+    async def get_exploration_session(session_id: str):
+        try:
+            return {"session": load_session(working_dir, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.get(
+        "/exploration/sessions/{session_id}/review-sheet",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def get_exploration_review_sheet(session_id: str):
+        try:
+            session = load_session(working_dir, session_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(
+            content=render_review_sheet(session),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{session_id}-review.md"'},
+        )
+
+    @router.post(
+        "/exploration/sessions/{session_id}/reviews",
+        dependencies=[Depends(combined_auth)],
+    )
+    async def submit_exploration_review(session_id: str, request: ExplorationReviewRequest):
+        try:
+            review = add_review(
+                working_dir, session_id,
+                candidate_id=request.candidate_id,
+                reviewer=request.reviewer.strip(),
+                interest=request.interest,
+                correctness=request.correctness,
+                hop_verdicts=list(request.hop_verdicts),
+                conditions=request.conditions,
+                follow_up=request.follow_up,
+                note=request.note.strip(),
+            )
+            return {"review": review}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @router.get(
         "/benchmarks",

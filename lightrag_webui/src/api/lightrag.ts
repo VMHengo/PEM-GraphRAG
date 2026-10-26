@@ -365,6 +365,91 @@ export type EvaluationRunDetailResponse = {
   result: EvaluationRunResult | null
 }
 
+export type ExplorationVerdict = 'supported' | 'partial' | 'contradicted' | 'unclear'
+export type ExplorationInterest = 'interesting' | 'neutral' | 'not_interesting' | 'unclear'
+export type ExplorationConditions = 'compatible' | 'incompatible' | 'unclear'
+
+export type ExplorationCandidateSpan =
+  | string
+  | {
+    text?: string
+    status?: string
+    [key: string]: unknown
+  }
+
+export type ExplorationSource = {
+  chunk_id: string
+  document: string
+  url: string
+  chunk_excerpt: string
+  candidate_span?: ExplorationCandidateSpan
+}
+
+export type ExplorationHop = {
+  source: string
+  relation: string
+  target: string
+  description: string
+  sources: ExplorationSource[]
+}
+
+export type ExplorationCandidate = {
+  id: string
+  from: string
+  to: string
+  start_domains: string[]
+  target_domains: string[]
+  hops: number
+  path: ExplorationHop[]
+  status: string
+}
+
+export type ExplorationReviewRequest = {
+  candidate_id: string
+  reviewer: string
+  interest: ExplorationInterest
+  correctness: ExplorationVerdict
+  hop_verdicts: ExplorationVerdict[]
+  conditions: ExplorationConditions
+  follow_up: boolean
+  note: string
+}
+
+export type ExplorationReview = ExplorationReviewRequest & {
+  id?: string
+  created_at?: string
+  updated_at?: string
+  [key: string]: unknown
+}
+
+export type ExplorationSessionSummary = {
+  id: string
+  status: string
+  title: string
+  starts: string[]
+  hop_depth: number
+  limit: number
+  created_at: string
+  extraction_revision?: ExtractionRevision | null
+  candidate_count?: number
+  review_count?: number
+  completed_starts?: number
+  seed_errors?: Array<{ start: string; error: string }>
+  error?: string | null
+}
+
+export type ExplorationSession = ExplorationSessionSummary & {
+  candidates: ExplorationCandidate[]
+  reviews?: ExplorationReview[]
+}
+
+export type ExplorationSessionRequest = {
+  title: string
+  starts: string[]
+  hop_depth: number
+  limit: number
+}
+
 export type PromptExperimentMode = 'screening' | 'validation' | 'final'
 
 export type PromptExperimentProfile = {
@@ -997,6 +1082,61 @@ export const updateEvaluationRun = async (
 ): Promise<{ run: EvaluationRunSummary }> => {
   const response = await axiosInstance.patch(
     `/evaluation/runs/${encodeURIComponent(runId)}`,
+    request
+  )
+  return response.data
+}
+
+export const startExplorationSession = async (
+  request: ExplorationSessionRequest
+): Promise<{ session: ExplorationSession }> => {
+  const response = await axiosInstance.post('/evaluation/exploration/sessions', request)
+  return response.data
+}
+
+export const getExplorationSessions = async (): Promise<{
+  sessions: ExplorationSessionSummary[]
+}> => {
+  const response = await axiosInstance.get('/evaluation/exploration/sessions')
+  return response.data
+}
+
+export const getExplorationSession = async (
+  sessionId: string
+): Promise<{ session: ExplorationSession }> => {
+  const response = await axiosInstance.get(
+    `/evaluation/exploration/sessions/${encodeURIComponent(sessionId)}`
+  )
+  return response.data
+}
+
+export const downloadExplorationReviewSheet = async (
+  sessionId: string
+): Promise<{ blob: Blob; filename: string }> => {
+  const response = await axiosInstance.get(
+    `/evaluation/exploration/sessions/${encodeURIComponent(sessionId)}/review-sheet`,
+    { responseType: 'blob' }
+  )
+  const disposition = String(response.headers['content-disposition'] || '')
+  const encodedFilename = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plainFilename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+  let filename = plainFilename || `exploration-review-${sessionId}.md`
+  if (encodedFilename) {
+    try {
+      filename = decodeURIComponent(encodedFilename)
+    } catch {
+      filename = encodedFilename
+    }
+  }
+  return { blob: response.data, filename }
+}
+
+export const saveExplorationReview = async (
+  sessionId: string,
+  request: ExplorationReviewRequest
+): Promise<{ review: ExplorationReview }> => {
+  const response = await axiosInstance.post(
+    `/evaluation/exploration/sessions/${encodeURIComponent(sessionId)}/reviews`,
     request
   )
   return response.data

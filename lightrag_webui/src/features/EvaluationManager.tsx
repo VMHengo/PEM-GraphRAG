@@ -43,6 +43,7 @@ import { errorMessage } from '@/lib/utils'
 import { ChevronDownIcon, CircleHelpIcon, PencilIcon, PlayIcon, RefreshCwIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import PromptExperimentManager from '@/features/PromptExperimentManager'
+import HumanReviewManager from '@/features/HumanReviewManager'
 import { evaluationEntityLabel } from '@/features/evaluationEntityLabel'
 
 const modeDescriptions: Record<EvaluationRunMode, string> = {
@@ -615,7 +616,7 @@ function PromptComparison({
 }
 
 export default function EvaluationManager() {
-  const [activeSection, setActiveSection] = useState<'benchmarks' | 'prompt-experiments'>('benchmarks')
+  const [activeSection, setActiveSection] = useState<'benchmarks' | 'prompt-experiments' | 'human-review'>('benchmarks')
   const [benchmarks, setBenchmarks] = useState<EvaluationBenchmarkListItem[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [selectedBenchmark, setSelectedBenchmark] = useState('')
@@ -795,11 +796,12 @@ export default function EvaluationManager() {
 
         <Tabs
           value={activeSection}
-          onValueChange={(value) => setActiveSection(value as 'benchmarks' | 'prompt-experiments')}
+          onValueChange={(value) => setActiveSection(value as 'benchmarks' | 'prompt-experiments' | 'human-review')}
         >
           <TabsList className="w-fit">
             <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
             <TabsTrigger value="prompt-experiments">Prompt Experiments</TabsTrigger>
+            <TabsTrigger value="human-review">Human Review</TabsTrigger>
           </TabsList>
 
           <TabsContent
@@ -989,7 +991,16 @@ export default function EvaluationManager() {
             value="prompt-experiments"
             className="mt-4 h-auto w-auto data-[state=inactive]:hidden"
           >
-            <PromptExperimentManager benchmarks={benchmarks.filter((benchmark) => !benchmark.archived)} />
+            {activeSection === 'prompt-experiments' && (
+              <PromptExperimentManager benchmarks={benchmarks.filter((benchmark) => !benchmark.archived)} />
+            )}
+          </TabsContent>
+
+          <TabsContent
+            value="human-review"
+            className="mt-4 h-auto w-auto data-[state=inactive]:hidden"
+          >
+            {activeSection === 'human-review' && <HumanReviewManager />}
           </TabsContent>
         </Tabs>
       </div>

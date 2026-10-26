@@ -1,6 +1,7 @@
 # Exploratory Connection Discovery
 
-Status: 2026-10-25 local MVP; Staging behavior and expert utility are untested.
+Status: 2026-10-25 local MVP with provisional taxonomy and mention spans;
+Staging behavior and expert utility are untested.
 This plan serves the explicit exploratory product goal in the roadmap.
 
 ## Product contract
@@ -46,24 +47,40 @@ auditable distances, but source support and path plausibility must gate novelty.
   one call returns at most 10 detailed paths. Review 20 across several seeds.
 - The LightRAG backend contributes per-edge source IDs to path diagnostics;
   the gateway joins them to `/query/data` chunks. Both changes are additive.
-- `lightrag_mcp/exploration.py` contains provisional subject keywords,
-  predicate policy and deterministic formatting. One endpoint per candidate
+- `ontology/exploration_subjects_v1.json` contains provisional, exact-alias,
+  multi-label subjects and optional source-file scopes. A versioned multi-label
+  keyword fallback preserves coverage for unmapped graph names; its status is
+  exposed separately. It is not yet an expert-reviewed ontology. Unknown and
+  ambiguous concepts stay unclassified; no UI layout coordinates enter path
+  selection.
+- `lightrag_mcp/exploration.py` contains predicate policy and deterministic
+  formatting. One endpoint per candidate
   keeps initial results diverse; round-robin across endpoint areas is bounded.
 - The tool requires an exact starting node label. It does not perform entity
   resolution, proof checking, sentence-level citation or contradiction search.
   It may find no candidate despite relevant corpus evidence; matching retrieved
   node names are returned as suggestions for a second call.
 - An excerpt of at most 900 characters from the first resolved source per hop
-  is a *chunk preview*, not
-  an automatically verified supporting sentence. File URL is supplied when
-  document metadata provides one.
+  is a *chunk preview*. A separate same-sentence mention with original chunk
+  offsets is provided when found. Neither is an automatically verified causal
+  assertion. File URL is supplied when document metadata provides one.
 
 ## M2 review sheet
 
-For each of 20 candidates, record seed, endpoint, source domains, hop count,
-retrieval rank, each hop's document and verdict (`supported`, `partly`,
-`contradicted`, `unclear`), condition compatibility, overall novelty, overall
-interest and next action. Keep reviewer identity and artifact/graph revision.
+The Evaluation > Human Review tab creates a saved snapshot of up to 20
+cross-area, 2-4-hop proposals from up to five exact graph-node seeds. It does
+not guarantee 20 results; empty seeds and failures are visible. The same
+snapshot can be exported as a Markdown review sheet. Each row has the endpoint
+connection, subject areas, ordered hop assertions, source document and URL,
+chunk identifier, a candidate passage and a chunk preview. The passage is a
+mention locator, not proof of the stated predicate or direction.
+
+For each candidate, record each hop's verdict (`supported`, `partial`,
+`contradicted`, `unclear`), condition compatibility, overall correctness,
+interest, follow-up value and a note. Review events are append-only and retain
+the extraction revision captured at session start. Reviewer names are entered
+by users, not independently verified by the application. Currently there is
+no calibrated novelty score or random-audit sample; those remain M6 work.
 Report both: (a) fraction with *all* hops supported and compatible and (b)
 fraction rated worth follow-up. Do not call the latter causal accuracy. Include
 rejected candidates; they reveal ranking and extraction failure modes.

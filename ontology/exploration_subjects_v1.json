@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "review_status": "provisional",
+  "domains": [
+    "Degradation und Alterung",
+    "Fertigung",
+    "Diagnostik",
+    "Zellqualitaet und Sicherheit",
+    "Eigenschaften und Transport",
+    "Materialien und Komponenten"
+  ],
+  "fallback_terms": {
+    "Degradation und Alterung": ["decomposition", "degradation", "aging", "ageing", "plating", "sei", "gas generation", "corrosion", "zersetzung", "alterung"],
+    "Fertigung": ["calendering", "calender", "coating process", "drying temperature", "drying process", "stacking", "welding", "mixing", "formation process", "kalandrier", "beschichtung", "trocknung", "stapeln"],
+    "Diagnostik": ["microscopy", "spectroscopy", "measurement", "eis", "xps", "sem", "diagnostic", "mikroskop", "spektroskop", "messung"],
+    "Zellqualitaet und Sicherheit": ["defect", "failure", "safety", "thermal runaway", "capacity fade", "fehler", "sicherheit", "kapazitaetsverlust"],
+    "Eigenschaften und Transport": ["porosity", "resistance", "thickness", "conductivity", "potential", "current nonuniformity", "nonuniform current", "heat", "porositaet", "widerstand", "dicke"],
+    "Materialien und Komponenten": ["electrolyte", "electrode", "cathode", "anode", "separator", "solvent", "binder", "graphite", "elektrolyt", "elektrode", "kathode", "loesungsmittel"]
+  },
+  "concepts": [
+    {"id": "calendering", "aliases": ["Electrode Calendering", "Calendering", "Kalandrieren"], "domains": ["Fertigung"]},
+    {"id": "drying", "aliases": ["Electrode Drying Process", "Drying Process", "Elektrodentrocknung"], "domains": ["Fertigung"]},
+    {"id": "coating", "aliases": ["Electrode Coating", "Coating Process", "Beschichtung"], "domains": ["Fertigung"]},
+    {"id": "porosity", "aliases": ["Cathode Porosity", "Electrode Porosity", "Kathodenporositaet"], "domains": ["Eigenschaften und Transport"]},
+    {"id": "plating", "aliases": ["Lithium Plating", "Lithiumabscheidung"], "domains": ["Degradation und Alterung", "Zellqualitaet und Sicherheit"]},
+    {"id": "electrolyte_decomposition", "aliases": ["Electrolyte Decomposition", "Elektrolytzersetzung"], "domains": ["Degradation und Alterung", "Materialien und Komponenten"]},
+    {"id": "gas_generation", "aliases": ["Gas Generation", "Gasbildung"], "domains": ["Degradation und Alterung", "Zellqualitaet und Sicherheit"]},
+    {"id": "nonuniform_current", "aliases": ["Local Current Nonuniformity", "Nonuniform Recharge Current", "Recharge Current Nonuniformity"], "domains": ["Eigenschaften und Transport"]},
+    {"id": "sem", "aliases": ["Scanning Electron Microscopy", "Scanning Electron Microscopy (SEM)"], "domains": ["Diagnostik"]},
+    {"id": "eis", "aliases": ["Electrochemical Impedance Spectroscopy", "Electrochemical Impedance Spectroscopy (EIS)"], "domains": ["Diagnostik"]}
+  ]
+}

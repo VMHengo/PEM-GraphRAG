@@ -42,6 +42,9 @@ below. No bulk re-extraction is authorized.
   score 20 diverse candidates using the review sheet. Report support and
   interest separately, plus latency and failed/empty seeds. No Production
   promotion until results are reviewed.
+  Partial (local): Evaluation > Human Review can generate and persist up to 20
+  read-only path candidates from several seeds and export a review sheet. A
+  live Staging smoke and actual expert judgments are still required.
 - [ ] **EXP-03: Reviewed domain taxonomy and entity disambiguation.** Replace
   provisional single-label keywords with versioned multi-label battery subject
   areas and source-aware concept mapping. Done when unknown/ambiguous nodes
@@ -71,6 +74,9 @@ below. No bulk re-extraction is authorized.
   assertion/extraction revision. Model suggestions are optional, shown after
   some blind human judgments, and never counted as human verification. Keep a
   random audit sample in addition to the high-priority review queue.
+  Partial (local): saved path-level and per-hop human review events with source
+  excerpts and captured extraction revision. There is no model triage, random
+  audit sample, or verified reviewer identity yet.
 
 ### Quality Benchmark Triage (before further extraction changes)
 
