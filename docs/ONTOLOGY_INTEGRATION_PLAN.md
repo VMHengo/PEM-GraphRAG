@@ -157,6 +157,12 @@ exercise deletion and re-extraction cleanup of discoverable directional
 records, including truncated top-level source IDs. Restart compatibility and
 a real isolated-staging pilot remain before acceptance.
 
+The optional runtime annotator now resolves reviewed direct aliases and
+preferred labels, reports lexical collisions as ambiguous, and does not infer
+an IRI from an inverse-only spelling unless extraction has already normalized
+the semantic endpoints. Parser tests cover JSON and delimiter extraction plus
+the unchanged disabled mode; live backend parity is still unverified.
+
 ### ONT-05: Benchmark And Retrieval Pilot
 
 Add reporting for raw-label exactness, mapped-IRI exactness, alias/inverse

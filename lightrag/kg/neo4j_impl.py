@@ -75,6 +75,7 @@ READ_RETRY = retry(
 @dataclass
 class Neo4JStorage(BaseGraphStorage):
     supports_query_aware_neighbor_selection = True
+    directed_neighbor_candidate_limit = 200
 
     def __init__(self, namespace, global_config, embedding_func, workspace=None):
         # Read env and override the arg if present

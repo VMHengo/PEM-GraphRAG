@@ -46,10 +46,23 @@ below. No bulk re-extraction is authorized.
   provisional single-label keywords with versioned multi-label battery subject
   areas and source-aware concept mapping. Done when unknown/ambiguous nodes
   remain explicit and layout coordinates cannot change ranking.
+  Partial (local): `ontology/exploration_subjects_v1.json` now supplies exact,
+  versioned multi-label aliases and a labeled multi-label keyword fallback;
+  the MCP formatter uses source-file scope and exposes unknown/ambiguous concepts
+  without layout input. Thirteen focused MCP
+  exploration/evidence tests pass. The mapping is deliberately marked
+  `provisional`; a battery-domain expert must review aliases, coverage and
+  overlapping subject areas against the Staging top-20 review before this item
+  can be checked off.
 - [ ] **EXP-04: Sentence-level evidence and condition checks.** Propose source
   spans, check direction, negation, sign and incompatible conditions, and retain
   full chunks for review. Done when false causal bridges found in EXP-02 fail
   on frozen artifacts without silently removing valid paths.
+  Partial (local): each hop can now return an offset-preserving same-sentence
+  mention proposal labeled `candidate_mention_only`; the original chunk remains.
+  It does not assert support or filter paths. Direction is already checked by
+  EXP-01. Negation, sign and condition gates await frozen EXP-02 false-positive
+  examples and paired valid controls.
 - [ ] **EXP-05: Path diversity and five-hop pilot.** Compare reranking and
   bounded search on reviewed seeds, then permit five hops if evidence support,
   interest and operating cost warrant it. Keep shorter valid paths visible.
@@ -153,8 +166,11 @@ before paying for a broad re-run.
   for anchors, candidate assertions, predicate/direction rejects, surviving
   hops and citations. Done when each graph-present failure in QUAL-01 names
   its first failing retrieval stage without new extraction calls. Partial:
-  path-depth counts are now reported; stage-by-stage reject counters and a
-  read-only Staging replay remain open.
+  path-depth counts are now reported. Local instrumentation additionally records
+  unique anchors, provider records/possible cap hits, importance/predicate/
+  direction rejects, fanout, beam, surviving paths and citation loss, without
+  extra graph calls or changing path selection. The read-only Staging replay
+  and per-gold-path first-failure attribution remain open.
 - [ ] **QUAL-08: Align reviewed predicates with traversal.** The router's
   allowlists exclude some full-credit gold alternatives (`increases`,
   `produces`, `contributes_to`); evidence fallback is off by default. Test a
@@ -162,7 +178,9 @@ before paying for a broad re-run.
   Done when supported-path recall rises without unacceptable false positives,
   latency or context growth. Normal retrieval stays the default.
   Partial: causal traversal now includes `increases`, which appears in the
-  aging graph. Other predicates and held-out recall/latency checks remain open.
+  aging graph. Other predicates and held-out recall/false-positive/latency
+  checks remain open; do not broaden the default allowlist from benchmark gold
+  alternatives alone.
 - [ ] **QUAL-09: Audit historic extraction completeness offline.** A local
   2026-10-16 Staging review found `status=incomplete` in 10/10 sampled
   aging-paper Batch outputs and 60/74 parameter-paper outputs at a 1,200-token
@@ -170,12 +188,19 @@ before paying for a broad re-run.
   validation cannot repair already imported data. Identify affected document
   revisions, finish reasons and output budgets using stored artifacts only.
   Done when a per-document repair list has source evidence and no new calls.
+  Partial: `scripts/audit_azure_batch_completeness.py` provides a read-only
+  per-job report from saved manifests, request JSONL and downloaded output
+  JSONL, with source file/line evidence and unknown status when an output file
+  is unavailable. Focused tests pass. The actual Staging batch artifacts are
+  not present locally, so the real per-document repair list is still pending.
 - [ ] **QUAL-10: Pilot one paid, reversible re-extraction.** After QUAL-09,
   re-extract one affected Staging document from retained chunks with a measured
   output budget, preserving ID, URL and source metadata. Compare completion,
   grounded edges, cost and rollback with its frozen baseline. Do not run
   Extract All until this pilot and scorer fixes pass; obtain explicit approval
   before starting paid model calls.
+  Pending the QUAL-09 repair list and explicit approval for paid model calls;
+  no re-extraction was run.
 - [ ] **QUAL-11: Add claim-level answer checks.** Retrieval 96.52 currently
   measures `must_include` terms and expected document references, not truth;
   failed query status now zeros checks, and the aging benchmark opts out of
@@ -224,16 +249,30 @@ retrieval remain the baseline until a measured staging pilot passes.
   Extend the parser/merge/storage contract only after checking all backends and
   Batch import. Done when a staging document can be re-extracted without losing
   URL, chunks or old relation semantics, and legacy documents remain readable.
+  Partial: the existing opt-in annotation now resolves reviewed direct aliases,
+  marks collisions ambiguous, keeps inverse-only labels from asserting an IRI
+  without the endpoint swap, and validates mapping status/IRI. JSON/delimiter
+  parser tests cover raw label, direction, provenance and disabled baseline.
+  Live Staging re-extraction and non-local storage round trips remain open.
 - [ ] **ONT-05: Ontology-aware evaluation and retrieval pilot.** Add separate
   exact, alias, inverse and hierarchy diagnostics to the benchmark; use mapped
   predicates in optional directed-path selection only after review. Done when
   held-out DE/EN queries and causal chains are compared with the unchanged
   baseline, including false positives, answer support, latency and cost.
+  Partial: exact/alias/inverse/hierarchy benchmark diagnostics already exist
+  as an opt-in. `ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED` separately exposes stored
+  assertions to the Neo4j directed-neighbor provider, off by default;
+  ontology-guided predicate expansion and paired held-out Staging comparison
+  remain unverified.
 - [ ] **ONT-06: Staging decision and migration runbook.** Document pilot results,
   schema/ontology version policy, rollback, and whether existing documents need
   retained-chunk re-extraction or metadata-only backfill. Done when a reviewed
   go/no-go decision and repeatable staging procedure exist; production rollout
   requires a separate explicit task.
+  A procedure and decision template already exist in
+  `docs/ONTOLOGY_STAGING_PILOT.md`. Actual ONT-04/05 Staging results, rollback
+  rehearsal and a reviewed go/no-go decision remain pending; no production
+  migration or schema change is authorized.
 
 Implementation hardening identified after the assertion-preservation work.
 These tasks improve ingestion correctness and evidence-grounded multi-hop

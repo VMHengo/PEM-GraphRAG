@@ -20,6 +20,7 @@ from lightrag.relation_identity import (
 from lightrag.operate import (
     _merge_edges_then_upsert,
     _merge_nodes_then_upsert,
+    _process_extraction_result,
     _process_json_extraction_result,
     _rebuild_single_relationship,
 )
@@ -81,7 +82,7 @@ def test_annotation_disabled_by_default(monkeypatch):
 
 
 @pytest.mark.offline
-def test_only_reviewed_exact_mapping_gets_iri(ontology_enabled):
+def test_only_reviewed_direct_mapping_gets_iri(ontology_enabled):
     cause = annotate_ontology_label("causes", relation=True)
     assert cause["ontology_mapping_version"] == "1.0.0"
     assert cause["ontology_mapping_status"] == "mapped"
@@ -90,6 +91,21 @@ def test_only_reviewed_exact_mapping_gets_iri(ontology_enabled):
     for label in ("produces", "affects", "nonsense"):
         assert annotate_ontology_label(label, relation=True)["ontology_iri"] == ""
     assert annotate_ontology_label("Process", relation=False)["ontology_iri"] == ""
+
+@pytest.mark.offline
+def test_runtime_annotation_matches_reviewed_aliases_without_inverse_guessing(
+    ontology_enabled,
+):
+    assert annotate_ontology_label("verursacht", relation=True)[
+        "ontology_mapping_status"
+    ] == "mapped"
+    assert annotate_ontology_label("isCauseOf", relation=True)["ontology_iri"]
+    assert annotate_ontology_label("Werkstoff", relation=False)[
+        "ontology_mapping_status"
+    ] == "conditional"
+    assert annotate_ontology_label("caused_by", relation=True)[
+        "ontology_mapping_status"
+    ] == "unknown"
 
 
 @pytest.mark.offline
@@ -272,6 +288,94 @@ async def test_json_parser_retains_raw_entity_type_only_when_enabled(ontology_en
     nodes, _ = await _process_json_extraction_result(payload, "chunk-002", 1)
     assert nodes["Stacking"][0]["entity_type"] == "process"
     assert nodes["Stacking"][0]["raw_entity_type"] == "Process"
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_parsers_preserve_raw_inverse_label_direction_and_provenance(
+    ontology_enabled,
+):
+    json_payload = json.dumps({
+        "entities": [],
+        "relationships": [{
+            "source": "Coating Defect",
+            "target": "Residual Solvent",
+            "keywords": "caused by",
+            "description": "The defect is caused by residual solvent.",
+            "directionality": "directed",
+            "relation_type": "caused_by",
+            "relation_importance": 0.9,
+            "chain_role": "root_cause",
+        }],
+    })
+    _, json_edges = await _process_json_extraction_result(
+        json_payload, "chunk-json", 1, "quality.pdf"
+    )
+    json_edge = json_edges[("Coating Defect", "Residual Solvent")][0]
+
+    text_payload = (
+        "relation<|#|>Coating Defect<|#|>Residual Solvent"
+        "<|#|>caused by<|#|>The defect is caused by residual solvent."
+        "<|#|>directed<|#|>caused_by<|#|>0.9<|#|>root_cause"
+        "<|COMPLETE|>"
+    )
+    _, text_edges = await _process_extraction_result(
+        text_payload, "chunk-text", 2, "quality.txt"
+    )
+    text_edge = text_edges[("Coating Defect", "Residual Solvent")][0]
+
+    for edge, chunk_id, file_path in (
+        (json_edge, "chunk-json", "quality.pdf"),
+        (text_edge, "chunk-text", "quality.txt"),
+    ):
+        assert edge["raw_relation_type"] == "caused_by"
+        assert edge["relation_type"] == "causes"
+        assert edge["semantic_src_id"] == "Residual Solvent"
+        assert edge["semantic_tgt_id"] == "Coating Defect"
+        assert edge["description"] == "The defect is caused by residual solvent."
+        assert edge["source_id"] == chunk_id
+        assert edge["file_path"] == file_path
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_json_parser_disabled_baseline_has_no_annotation_fields(monkeypatch):
+    monkeypatch.delenv("ONTOLOGY_ANNOTATION_ENABLED", raising=False)
+    payload = json.dumps({
+        "entities": [{
+            "name": "Residual Solvent",
+            "type": "Material",
+            "description": "Solvent remaining after drying.",
+        }],
+        "relationships": [{
+            "source": "Residual Solvent",
+            "target": "Coating Defect",
+            "keywords": "causes",
+            "description": "Residual solvent causes a coating defect.",
+            "directionality": "directed",
+            "relation_type": "causes",
+        }],
+    })
+
+    nodes, edges = await _process_json_extraction_result(
+        payload, "chunk-baseline", 1, "baseline.pdf"
+    )
+    node = nodes["Residual Solvent"][0]
+    edge = edges[("Residual Solvent", "Coating Defect")][0]
+    annotation_fields = {
+        "raw_entity_type",
+        "raw_relation_type",
+        "ontology_mapping_version",
+        "ontology_mapping_status",
+        "ontology_iri",
+        "ontology_source",
+    }
+    assert annotation_fields.isdisjoint(node)
+    assert annotation_fields.isdisjoint(edge)
+    assert node["entity_type"] == "material"
+    assert edge["relation_type"] == "causes"
+    assert edge["semantic_src_id"] == "Residual Solvent"
+    assert edge["semantic_tgt_id"] == "Coating Defect"
+
 
 
 @pytest.mark.offline

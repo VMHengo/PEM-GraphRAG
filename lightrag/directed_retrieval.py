@@ -284,6 +284,7 @@ def select_directed_edges(
     route: RetrievalRoute,
     query_param: QueryParam,
     apply_fanout: bool = True,
+    diagnostics: dict[str, int] | None = None,
 ) -> list[DirectedEdge]:
     """Normalize, filter, and rank relationship records for one anchor.
 
@@ -295,11 +296,18 @@ def select_directed_edges(
     selected: list[DirectedEdge] = []
     target_types = set(route.target_relation_types)
 
+    def count(key: str) -> None:
+        if diagnostics is not None:
+            diagnostics[key] = diagnostics.get(key, 0) + 1
+
     for record in records:
+        count("record_evaluations")
         edge = normalize_directed_edge(record)
         if edge is None or not is_meaningful_directed_edge(edge):
+            count("invalid_or_nonmeaningful")
             continue
         if edge.relation_importance < query_param.min_relation_importance:
+            count("below_importance")
             continue
         if target_types and edge.relation_type not in target_types:
             evidence_fallback = (
@@ -310,12 +318,15 @@ def select_directed_edges(
                 and edge.chain_role in _ROUTE_CHAIN_ROLES.get(route.query_type, ())
             )
             if not evidence_fallback:
+                count("predicate_rejected")
                 continue
         if not edge_matches_traversal(
             edge, anchor=anchor, direction=route.edge_direction
         ):
+            count("direction_rejected")
             continue
         selected.append(edge)
+        count("eligible_edges")
 
     sorted_edges = sorted(
         selected,
@@ -326,6 +337,10 @@ def select_directed_edges(
             edge.relation_type,
         ),
     )
+    if diagnostics is not None and apply_fanout:
+        diagnostics["fanout_rejected"] = diagnostics.get("fanout_rejected", 0) + max(
+            0, len(sorted_edges) - query_param.chain_fanout
+        )
     return sorted_edges[: query_param.chain_fanout] if apply_fanout else sorted_edges
 
 
@@ -459,19 +474,28 @@ async def find_directed_paths(
     route: RetrievalRoute,
     query_param: QueryParam,
     focus_entities: Sequence[str] = (),
+    diagnostics: dict[str, Any] | None = None,
+    provider_candidate_limit: int | None = None,
 ) -> list[DirectedPath]:
     """Expand semantic paths with a bounded, beam-pruned breadth-first search.
 
     ``fetch_edges`` receives the unique frontier nodes for each level in one
     batched call. It deliberately hides graph storage details from this engine.
     The caller must only invoke this for a routed directed query; the guard also
-    makes a normal strategy a zero-cost no-op.
+    makes a normal strategy a zero-cost no-op. A node at the provider cap signals
+    possible truncation, not proof that additional graph edges exist.
     """
 
+    if diagnostics is not None:
+        diagnostics["anchors_requested"] = len(anchors)
+        diagnostics["provider_candidate_limit"] = provider_candidate_limit
+        diagnostics["levels"] = []
     if not route.use_directed_paths:
         return []
 
     initial_anchors = _unique_anchors(anchors)
+    if diagnostics is not None:
+        diagnostics["anchors_unique"] = len(initial_anchors)
     if not initial_anchors:
         return []
     anchor_rank = {anchor.casefold(): index for index, anchor in enumerate(initial_anchors)}
@@ -499,7 +523,7 @@ async def find_directed_paths(
     ]
     discovered: list[DirectedPath] = []
 
-    for _ in range(query_param.hop_depth):
+    for depth in range(query_param.hop_depth):
         frontier_nodes = tuple(
             sorted({path.nodes[-1] for path in frontier}, key=str.casefold)
         )
@@ -508,6 +532,27 @@ async def find_directed_paths(
 
         records_by_node = await fetch_edges(frontier_nodes)
         next_frontier: list[DirectedPath] = []
+        level: dict[str, Any] = {
+            "depth": depth + 1,
+            "frontier_paths": len(frontier),
+            "frontier_nodes": len(frontier_nodes),
+            "provider_records": sum(len(records_by_node.get(node, ())) for node in frontier_nodes),
+            "provider_nodes_at_cap": (
+                sum(
+                    len(records_by_node.get(node, ())) >= provider_candidate_limit
+                    for node in frontier_nodes
+                )
+                if provider_candidate_limit else None
+            ),
+            "selection": {},
+            "cycles_rejected": 0,
+            "fanout_rejected": 0,
+            "expanded_paths": 0,
+            "beam_rejected": 0,
+            "surviving_paths": 0,
+        }
+        if diagnostics is not None:
+            diagnostics["levels"].append(level)
 
         for path in frontier:
             current_node = path.nodes[-1]
@@ -519,6 +564,7 @@ async def find_directed_paths(
                 route=route,
                 query_param=query_param,
                 apply_fanout=False,
+                diagnostics=level["selection"] if diagnostics is not None else None,
             ):
                 next_node = _other_endpoint(
                     edge,
@@ -530,6 +576,11 @@ async def find_directed_paths(
                 if next_node.casefold() in {
                     node.casefold() for node in path.nodes
                 }:
+                    level["cycles_rejected"] += 1
+                    continue
+
+                if expanded_edges >= query_param.chain_fanout:
+                    level["fanout_rejected"] += 1
                     continue
 
                 edges = path.edges + (edge,)
@@ -543,13 +594,15 @@ async def find_directed_paths(
                     )
                 )
                 expanded_edges += 1
-                if expanded_edges >= query_param.chain_fanout:
-                    break
+                level["expanded_paths"] += 1
 
         if not next_frontier:
             break
 
-        frontier = _deduplicate_paths(next_frontier)[: query_param.chain_top_k]
+        ranked_frontier = _deduplicate_paths(next_frontier)
+        level["beam_rejected"] = max(0, len(ranked_frontier) - query_param.chain_top_k)
+        frontier = ranked_frontier[: query_param.chain_top_k]
+        level["surviving_paths"] = len(frontier)
         discovered.extend(frontier)
 
     return _diverse_path_lengths(discovered, query_param.chain_top_k)

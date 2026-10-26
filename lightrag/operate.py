@@ -403,6 +403,9 @@ async def _collect_directed_path_diagnostics(
         diagnostics["reason"] = "storage_has_no_directed_neighbor_provider"
         return diagnostics, []
 
+    provider_candidate_limit = getattr(
+        knowledge_graph_inst, "directed_neighbor_candidate_limit", None
+    )
     if getattr(knowledge_graph_inst, "supports_query_aware_neighbor_selection", False):
         fetch_edges = partial(
             fetch_edges,
@@ -412,6 +415,8 @@ async def _collect_directed_path_diagnostics(
             ),
         )
 
+    path_stages: dict[str, Any] = {}
+    diagnostics["stages"] = path_stages
     try:
         paths = await find_directed_paths(
             anchors,
@@ -419,6 +424,8 @@ async def _collect_directed_path_diagnostics(
             route=route,
             query_param=query_param,
             focus_entities=keywords,
+            diagnostics=path_stages,
+            provider_candidate_limit=provider_candidate_limit,
         )
     except Exception as exc:
         logger.warning("Directed path retrieval failed; preserving normal context: %s", exc)

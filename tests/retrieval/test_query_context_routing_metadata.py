@@ -383,6 +383,8 @@ async def test_query_aware_provider_receives_route_predicates():
     )
     assert diagnostics["status"] == "completed"
     assert paths == []
+    assert diagnostics["stages"]["anchors_unique"] >= 1
+    assert diagnostics["stages"]["levels"][0]["provider_records"] == 0
     assert graph.target_relation_types[0] == "causes"
     assert graph.target_chain_roles == ()
 

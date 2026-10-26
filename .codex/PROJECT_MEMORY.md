@@ -24,7 +24,9 @@ Keep secrets and private document content out of memory.
   bounded to 1-5 hops (default 2). Neo4j pair-based merge needs per-assertion
   handling for parallel claims.
 - Exploratory MCP prototype: `explore_pem_connections` uses `/query/data` and
-  provisional domain labels in `lightrag_mcp/exploration.py`; see
+  provisional exact-alias multi-label subjects in
+  `ontology/exploration_subjects_v1.json` and unverified same-sentence source
+  span proposals; see
   `docs/EXPLORATORY_DISCOVERY_PLAN.md`. It is not expert-validated.
 
 ## Extraction And Batch State
@@ -33,6 +35,9 @@ Keep secrets and private document content out of memory.
   retains source documents, chunks and URLs; revisions live in document metadata.
 - Azure Batch submission manifests bind chunks, hashes, model, prompt and
   extraction revision. Import validates complete outputs before graph writes.
+- `scripts/audit_azure_batch_completeness.py` inventories saved Batch
+  manifests/request/output JSONL offline; missing downloads are unassessed,
+  not proof of incomplete extraction.
 - Still open: normal-provider completion validation, targeted retry and
   idempotent recovery after merge failure.
 
@@ -42,6 +47,8 @@ Keep secrets and private document content out of memory.
   samples; Validation uses all chunks without gleaning; Final includes gleaning.
 - Scoring v2 excludes Metadata from Overall. Entity precision and answer-level
   support remain limited; directed-path scores are not end-to-end answer quality.
+- Directed-path diagnostics now include bounded per-depth provider, filter,
+  fanout and beam counts; real Staging failure attribution remains open.
 - The product North Star now prioritizes evidence-visible, cross-subject-area
   discovery of *unreviewed* indirect battery-engineering connections.
 
@@ -53,9 +60,11 @@ Keep secrets and private document content out of memory.
 - BattINFO imports newer electrochemistry/chemical-substance versions than
   this union contains. Do not assume a compatible OWL import closure.
 - `ontology/relation_types.json` is provisional pilot material, not gold.
-  `ontology/pem_mapping_v1.json` and optional `ontology.resolver` are offline
-  only; conditional matches do not assert a canonical IRI. Runtime extraction
-  and retrieval do not load them. Preserve raw labels/direction/evidence.
+  `ontology/pem_mapping_v1.json` supports an offline resolver and an opt-in
+  runtime extraction annotation. Conditional matches do not assert an IRI.
+  `ONTOLOGY_ASSERTION_RETRIEVAL_ENABLED` separately expands stored assertions
+  in Neo4j directed-neighbor retrieval; both switches default off. Preserve
+  raw labels/direction/evidence.
   See `docs/ONTOLOGY_INTEGRATION_PLAN.md` and `docs/PROJECT_TODO.md`.
 
 ## Read On Demand
