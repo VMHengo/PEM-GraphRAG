@@ -72,8 +72,21 @@ cross-area, 2-4-hop proposals from up to five exact graph-node seeds. It does
 not guarantee 20 results; empty seeds and failures are visible. The same
 snapshot can be exported as a Markdown review sheet. Each row has the endpoint
 connection, subject areas, ordered hop assertions, source document and URL,
-chunk identifier, a candidate passage and a chunk preview. The passage is a
-mention locator, not proof of the stated predicate or direction.
+chunk identifier, a candidate passage and extracted PDF text. Review sessions
+retain up to three source chunks per hop, each capped at 12,000 characters
+with truncation disclosed. The compact MCP response still uses one abbreviated
+source. A passage is located by entity-name co-occurrence, not by relation
+entailment; the reviewer must check direction, sign and conditions.
+
+New review candidates also show a deterministic, versioned *indirect
+hypothesis* for X -> Z. Signed `increases`/`decreases` hops compose by sign
+only under an explicit monotonic-variable assumption. A path containing
+`affects` or mixed broad predicates has unknown polarity. Non-causal or
+unsupported predicates do not compose. The result never becomes a direct
+Neo4j edge, and no numeric confidence is inferred from relation importance.
+Up to two paths per target can enter the review pool; opposite signed routes
+receive limited reserved slots so they are not silently collapsed. Automatic
+checks do not establish source entailment or compatible physical conditions.
 
 For each candidate, record each hop's verdict (`supported`, `partial`,
 `contradicted`, `unclear`), condition compatibility, overall correctness,
@@ -81,6 +94,9 @@ interest, follow-up value and a note. Review events are append-only and retain
 the extraction revision captured at session start. Reviewer names are entered
 by users, not independently verified by the application. Currently there is
 no calibrated novelty score or random-audit sample; those remain M6 work.
+The separately recorded inferred-connection verdict is a human judgment, not
+a model-verified fact. Existing session snapshots stay unchanged; create a new
+session to use a later inference-rule version.
 Report both: (a) fraction with *all* hops supported and compatible and (b)
 fraction rated worth follow-up. Do not call the latter causal accuracy. Include
 rejected candidates; they reveal ranking and extraction failure modes.

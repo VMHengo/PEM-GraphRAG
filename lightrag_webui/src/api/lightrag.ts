@@ -368,6 +368,7 @@ export type EvaluationRunDetailResponse = {
 export type ExplorationVerdict = 'supported' | 'partial' | 'contradicted' | 'unclear'
 export type ExplorationInterest = 'interesting' | 'neutral' | 'not_interesting' | 'unclear'
 export type ExplorationConditions = 'compatible' | 'incompatible' | 'unclear'
+export type ExplorationInferenceVerdict = 'plausible' | 'conditional' | 'contradicted' | 'not_derivable'
 
 export type ExplorationCandidateSpan =
   | string
@@ -380,8 +381,10 @@ export type ExplorationCandidateSpan =
 export type ExplorationSource = {
   chunk_id: string
   document: string
-  url: string
+  url: string | null
   chunk_excerpt: string
+  full_chunk_text?: string
+  full_chunk_truncated?: boolean
   candidate_span?: ExplorationCandidateSpan
 }
 
@@ -393,6 +396,17 @@ export type ExplorationHop = {
   sources: ExplorationSource[]
 }
 
+export type ExplorationInferredConnection = {
+  relation: string | null
+  label: string
+  polarity: 'positive' | 'negative' | 'unknown' | null
+  status: 'candidate' | 'not_composable'
+  rule: string
+  rule_version: string
+  caveats: string[]
+  path_hops: number
+}
+
 export type ExplorationCandidate = {
   id: string
   from: string
@@ -402,6 +416,7 @@ export type ExplorationCandidate = {
   hops: number
   path: ExplorationHop[]
   status: string
+  inferred_connection?: ExplorationInferredConnection | null
 }
 
 export type ExplorationReviewRequest = {
@@ -411,6 +426,7 @@ export type ExplorationReviewRequest = {
   correctness: ExplorationVerdict
   hop_verdicts: ExplorationVerdict[]
   conditions: ExplorationConditions
+  inference_verdict?: ExplorationInferenceVerdict | null
   follow_up: boolean
   note: string
 }

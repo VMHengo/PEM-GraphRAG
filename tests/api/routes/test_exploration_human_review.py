@@ -37,7 +37,7 @@ def _payload():
         "status": "success",
         "data": {
             "chunks": [
-                {"chunk_id": "chunk-1", "file_path": "a.pdf", "content": "Electrode Calendering changes Cathode Porosity."},
+                {"chunk_id": "chunk-1", "file_path": "a.pdf", "content": "Electrode Calendering changes Cathode Porosity. " + "Background. " * 120},
                 {"chunk_id": "chunk-2", "file_path": "b.pdf", "content": "Cathode Porosity can influence Lithium Plating."},
             ],
             "references": [{"file_path": "a.pdf", "source_url": "https://example.org/a"}],
@@ -103,12 +103,17 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         assert candidate["path"][0]["sources"][0]["document"] == "a.pdf"
         assert candidate["path"][1]["sources"][0]["document"] == "b.pdf"
         assert candidate["path"][0]["sources"][0]["url"] == "https://example.org/a"
+        assert len(candidate["path"][0]["sources"][0]["chunk_excerpt"]) == 900
+        assert len(candidate["path"][0]["sources"][0]["full_chunk_text"]) > 900
+        assert candidate["path"][0]["sources"][0]["full_chunk_truncated"] is False
+        assert candidate["inferred_connection"]["relation"] == "may_indirectly_affect"
+        assert candidate["inferred_connection"]["polarity"] == "unknown"
 
         vote = {
             "candidate_id": candidate["id"], "reviewer": "Reviewer A",
             "interest": "interesting", "correctness": "partial",
             "hop_verdicts": ["supported", "unclear"],
-            "conditions": "unclear", "follow_up": True,
+            "conditions": "unclear", "inference_verdict": "conditional", "follow_up": True,
             "note": "Check the second paper.",
         }
         saved = client.post(
@@ -117,7 +122,14 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         )
         assert saved.status_code == 200, saved.text
         assert saved.json()["review"]["extraction_revision"] == {"version": "1.0.1"}
+        assert saved.json()["review"]["inference_verdict"] == "conditional"
+        assert saved.json()["review"]["inference_rule_version"] == "1"
+        assert client.post(
+            f"/evaluation/exploration/sessions/{session_id}/reviews",
+            headers=HEADERS, json={**vote, "inference_verdict": "verified_fact"},
+        ).status_code == 422
         vote["note"] = "Second reading"
+        vote.pop("inference_verdict")
         assert client.post(
             f"/evaluation/exploration/sessions/{session_id}/reviews",
             headers=HEADERS, json=vote,
@@ -129,6 +141,7 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         )
         assert sheet.status_code == 200
         assert "Electrode Calendering --causes--> Cathode Porosity" in sheet.text
+        assert "may indirectly affect" in sheet.text
         assert "a.pdf" in sheet.text
         listing = client.get("/evaluation/exploration/sessions", headers=HEADERS)
         assert listing.json()["sessions"][0]["candidate_count"] == 1

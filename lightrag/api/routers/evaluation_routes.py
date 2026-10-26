@@ -168,6 +168,9 @@ class ExplorationReviewRequest(BaseModel):
         min_length=2, max_length=4
     )
     conditions: Literal["compatible", "incompatible", "unclear"]
+    inference_verdict: Literal[
+        "plausible", "conditional", "contradicted", "not_derivable"
+    ] | None = None
     follow_up: bool = False
     note: str = Field(default="", max_length=4000)
 
@@ -249,7 +252,10 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                     payload = await rag.aquery_data(
                         f"What can {start} cause or influence downstream?", param=param
                     )
-                    discoveries.append(format_exploration(payload, start=start, limit=limit))
+                    discoveries.append(format_exploration(
+                        payload, start=start, limit=min(limit * 2, 40),
+                        include_full_chunks=True, max_paths_per_target=2,
+                    ))
                 except Exception as exc:
                     logger.warning("Exploration seed %s failed: %s", start, exc)
                     seed_errors.append({"start": start, "error": "Seed query failed; check server logs"})
@@ -337,6 +343,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                 correctness=request.correctness,
                 hop_verdicts=list(request.hop_verdicts),
                 conditions=request.conditions,
+                inference_verdict=request.inference_verdict,
                 follow_up=request.follow_up,
                 note=request.note.strip(),
             )

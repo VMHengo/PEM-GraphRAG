@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lightrag.evaluation.path_inference import infer_indirect_connection
+
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
@@ -126,6 +128,7 @@ def add_review(
     correctness: str,
     hop_verdicts: list[str],
     conditions: str,
+    inference_verdict: str | None = None,
     follow_up: bool,
     note: str,
 ) -> dict[str, Any]:
@@ -141,6 +144,8 @@ def add_review(
         raise ValueError("Reviewer is required")
     if len(hop_verdicts) != len(candidate["path"]):
         raise ValueError("Provide one verdict for each hop")
+    if inference_verdict not in {None, "plausible", "conditional", "contradicted", "not_derivable"}:
+        raise ValueError("Invalid inferred-connection verdict")
     event = {
         "id": f"vote_{uuid.uuid4().hex}",
         "candidate_id": candidate_id,
@@ -149,6 +154,8 @@ def add_review(
         "correctness": correctness,
         "hop_verdicts": hop_verdicts,
         "conditions": conditions,
+        "inference_verdict": inference_verdict,
+        "inference_rule_version": (candidate.get("inferred_connection") or {}).get("rule_version"),
         "follow_up": follow_up,
         "note": note,
         "created_at": _now(),
@@ -173,22 +180,76 @@ def recover_interrupted_sessions(working_dir: str | Path) -> int:
 def select_review_candidates(
     discoveries: list[dict[str, Any]], *, limit: int
 ) -> list[dict[str, Any]]:
-    """Round-robin seed results and keep distinct endpoint pairs."""
+    """Prioritize diverse endpoints while retaining contradictory signed paths."""
 
     queues = [list(item.get("connections") or []) for item in discoveries]
-    selected: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
-    while len(selected) < limit and any(queues):
+    ordered: list[dict[str, Any]] = []
+    seen_paths: set[tuple] = set()
+    while any(queues):
         for queue in queues:
-            if not queue or len(selected) >= limit:
+            if not queue:
                 continue
             candidate = queue.pop(0)
-            key = (str(candidate["from"]).casefold(), str(candidate["to"]).casefold())
-            if key in seen:
+            signature = (
+                str(candidate.get("from") or "").casefold(),
+                str(candidate.get("to") or "").casefold(),
+                tuple(
+                    (
+                        str(hop.get("source") or "").casefold(),
+                        str(hop.get("relation") or "").casefold(),
+                        str(hop.get("target") or "").casefold(),
+                    )
+                    for hop in candidate.get("path") or []
+                ),
+            )
+            if signature in seen_paths:
                 continue
-            seen.add(key)
-            selected.append({"id": f"candidate-{len(selected) + 1:03d}", **candidate})
-    return selected
+            seen_paths.add(signature)
+            ordered.append({
+                **candidate, "inferred_connection": infer_indirect_connection(candidate)
+            })
+
+    primary: list[dict[str, Any]] = []
+    conflicting: list[dict[str, Any]] = []
+    alternatives: list[dict[str, Any]] = []
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for candidate in ordered:
+        pair = (str(candidate["from"]).casefold(), str(candidate["to"]).casefold())
+        groups.setdefault(pair, []).append(candidate)
+    for group in groups.values():
+        signed = [
+            candidate for candidate in group
+            if candidate["inferred_connection"]["polarity"] in {"positive", "negative"}
+        ]
+        has_opposition = {item["inferred_connection"]["polarity"] for item in signed} == {
+            "positive", "negative"
+        }
+        first = signed[0] if has_opposition else group[0]
+        primary.append(first)
+        opposite = next(
+            (
+                item for item in signed
+                if item["inferred_connection"]["polarity"]
+                != first["inferred_connection"]["polarity"]
+            ), None,
+        ) if has_opposition else None
+        if opposite is not None:
+            conflicting.append(opposite)
+        alternatives.extend(
+            candidate for candidate in group
+            if candidate is not first and candidate is not opposite
+        )
+
+    conflict_slots = min(len(conflicting), max(1, limit // 5) if limit > 1 else 0)
+    selected = primary[:limit - conflict_slots] + conflicting[:conflict_slots]
+    for candidate in primary[limit - conflict_slots:] + conflicting[conflict_slots:] + alternatives:
+        if len(selected) >= limit:
+            break
+        selected.append(candidate)
+    return [
+        {"id": f"candidate-{index:03d}", **candidate}
+        for index, candidate in enumerate(selected, start=1)
+    ]
 
 
 def render_review_sheet(session: dict[str, Any]) -> str:
@@ -212,6 +273,15 @@ def render_review_sheet(session: dict[str, Any]) -> str:
             f"Areas: {', '.join(candidate.get('start_domains') or [])} -> "
             f"{', '.join(candidate.get('target_domains') or [])}",
         ])
+        inferred = candidate.get("inferred_connection") or {}
+        if inferred:
+            lines.append(
+                f"Indirect hypothesis: {candidate['from']} --[{inferred.get('label')}]--> "
+                f"{candidate['to']} (rule: {inferred.get('rule')}; "
+                f"status: {inferred.get('status')})"
+            )
+            for caveat in inferred.get("caveats") or []:
+                lines.append(f"- Limitation: {caveat}")
         for hop_index, hop in enumerate(candidate["path"], start=1):
             lines.append(
                 f"{hop_index}. **{hop['source']} --{hop['relation']}--> {hop['target']}**"
@@ -223,12 +293,20 @@ def render_review_sheet(session: dict[str, Any]) -> str:
                     f"URL: {source.get('url') or 'none'}"
                 )
                 span = source.get("candidate_span") or {}
+                span_text = span.get("text") if isinstance(span, dict) else str(span)
                 lines.append(
-                    f"   - Candidate passage: {span.get('text') or source.get('chunk_excerpt') or ''}"
+                    f"   - Candidate passage: {span_text or source.get('chunk_excerpt') or ''}"
                 )
+                if source.get("full_chunk_text"):
+                    lines.append("   - Extracted PDF text (retained chunk):")
+                    for text_line in str(source["full_chunk_text"]).splitlines():
+                        lines.append(f"     > {text_line}")
+                    if source.get("full_chunk_truncated"):
+                        lines.append("     > [Text truncated; inspect the original document]")
             lines.append("   - Hop support: supported / partial / contradicted / unclear")
         lines.extend([
             "- Overall correctness: supported / partial / contradicted / unclear",
+            "- Indirect hypothesis: plausible / conditional / contradicted / not derivable",
             "- Interest: interesting / neutral / not interesting / unclear",
             "- Conditions compatible: yes / no / unclear",
             "- Worth follow-up: yes / no",

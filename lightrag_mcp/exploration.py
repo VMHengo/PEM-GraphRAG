@@ -117,7 +117,9 @@ def _valid_path(
 
 
 def format_exploration(
-    payload: dict[str, Any], *, start: str, limit: int = 5
+    payload: dict[str, Any], *, start: str, limit: int = 5,
+    include_full_chunks: bool = False,
+    max_paths_per_target: int = 1,
 ) -> dict[str, Any]:
     """Return diverse cross-domain candidates, never a synthesized direct edge."""
 
@@ -144,7 +146,7 @@ def format_exploration(
     start_subject = classify_subject(start)
     start_domains = set(start_subject["domains"])
     by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    seen_targets: set[str] = set()
+    target_counts: dict[str, int] = defaultdict(int)
 
     for path in diagnostics.get("paths") or []:
         if not isinstance(path, dict) or not _valid_path(path, start, chunks):
@@ -168,9 +170,10 @@ def format_exploration(
             continue
         if set(path_start["domains"]).intersection(target_domains):
             continue
-        if _normal(target) in seen_targets:
+        target_key = _normal(target)
+        if target_counts[target_key] >= max_paths_per_target:
             continue
-        seen_targets.add(_normal(target))
+        target_counts[target_key] += 1
         steps = []
         for edge in path["edges"]:
             sources = []
@@ -180,8 +183,7 @@ def format_exploration(
                     continue
                 file_path = str(chunk.get("file_path") or "")
                 ref = references.get(file_path) or {}
-                sources.append(
-                    {
+                source = {
                         "chunk_id": source_id,
                         "document": file_path,
                         "url": ref.get("url")
@@ -195,8 +197,12 @@ def format_exploration(
                         ),
                         "note": "Chunk excerpt; exact relation span not independently verified.",
                     }
-                )
-                if sources:
+                if include_full_chunks:
+                    content = str(chunk.get("content") or "")
+                    source["full_chunk_text"] = content[:12000]
+                    source["full_chunk_truncated"] = len(content) > 12000
+                sources.append(source)
+                if len(sources) >= (3 if include_full_chunks else 1):
                     break
             steps.append(
                 {

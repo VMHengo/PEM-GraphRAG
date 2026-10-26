@@ -69,14 +69,18 @@ below. No bulk re-extraction is authorized.
 - [ ] **EXP-05: Path diversity and five-hop pilot.** Compare reranking and
   bounded search on reviewed seeds, then permit five hops if evidence support,
   interest and operating cost warrant it. Keep shorter valid paths visible.
+  Partial (local): HIL selection reserves bounded room for opposing signed
+  routes to one endpoint. Expert review and five-hop validation remain pending.
 - [ ] **EXP-06: Human review with optional model triage.** Show each assertion,
   proposed source span and complete path; store immutable human labels by
   assertion/extraction revision. Model suggestions are optional, shown after
   some blind human judgments, and never counted as human verification. Keep a
   random audit sample in addition to the high-priority review queue.
   Partial (local): saved path-level and per-hop human review events with source
-  excerpts and captured extraction revision. There is no model triage, random
-  audit sample, or verified reviewer identity yet.
+  text and captured extraction revision. New sessions include a versioned,
+  conditional X -> Z hypothesis and a separate human verdict. Automatic
+  context compatibility, sign entailment, model triage, random auditing and
+  verified reviewer identity remain pending.
 
 ### Quality Benchmark Triage (before further extraction changes)
 

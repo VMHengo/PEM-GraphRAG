@@ -3,7 +3,9 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
   CircleIcon,
+  CircleHelpIcon,
   DownloadIcon,
   ExternalLinkIcon,
   Loader2Icon,
@@ -15,6 +17,7 @@ import { toast } from 'sonner'
 import {
   ExplorationCandidate,
   ExplorationConditions,
+  ExplorationInferenceVerdict,
   ExplorationInterest,
   ExplorationReview,
   ExplorationReviewRequest,
@@ -41,6 +44,7 @@ import {
   SelectValue
 } from '@/components/ui/Select'
 import Textarea from '@/components/ui/Textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip'
 import { errorMessage } from '@/lib/utils'
 
 const REVIEW_LIMIT = 20
@@ -64,6 +68,20 @@ const conditionOptions: Array<{ value: ExplorationConditions; label: string }> =
   { value: 'incompatible', label: 'Incompatible' },
   { value: 'unclear', label: 'Unclear' }
 ]
+
+const inferenceVerdictOptions: Array<{ value: ExplorationInferenceVerdict; label: string }> = [
+  { value: 'plausible', label: 'Plausible' },
+  { value: 'conditional', label: 'Conditional' },
+  { value: 'contradicted', label: 'Contradicted' },
+  { value: 'not_derivable', label: 'Not derivable' }
+]
+
+const rubricDescriptions = {
+  hop: 'Judge whether the extracted source text supports this relation with the stated direction and sign or polarity.',
+  interest: 'Rate scientific relevance or novelty independently from correctness. Interest identifies claims worth validating; it does not make an unvalidated or incorrect chain supported.',
+  correctness: 'Judge the multi-hop chain as a whole. Consider whether every hop works together and supports the overall path.',
+  conditions: 'Judge whether the source contexts are compatible enough to combine, including scope, time, population, and qualifiers.'
+} as const
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -90,6 +108,33 @@ const candidateSpanText = (span: NonNullable<ExplorationCandidate['path'][number
 }
 
 const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
+
+function RubricLabel({ label, description }: { label: string; description: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span>{label}</span>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip open={open} onOpenChange={setOpen}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground focus-visible:text-foreground inline-flex size-5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+              aria-label={`Help for ${label}`}
+              onClick={() => setOpen((current) => !current)}
+            >
+              <CircleHelpIcon className="size-3.5" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs text-xs">
+            {description}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </span>
+  )
+}
 
 type ReviewEditorProps = {
   sessionId: string
@@ -118,22 +163,29 @@ function ReviewEditor({
   const [interest, setInterest] = useState<ExplorationInterest | ''>(review?.interest || '')
   const [correctness, setCorrectness] = useState<ExplorationVerdict | ''>(review?.correctness || '')
   const [conditions, setConditions] = useState<ExplorationConditions | ''>(review?.conditions || '')
+  const [inferenceVerdict, setInferenceVerdict] = useState<ExplorationInferenceVerdict | ''>(
+    review?.inference_verdict || ''
+  )
+  const [inferenceHelpOpen, setInferenceHelpOpen] = useState(false)
   const [hopVerdicts, setHopVerdicts] = useState<Array<ExplorationVerdict | ''>>(
     candidate.path.map((_, index) => review?.hop_verdicts[index] || '')
   )
   const [followUp, setFollowUp] = useState(review?.follow_up || false)
   const [note, setNote] = useState(review?.note || '')
+  const hasContradictedHop = review?.hop_verdicts.includes('contradicted') || false
+  const hasIncompatibleConditions = review?.conditions === 'incompatible'
 
   const complete = Boolean(
     reviewer.trim() && interest && correctness && conditions && hopVerdicts.every(Boolean)
+    && (!candidate.inferred_connection || inferenceVerdict)
   )
 
   const submit = () => {
     if (!complete || !interest || !correctness || !conditions) {
-      toast.error('Complete the reviewer, overall verdicts, and every hop verdict first')
+      toast.error('Complete the reviewer, path and hop verdicts, and inferred-claim verdict first')
       return
     }
-    void onSave({
+    const request: ExplorationReviewRequest = {
       candidate_id: candidate.id,
       reviewer: reviewer.trim(),
       interest,
@@ -142,7 +194,9 @@ function ReviewEditor({
       conditions,
       follow_up: followUp,
       note: note.trim()
-    })
+    }
+    if (inferenceVerdict) request.inference_verdict = inferenceVerdict
+    void onSave(request)
   }
 
   return (
@@ -160,6 +214,16 @@ function ReviewEditor({
                 Unreviewed
               </Badge>
             )}
+            {hasContradictedHop && (
+              <Badge className="border-red-500/40 bg-red-500/10 text-red-500" variant="outline">
+                Reviewed: contradicted hop
+              </Badge>
+            )}
+            {hasIncompatibleConditions && (
+              <Badge className="border-red-500/40 bg-red-500/10 text-red-500" variant="outline">
+                Reviewed: incompatible conditions
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground mt-1 text-xs">
             {candidate.hops} {candidate.hops === 1 ? 'hop' : 'hops'} · {candidate.status}
@@ -170,6 +234,72 @@ function ReviewEditor({
           <p className="text-muted-foreground mt-1 text-xs break-words">
             Start domains: {candidate.start_domains.join(', ') || '-'} · Target domains: {candidate.target_domains.join(', ') || '-'}
           </p>
+          {candidate.inferred_connection ? (
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono break-all">
+                  {candidate.from} --[{candidate.inferred_connection.status === 'candidate'
+                    ? candidate.inferred_connection.label || candidate.inferred_connection.relation || 'indirect relation'
+                    : 'not composable'}]--&gt; {candidate.to}
+                </span>
+                <Badge variant="outline" className="border-amber-500/40 text-amber-500">
+                  {candidate.inferred_connection.status === 'candidate' ? 'Hypothesis' : 'Not composable'}
+                </Badge>
+                <TooltipProvider delayDuration={250}>
+                  <Tooltip open={inferenceHelpOpen} onOpenChange={setInferenceHelpOpen}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground focus-visible:text-foreground inline-flex size-5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+                        aria-label="Show inferred hypothesis details"
+                        onClick={() => setInferenceHelpOpen((current) => !current)}
+                      >
+                        <CircleHelpIcon className="size-3.5" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-sm space-y-2 text-xs">
+                      <p>Path-derived review aid only; not a new graph edge or a direct statement verified in source text.</p>
+                      <p>
+                        {candidate.inferred_connection.path_hops} path {candidate.inferred_connection.path_hops === 1 ? 'hop' : 'hops'}
+                        {candidate.inferred_connection.polarity ? ` / ${candidate.inferred_connection.polarity} polarity` : ''}
+                      </p>
+                      {candidate.inferred_connection.rule && <p>Rule: {candidate.inferred_connection.rule}</p>}
+                      {candidate.inferred_connection.caveats.length > 0 && (
+                        <ul className="list-disc space-y-0.5 pl-4">
+                          {candidate.inferred_connection.caveats.map((caveat, index) => (
+                            <li key={`${caveat}-${index}`} className="break-words">{caveat}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="max-w-sm space-y-1">
+                <RubricLabel
+                  label="Inferred-claim verdict"
+                  description="Judge whether the indirect X-to-Z conclusion follows from the reviewed hops and compatible conditions. This is separate from judging each extracted edge."
+                />
+                <Select
+                  value={inferenceVerdict}
+                  onValueChange={(value) => setInferenceVerdict(value as ExplorationInferenceVerdict)}
+                >
+                  <SelectTrigger aria-label="Inferred-claim verdict">
+                    <SelectValue placeholder="Assess the indirect hypothesis" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inferenceVerdictOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : (
+            <p className="text-muted-foreground mt-2 text-xs">
+              No inferred connection available (legacy session or no inference).
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={onPrevious} disabled={!hasPrevious} tooltip="Previous candidate">
@@ -181,10 +311,6 @@ function ReviewEditor({
             <span className="sr-only">Next candidate</span>
           </Button>
         </div>
-      </div>
-
-      <div className="border-l-4 border-amber-500/60 bg-amber-500/5 px-3 py-2 text-sm">
-        Candidate spans are retrieval leads, not proof. Judge support against the original document; the chunk preview is abbreviated.
       </div>
 
       <div className="space-y-4">
@@ -199,6 +325,9 @@ function ReviewEditor({
                 {hop.description && <p className="text-muted-foreground mt-1 text-sm break-words">{hop.description}</p>}
               </div>
               <div className="w-full shrink-0 sm:w-48">
+                <div className="mb-1 text-sm font-medium">
+                  <RubricLabel label="Hop verdict" description={rubricDescriptions.hop} />
+                </div>
                 <Select
                   value={hopVerdicts[index]}
                   onValueChange={(value) => setHopVerdicts((current) =>
@@ -228,13 +357,30 @@ function ReviewEditor({
                       </a>
                     )}
                   </div>
-                  <p className="mt-2 whitespace-pre-wrap break-words">{source.chunk_excerpt || 'No excerpt available.'}</p>
                   {source.candidate_span && (
-                    <div className="mt-2 bg-muted/50 px-2 py-1.5 text-xs">
-                      <span className="font-semibold">Candidate span, not proof:</span>{' '}
-                      <span className="break-words">{candidateSpanText(source.candidate_span)}</span>
+                    <div className="mt-2 text-sm">
+                      <p className="text-muted-foreground text-xs font-medium">
+                        Candidate passage (extracted text, not independently verified)
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap break-words">{candidateSpanText(source.candidate_span)}</p>
                     </div>
                   )}
+                  <details className="group mt-2 text-xs">
+                    <summary className="text-muted-foreground hover:text-foreground focus-visible:text-foreground inline-flex cursor-pointer list-none items-center gap-1 font-medium focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+                      {source.full_chunk_text
+                        ? source.full_chunk_truncated ? 'Extracted chunk (truncated)' : 'Full extracted chunk'
+                        : 'Abbreviated chunk preview'}
+                      <ChevronDownIcon className="size-3.5 transition-transform group-open:rotate-180" aria-hidden="true" />
+                    </summary>
+                    {source.full_chunk_truncated && (
+                      <p className="mt-2 font-medium text-amber-600">
+                        Retained extracted text is truncated at 12,000 characters.
+                      </p>
+                    )}
+                    <p className="mt-2 whitespace-pre-wrap break-words">
+                      {source.full_chunk_text || source.chunk_excerpt || 'No chunk preview available.'}
+                    </p>
+                  </details>
                 </div>
               ))}
             </div>
@@ -247,27 +393,27 @@ function ReviewEditor({
           <span>Reviewer</span>
           <Input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
         </label>
-        <label className="space-y-1 text-sm font-medium">
-          <span>Interest</span>
+        <div className="space-y-1 text-sm font-medium">
+          <RubricLabel label="Interest" description={rubricDescriptions.interest} />
           <Select value={interest} onValueChange={(value) => setInterest(value as ExplorationInterest)}>
-            <SelectTrigger><SelectValue placeholder="Select interest" /></SelectTrigger>
+            <SelectTrigger aria-label="Interest"><SelectValue placeholder="Select interest" /></SelectTrigger>
             <SelectContent>{interestOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
           </Select>
-        </label>
-        <label className="space-y-1 text-sm font-medium">
-          <span>Overall correctness</span>
+        </div>
+        <div className="space-y-1 text-sm font-medium">
+          <RubricLabel label="Overall correctness" description={rubricDescriptions.correctness} />
           <Select value={correctness} onValueChange={(value) => setCorrectness(value as ExplorationVerdict)}>
-            <SelectTrigger><SelectValue placeholder="Select verdict" /></SelectTrigger>
+            <SelectTrigger aria-label="Overall correctness"><SelectValue placeholder="Select verdict" /></SelectTrigger>
             <SelectContent>{verdictOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
           </Select>
-        </label>
-        <label className="space-y-1 text-sm font-medium">
-          <span>Conditions</span>
+        </div>
+        <div className="space-y-1 text-sm font-medium">
+          <RubricLabel label="Conditions" description={rubricDescriptions.conditions} />
           <Select value={conditions} onValueChange={(value) => setConditions(value as ExplorationConditions)}>
-            <SelectTrigger><SelectValue placeholder="Select compatibility" /></SelectTrigger>
+            <SelectTrigger aria-label="Conditions"><SelectValue placeholder="Select compatibility" /></SelectTrigger>
             <SelectContent>{conditionOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
           </Select>
-        </label>
+        </div>
       </div>
 
       <label className="block space-y-1 text-sm font-medium">
