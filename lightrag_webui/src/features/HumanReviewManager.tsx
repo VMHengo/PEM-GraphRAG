@@ -688,19 +688,27 @@ export default function HumanReviewManager() {
               {failure.start}: {failure.error}
             </p>
           ))}
+          {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0).map((item) => (
+            <p key={item.start} className="text-muted-foreground text-sm">
+              {item.start}: {item.paths_examined === 0
+                ? 'No directed paths were found from this node.'
+                : `${item.paths_examined} directed paths were found, but none met the source and cross-area review filters.`}
+              {item.suggested_start_nodes.length > 0 && ` Check the graph name: ${item.suggested_start_nodes.join(', ')}.`}
+            </p>
+          ))}
           {session.status === 'completed' && candidates.length < session.limit && (
             <p className="text-muted-foreground text-sm">
               Only {candidates.length} eligible {candidates.length === 1 ? 'path' : 'paths'} found for {session.starts.join(', ')}.
-              A new session with another starting node, such as Heat Generation, may find different paths.
+              Try another starting node or hop depth in a new session; increasing the case limit alone will not add paths.
             </p>
           )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="font-medium">Review progress</span>
-              <span className="text-muted-foreground">{reviewedCount} of {candidates.length || session.limit} reviewed</span>
+              <span className="text-muted-foreground">{reviewedCount} of {candidates.length} reviewed</span>
             </div>
-            <Progress value={progress} className="h-2" aria-label={`${reviewedCount} of ${candidates.length || session.limit} reviewed`} />
+            <Progress value={progress} className="h-2" aria-label={`${reviewedCount} of ${candidates.length} reviewed`} />
           </div>
 
           {candidates.length === 0 ? (

@@ -73,6 +73,7 @@ def create_session(
         "extraction_revision": extraction_revision,
         "completed_starts": 0,
         "seed_errors": [],
+        "seed_diagnostics": [],
         "candidates": [],
         "error": None,
     }
@@ -109,7 +110,7 @@ def list_sessions(working_dir: str | Path, *, limit: int = 25) -> list[dict[str,
 def update_session(working_dir: str | Path, session_id: str, **changes: Any) -> dict[str, Any]:
     path = _session_dir(working_dir, session_id) / "session.json"
     session = _load_json(path)
-    allowed = {"status", "completed_starts", "seed_errors", "candidates", "error"}
+    allowed = {"status", "completed_starts", "seed_errors", "seed_diagnostics", "candidates", "error"}
     if set(changes) - allowed:
         raise ValueError("Unsupported review session update")
     session.update(changes)

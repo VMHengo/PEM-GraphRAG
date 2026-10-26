@@ -451,6 +451,15 @@ export type ExplorationSessionSummary = {
   review_count?: number
   completed_starts?: number
   seed_errors?: Array<{ start: string; error: string }>
+  seed_diagnostics?: Array<{
+    start: string
+    retrieval_status: string
+    retrieval_reason?: string | null
+    paths_examined: number
+    eligible_paths: number
+    empty_reason?: string | null
+    suggested_start_nodes: string[]
+  }>
   error?: string | null
 }
 

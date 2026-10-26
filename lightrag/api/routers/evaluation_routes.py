@@ -234,6 +234,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     async def execute_exploration(session_id: str, starts: list[str], hop_depth: int, limit: int) -> None:
         discoveries: list[dict] = []
         seed_errors: list[dict[str, str]] = []
+        seed_diagnostics: list[dict] = []
         try:
             update_session(working_dir, session_id, status="running")
             for index, start in enumerate(starts, start=1):
@@ -252,16 +253,27 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                     payload = await rag.aquery_data(
                         f"What can {start} cause or influence downstream?", param=param
                     )
-                    discoveries.append(format_exploration(
+                    discovery = format_exploration(
                         payload, start=start, limit=min(limit * 2, 40),
                         include_full_chunks=True, max_paths_per_target=2,
-                    ))
+                    )
+                    discoveries.append(discovery)
+                    seed_diagnostics.append({
+                        "start": start,
+                        "retrieval_status": discovery["retrieval_status"],
+                        "retrieval_reason": discovery["retrieval_reason"],
+                        "paths_examined": discovery["paths_examined"],
+                        "eligible_paths": discovery["candidate_count"],
+                        "empty_reason": discovery["empty_reason"],
+                        "suggested_start_nodes": discovery["suggested_start_nodes"],
+                    })
                 except Exception as exc:
                     logger.warning("Exploration seed %s failed: %s", start, exc)
                     seed_errors.append({"start": start, "error": "Seed query failed; check server logs"})
                 update_session(
                     working_dir, session_id,
                     completed_starts=index, seed_errors=seed_errors,
+                    seed_diagnostics=seed_diagnostics,
                 )
             candidates = select_review_candidates(discoveries, limit=limit)
             update_session(
@@ -269,6 +281,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                 status="completed" if discoveries else "failed",
                 candidates=candidates,
                 seed_errors=seed_errors,
+                seed_diagnostics=seed_diagnostics,
                 error=None if discoveries else "All start-node queries failed",
             )
         except Exception as exc:

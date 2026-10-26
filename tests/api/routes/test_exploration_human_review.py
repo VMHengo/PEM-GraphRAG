@@ -98,6 +98,9 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         assert session["extraction_revision"] == {"version": "1.0.1"}
         assert session["completed_starts"] == 1
         assert len(session["candidates"]) == 1
+        assert session["seed_diagnostics"][0]["start"] == "Electrode Calendering"
+        assert session["seed_diagnostics"][0]["paths_examined"] == 1
+        assert session["seed_diagnostics"][0]["eligible_paths"] == 1
         candidate = session["candidates"][0]
         assert candidate["path"][0]["sources"][0]["candidate_span"]["status"] == "candidate_mention_only"
         assert candidate["path"][0]["sources"][0]["document"] == "a.pdf"
@@ -150,6 +153,45 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
     assert calls[0][1].retrieval_strategy == "directed"
     assert calls[0][1].edge_direction == "out"
     assert calls[0][1].ll_keywords == ["Electrode Calendering"]
+
+
+def test_empty_review_session_preserves_seed_diagnostics(tmp_path):
+    class Rag:
+        working_dir = str(tmp_path)
+
+        async def aquery_data(self, query, param):
+            return {
+                "data": {"entities": [], "chunks": []},
+                "metadata": {"directed_paths": {
+                    "status": "completed", "reason": "no_matching_paths", "paths": [],
+                }},
+            }
+
+    app = FastAPI()
+    app.include_router(create_evaluation_routes(Rag(), "test-key"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/evaluation/exploration/sessions", headers=HEADERS,
+            json={"title": "Heat review", "starts": ["Heat Generation"], "hop_depth": 3, "limit": 20},
+        )
+        assert response.status_code == 202
+        session_id = response.json()["session"]["id"]
+        for _ in range(50):
+            detail = client.get(f"/evaluation/exploration/sessions/{session_id}", headers=HEADERS)
+            if detail.json()["session"]["status"] == "completed":
+                break
+            time.sleep(0.02)
+        session = detail.json()["session"]
+        assert session["candidates"] == []
+        assert session["seed_diagnostics"] == [{
+            "start": "Heat Generation",
+            "retrieval_status": "completed",
+            "retrieval_reason": "no_matching_paths",
+            "paths_examined": 0,
+            "eligible_paths": 0,
+            "empty_reason": "No directed, source-resolved cross-area path survived the filters.",
+            "suggested_start_nodes": [],
+        }]
 
 
 def test_hop_count_and_unknown_candidate_cannot_be_reviewed(tmp_path):
