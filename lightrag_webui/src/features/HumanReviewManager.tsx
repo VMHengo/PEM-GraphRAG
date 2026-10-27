@@ -801,8 +801,6 @@ export default function HumanReviewManager() {
           <label className="flex flex-col gap-1 text-sm font-medium sm:w-44">
             <span className="leading-5">Reviewer</span>
             <Input className="h-10 w-full" value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
-            {reviewerIdentity && <span className="text-muted-foreground break-all text-xs">{reviewerIdentity.email}</span>}
-            {reviewerIdentityError && <span className="text-destructive text-xs">Login identity unavailable: {reviewerIdentityError}</span>}
           </label>
           <div className="flex min-w-0 flex-col gap-1 sm:w-[29rem]">
             <span className="text-sm font-medium leading-5">Session</span>
@@ -847,6 +845,7 @@ export default function HumanReviewManager() {
           <Button size="sm" onClick={() => setShowCreate((current) => !current)}><PlusIcon /> New Session</Button>
         </div>
       </div>
+      {reviewerIdentityError && <p className="text-destructive text-xs">Login identity unavailable: {reviewerIdentityError}</p>}
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null) }}>
         <AlertDialogContent>
