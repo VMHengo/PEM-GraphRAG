@@ -1206,6 +1206,7 @@ class Neo4JStorage(BaseGraphStorage):
         candidate_limit_per_node: int = 200,
         target_relation_types: Sequence[str] = (),
         target_chain_roles: Sequence[str] = (),
+        expand_assertions: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         """Return semantic relationship records for multiple frontier nodes.
 
@@ -1339,7 +1340,7 @@ class Neo4JStorage(BaseGraphStorage):
                             properties["physical_tgt_id"] = physical_tgt_id
 
                         if (
-                            assertion_retrieval_enabled()
+                            (assertion_retrieval_enabled() or expand_assertions)
                             and RELATION_ASSERTIONS_FIELD in properties
                         ):
                             assertions = parse_relation_assertions(

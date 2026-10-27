@@ -642,7 +642,8 @@ async def _parse_output_jsonl(
 
         if use_json_extraction:
             result = await _process_json_extraction_result(
-                content, chunk_id, timestamp, file_path
+                content, chunk_id, timestamp, file_path,
+                chunk_data.get("content") if isinstance(chunk_data, dict) else None,
             )
         else:
             result = await _process_extraction_result(

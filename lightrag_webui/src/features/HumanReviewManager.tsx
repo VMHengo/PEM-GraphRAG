@@ -109,6 +109,7 @@ const candidateSpanText = (span: NonNullable<ExplorationCandidate['path'][number
 }
 
 const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
+const readableDescription = (value: string) => [...new Set(value.split('<SEP>').map((part) => part.trim()).filter(Boolean))].join(' ')
 
 const exclusionLabels: Record<string, string> = {
   invalid_or_unresolved_path: 'Missing source or unsupported edge',
@@ -127,16 +128,25 @@ function SourceExcerpt({ source }: { source: ExplorationCandidate['path'][number
   if (excerpt && excerpt.match_start >= 0 && excerpt.match_end <= excerpt.text.length
     && excerpt.match_start < excerpt.match_end) {
     return (
-      <p className="mt-2 whitespace-pre-wrap break-words text-sm">
-        {excerpt.text.slice(0, excerpt.match_start)}
-        <mark className="bg-amber-300/40 text-inherit">{excerpt.text.slice(excerpt.match_start, excerpt.match_end)}</mark>
-        {excerpt.text.slice(excerpt.match_end)}
-      </p>
+      <div className="mt-2">
+        <p className="text-muted-foreground text-xs">
+          {excerpt.status === 'exact_text_match'
+            ? 'Exact match in extracted text; relation still requires review.'
+            : excerpt.status === 'candidate_related_text'
+              ? 'Possibly related text; direction and relation are unverified.'
+              : 'Both terms found nearby; relation still requires review.'}
+        </p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+          {excerpt.text.slice(0, excerpt.match_start)}
+          <mark className="bg-amber-300/40 text-inherit">{excerpt.text.slice(excerpt.match_start, excerpt.match_end)}</mark>
+          {excerpt.text.slice(excerpt.match_end)}
+        </p>
+      </div>
     )
   }
   return source.candidate_span
     ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{candidateSpanText(source.candidate_span)}</p>
-    : <p className="text-muted-foreground mt-2 text-xs">No matching sentence found in this chunk. Open the extracted chunk to inspect it.</p>
+    : <p className="text-muted-foreground mt-2 text-xs">No reliable short text match found. Inspect the extracted chunk before rating this hop.</p>
 }
 
 function RubricLabel({ label, description }: { label: string; description: string }) {
@@ -353,7 +363,7 @@ function ReviewEditor({
                 <p className="mt-1 text-sm font-medium break-words">
                   {hop.source} <span className="text-muted-foreground">[{hop.relation}]</span> {hop.target}
                 </p>
-                {hop.description && <p className="text-muted-foreground mt-1 text-sm break-words">{hop.description}</p>}
+                {hop.description && <p className="text-muted-foreground mt-1 text-sm break-words">{readableDescription(hop.description)}</p>}
               </div>
               <div className="w-full shrink-0 sm:w-48">
                 <div className="mb-1 text-sm font-medium">

@@ -208,11 +208,15 @@ def format_exploration(
                             str(chunk.get("content") or ""),
                             edge["source"],
                             edge["target"],
+                            description=str(edge.get("description") or ""),
+                            evidence_quote=str(edge.get("evidence") or ""),
                         ),
                         "context_excerpt": propose_relation_context(
                             str(chunk.get("content") or ""),
                             edge["source"],
                             edge["target"],
+                            description=str(edge.get("description") or ""),
+                            evidence_quote=str(edge.get("evidence") or ""),
                         ),
                         "note": "Chunk excerpt; exact relation span not independently verified.",
                     }

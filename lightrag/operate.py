@@ -75,6 +75,7 @@ from lightrag.relation_assertions import (
     serialize_relation_assertions,
 )
 from lightrag.chunk_schema import strip_internal_multimodal_markup_for_extraction
+from lightrag.evidence_quotes import locate_exact_quote
 from lightrag.prompt import PROMPTS, resolve_entity_extraction_prompt_profile
 from lightrag.constants import (
     GRAPH_FIELD_SEP,
@@ -1376,6 +1377,7 @@ async def _process_json_extraction_result(
     chunk_key: str,
     timestamp: int,
     file_path: str = "unknown_source",
+    chunk_content: str | None = None,
 ) -> tuple[dict, dict]:
     """Process a JSON-formatted extraction result from LLM.
 
@@ -1567,6 +1569,13 @@ async def _process_json_extraction_result(
                 timestamp=timestamp,
                 **relationship_metadata,
             )
+            quote = rel_data.get("evidence_quote")
+            if isinstance(quote, str) and chunk_content:
+                match = locate_exact_quote(chunk_content, quote)
+                if match:
+                    edge_data["evidence"] = match["text"]
+                else:
+                    logger.debug("%s: Ignoring relationship quote absent from chunk", chunk_key)
             maybe_edges[(truncated_source, truncated_target)].append(edge_data)
 
         except Exception as e:
@@ -2123,6 +2132,7 @@ async def _rebuild_from_extraction_result(
             chunk_id,
             timestamp,
             file_path,
+            chunk_data.get("content") if chunk_data else None,
         )
         # If JSON parsing yielded results, use them
         if nodes or edges:
@@ -3350,12 +3360,17 @@ async def _merge_edges_then_upsert(
             )
         )
         assertion_properties = {}
-        if ontology_annotations_enabled():
+        if ontology_annotations_enabled() or any(
+            edge.get("evidence") for edge in edges_data
+        ):
             new_assertions = [
                 {
                     **edge,
-                    **annotate_ontology_label(
-                        str(edge.get("relation_type") or ""), relation=True
+                    **(
+                        annotate_ontology_label(
+                            str(edge.get("relation_type") or ""), relation=True
+                        )
+                        if ontology_annotations_enabled() else {}
                     ),
                 }
                 for edge in edges_data
@@ -4369,6 +4384,7 @@ async def extract_entities(
                 chunk_key,
                 timestamp,
                 file_path,
+                chunk_dp["content"],
             )
         else:
             maybe_nodes, maybe_edges = await _process_extraction_result(
@@ -4451,6 +4467,7 @@ async def extract_entities(
                     chunk_key,
                     timestamp,
                     file_path,
+                    chunk_dp["content"],
                 )
             else:
                 glean_nodes, glean_edges = await _process_extraction_result(

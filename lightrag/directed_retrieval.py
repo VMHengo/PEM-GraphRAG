@@ -86,6 +86,7 @@ class DirectedEdge:
     description: str
     source_ids: tuple[str, ...]
     file_paths: tuple[str, ...]
+    evidence: str = ""
 
 
 @dataclass(frozen=True)
@@ -215,6 +216,7 @@ def normalize_directed_edge(record: Mapping[str, Any]) -> DirectedEdge | None:
         description=_first_text(record, "description"),
         source_ids=_text_values(record.get("source_id") or record.get("source_ids")),
         file_paths=_text_values(record.get("file_path") or record.get("file_paths")),
+        evidence=_first_text(record, "evidence"),
     )
 
 

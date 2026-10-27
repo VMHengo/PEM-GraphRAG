@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import partial
+from inspect import signature
 from typing import Any
 
 from lightrag.adaptive_retrieval import route_retrieval_query
@@ -36,6 +37,8 @@ async def discover_from_start(
                 route_chain_roles(route) if param.allow_evidence_predicates else ()
             ),
         )
+    if "expand_assertions" in signature(graph.get_directed_neighbor_edges_batch).parameters:
+        fetch_edges = partial(fetch_edges, expand_assertions=True)
     stages: dict[str, Any] = {}
     paths = await find_directed_paths(
         (start,), fetch_edges, route=route, query_param=param,
@@ -68,6 +71,7 @@ async def discover_from_start(
                     "relation_type": edge.relation_type,
                     "directionality": edge.directionality,
                     "description": edge.description,
+                    "evidence": edge.evidence,
                     "source_ids": list(edge.source_ids),
                 }
                 for edge in path.edges
