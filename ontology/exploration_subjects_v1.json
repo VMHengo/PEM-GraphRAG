@@ -1,6 +1,15 @@
 {
-  "version": "1.0.1",
+  "version": "1.1.0",
   "review_status": "provisional",
+  "layout_model": "Curated battery-engineering review map; distances prioritize inspection, not truth or confidence.",
+  "domain_positions": {
+    "Fertigung": [0.05, 0.1],
+    "Materialien und Komponenten": [0.25, 0.2],
+    "Eigenschaften und Transport": [0.48, 0.25],
+    "Degradation und Alterung": [0.7, 0.4],
+    "Zellqualitaet und Sicherheit": [0.9, 0.58],
+    "Diagnostik": [0.53, 0.9]
+  },
   "domains": [
     "Degradation und Alterung",
     "Fertigung",
@@ -14,7 +23,7 @@
     "Fertigung": ["calendering", "calender", "coating process", "drying temperature", "drying process", "stacking", "welding", "mixing", "formation process", "kalandrier", "beschichtung", "trocknung", "stapeln"],
     "Diagnostik": ["microscopy", "spectroscopy", "measurement", "eis", "xps", "sem", "diagnostic", "mikroskop", "spektroskop", "messung"],
     "Zellqualitaet und Sicherheit": ["defect", "failure", "safety", "thermal runaway", "capacity fade", "fehler", "sicherheit", "kapazitaetsverlust"],
-    "Eigenschaften und Transport": ["porosity", "resistance", "thickness", "conductivity", "potential", "current nonuniformity", "nonuniform current", "heat", "porositaet", "widerstand", "dicke"],
+    "Eigenschaften und Transport": ["porosity", "resistance", "thickness", "conductivity", "potential", "current nonuniformity", "nonuniform current", "heat", "temperature", "temperatur", "porositaet", "widerstand", "dicke"],
     "Materialien und Komponenten": ["electrolyte", "electrode", "cathode", "anode", "separator", "solvent", "binder", "graphite", "elektrolyt", "elektrode", "kathode", "loesungsmittel"]
   },
   "concepts": [
@@ -27,6 +36,8 @@
     {"id": "electrolyte_decomposition", "aliases": ["Electrolyte Decomposition", "Elektrolytzersetzung"], "domains": ["Degradation und Alterung", "Materialien und Komponenten"]},
     {"id": "gas_generation", "aliases": ["Gas Generation", "Gasbildung"], "domains": ["Degradation und Alterung", "Zellqualitaet und Sicherheit"]},
     {"id": "nonuniform_current", "aliases": ["Local Current Nonuniformity", "Nonuniform Recharge Current", "Recharge Current Nonuniformity"], "domains": ["Eigenschaften und Transport"]},
+    {"id": "mixing_heat", "aliases": ["Mixing Heat"], "domains": ["Eigenschaften und Transport"]},
+    {"id": "temperature", "aliases": ["Temperature", "Cell Temperature", "Temperatur", "Zelltemperatur"], "domains": ["Eigenschaften und Transport"]},
     {"id": "sem", "aliases": ["Scanning Electron Microscopy", "Scanning Electron Microscopy (SEM)"], "domains": ["Diagnostik"]},
     {"id": "eis", "aliases": ["Electrochemical Impedance Spectroscopy", "Electrochemical Impedance Spectroscopy (EIS)"], "domains": ["Diagnostik"]}
   ]

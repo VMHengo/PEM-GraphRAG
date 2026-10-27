@@ -181,7 +181,11 @@ def recover_interrupted_sessions(working_dir: str | Path) -> int:
 def select_review_candidates(
     discoveries: list[dict[str, Any]], *, limit: int
 ) -> list[dict[str, Any]]:
-    """Prioritize diverse endpoints while retaining contradictory signed paths."""
+    """Review distant subject bridges first while retaining signed alternatives."""
+
+    def priority_key(candidate: dict[str, Any]) -> tuple[bool, float]:
+        distance = candidate.get("domain_distance")
+        return distance is None, -float(distance or 0)
 
     queues = [list(item.get("connections") or []) for item in discoveries]
     ordered: list[dict[str, Any]] = []
@@ -209,6 +213,7 @@ def select_review_candidates(
             ordered.append({
                 **candidate, "inferred_connection": infer_indirect_connection(candidate)
             })
+    ordered.sort(key=priority_key)
 
     primary: list[dict[str, Any]] = []
     conflicting: list[dict[str, Any]] = []
@@ -247,6 +252,7 @@ def select_review_candidates(
         if len(selected) >= limit:
             break
         selected.append(candidate)
+    selected.sort(key=priority_key)
     return [
         {"id": f"candidate-{index:03d}", **candidate}
         for index, candidate in enumerate(selected, start=1)
@@ -272,7 +278,9 @@ def render_review_sheet(session: dict[str, Any]) -> str:
             f"## {index}. {candidate['from']} -> {candidate['to']}",
             f"ID: `{candidate['id']}` | Hops: {candidate['hops']} | "
             f"Areas: {', '.join(candidate.get('start_domains') or [])} -> "
-            f"{', '.join(candidate.get('target_domains') or [])}",
+            f"{', '.join(candidate.get('target_domains') or [])} | "
+            f"Map: {candidate.get('taxonomy_version') or 'legacy'} | "
+            f"Distance: {candidate.get('domain_distance')}",
         ])
         inferred = candidate.get("inferred_connection") or {}
         if inferred:

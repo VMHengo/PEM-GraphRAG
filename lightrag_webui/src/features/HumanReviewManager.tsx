@@ -109,6 +109,14 @@ const candidateSpanText = (span: NonNullable<ExplorationCandidate['path'][number
 }
 
 const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
+const priorityLabel = (candidate: ExplorationCandidate) => {
+  if (candidate.review_priority === 'cross_domain' && candidate.domain_distance != null) {
+    return `Cross-area bridge · distance ${candidate.domain_distance.toFixed(2)}`
+  }
+  if (candidate.review_priority === 'same_domain') return 'Same subject area'
+  if (candidate.review_priority === 'unclassified') return 'Subject area unknown'
+  return null
+}
 const readableDescription = (value: string) => [...new Set(value.split('<SEP>').map((part) => part.trim()).filter(Boolean))].join(' ')
 
 const exclusionLabels: Record<string, string> = {
@@ -275,6 +283,11 @@ function ReviewEditor({
           <p className="text-muted-foreground mt-1 text-xs break-words">
             Start domains: {candidate.start_domains.join(', ') || '-'} · Target domains: {candidate.target_domains.join(', ') || '-'}
           </p>
+          {priorityLabel(candidate) && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              <RubricLabel label={priorityLabel(candidate) || ''} description="Review order uses a provisional map of subject areas. Greater distance means a less closely related area, not a more reliable or important connection." />
+            </p>
+          )}
           {candidate.inferred_connection ? (
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex flex-wrap items-center gap-2">
@@ -751,11 +764,11 @@ export default function HumanReviewManager() {
               )}
             </p>
           ))}
-          {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0 && !item.excluded_paths).map((item) => (
+          {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0).map((item) => (
             <p key={item.start} className="text-muted-foreground text-sm">
               {item.start}: {item.paths_examined === 0
                 ? 'No directed paths were found from this node.'
-                : `${item.paths_examined} directed paths were found, but none met the source and cross-area review filters.`}
+                : `${item.paths_examined} directed paths were found, but none met the source, direction and hop-length review filters.`}
             </p>
           ))}
           {session.status === 'completed' && !session.seed_diagnostics?.length && candidates.length < session.limit && (
@@ -796,6 +809,7 @@ export default function HumanReviewManager() {
                       <span className="min-w-0 flex-1">
                         <span className="block text-xs text-muted-foreground">Case {index + 1} · {reviewed ? 'Reviewed' : 'Unreviewed'}</span>
                         <span className="mt-0.5 block break-words">{candidate.from} to {candidate.to}</span>
+                        {priorityLabel(candidate) && <span className="text-muted-foreground mt-1 block text-xs">{priorityLabel(candidate)}</span>}
                       </span>
                     </button>
                   )

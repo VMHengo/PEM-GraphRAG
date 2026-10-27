@@ -48,7 +48,7 @@ below. No bulk re-extraction is authorized.
 - [ ] **EXP-03: Reviewed domain taxonomy and entity disambiguation.** Replace
   provisional single-label keywords with versioned multi-label battery subject
   areas and source-aware concept mapping. Done when unknown/ambiguous nodes
-  remain explicit and layout coordinates cannot change ranking.
+  remain explicit and graph UI layout coordinates cannot change ranking.
   Partial (local): `ontology/exploration_subjects_v1.json` now supplies exact,
   versioned multi-label aliases and a labeled multi-label keyword fallback;
   the MCP formatter uses source-file scope and exposes unknown/ambiguous concepts
@@ -57,6 +57,9 @@ below. No bulk re-extraction is authorized.
   `provisional`; a battery-domain expert must review aliases, coverage and
   overlapping subject areas against the Staging top-20 review before this item
   can be checked off.
+  A curated, versioned domain map now orders Human Review by minimum distance
+  across multi-label endpoints. Unknown and same-area paths remain reviewable;
+  the map is a provisional inspection heuristic, not evidence confidence.
 - [ ] **EXP-04: Sentence-level evidence and condition checks.** Propose source
   spans, check direction, negation, sign and incompatible conditions, and retain
   full chunks for review. Done when false causal bridges found in EXP-02 fail

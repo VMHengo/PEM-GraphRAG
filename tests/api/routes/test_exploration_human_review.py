@@ -191,7 +191,7 @@ def test_empty_review_session_preserves_seed_diagnostics(tmp_path):
             "paths_examined": 0,
             "eligible_paths": 0,
             "excluded_paths": {},
-            "empty_reason": "No directed, source-resolved cross-area path survived the filters.",
+            "empty_reason": "No directed, source-resolved 2-4-hop path survived the filters.",
             "suggested_start_nodes": [],
         }]
 

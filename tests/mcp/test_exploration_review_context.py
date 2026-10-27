@@ -41,8 +41,32 @@ def test_exploration_reports_filter_reasons_and_short_context():
     }
     result = format_exploration(payload, start="Electrode Calendering")
     assert result["paths_examined"] == 2
-    assert result["candidate_count"] == 1
-    assert result["excluded_paths"] == {"same_domain": 1}
+    assert result["candidate_count"] == 2
+    assert result["excluded_paths"] == {}
+    assert [case["review_priority"] for case in result["connections"]] == [
+        "cross_domain", "same_domain"
+    ]
     excerpt = result["connections"][0]["path"][0]["sources"][0]["context_excerpt"]
     assert excerpt["status"] == "candidate_mention_only"
     assert "The cell was measured." in excerpt["text"]
+
+
+def test_exploration_distinguishes_other_anchors_from_missing_sources():
+    payload = {
+        "data": {"chunks": [{"chunk_id": "c1", "content": "text"}]},
+        "metadata": {"directed_paths": {"paths": [
+            {"nodes": ["Other Start", "Middle", "End"], "edges": [
+                {"source": "Other Start", "target": "Middle", "directionality": "directed", "relation_type": "causes", "source_ids": ["c1"]},
+                {"source": "Middle", "target": "End", "directionality": "directed", "relation_type": "causes", "source_ids": ["c1"]},
+            ]},
+            {"nodes": ["Battery Cell", "Middle", "End"], "edges": [
+                {"source": "Battery Cell", "target": "Middle", "directionality": "directed", "relation_type": "causes", "source_ids": ["missing"]},
+                {"source": "Middle", "target": "End", "directionality": "directed", "relation_type": "causes", "source_ids": ["c1"]},
+            ]},
+        ]}},
+    }
+    result = format_exploration(payload, start="Battery Cell")
+    assert result["excluded_paths"] == {
+        "different_start_node": 1,
+        "missing_source_chunk": 1,
+    }

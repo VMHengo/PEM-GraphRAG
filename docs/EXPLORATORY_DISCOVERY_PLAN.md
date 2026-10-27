@@ -36,10 +36,12 @@ endpoint avoids answer generation, not all model cost.
 | M5: Broader exploration | Query-aware path diversity, alternative paths, 5-hop pilot, optional graphical explorer | Held-out utility, evidence quality, latency and cost improve against M0 at a fixed budget |
 | M6: Review workflow | Human labels and optional model triage, immutable reviews per assertion and extraction revision | Random audit sample plus priority queue; model hint never counts as human validation |
 
-M0 does *not* assign a calibrated novelty or truth score. Domain assignment is
-a small keyword table; distance in a force-directed or UMAP UI layout is not
-a scientific measure of semantic distance. A later subject taxonomy can define
-auditable distances, but source support and path plausibility must gate novelty.
+M0 does *not* assign a calibrated novelty or truth score. The versioned subject
+taxonomy now defines a curated two-dimensional review map. Its Euclidean
+distance orders candidates for inspection; it is not a scientific measure of
+semantic distance and does not increase evidence confidence. Multi-label
+endpoints use their nearest domain pair to avoid inflating ambiguous bridges.
+Force-directed or UMAP node positions in the graph UI never affect this order.
 
 ## Local MVP interfaces and limits
 
@@ -51,11 +53,13 @@ auditable distances, but source support and path plausibility must gate novelty.
   multi-label subjects and optional source-file scopes. A versioned multi-label
   keyword fallback preserves coverage for unmapped graph names; its status is
   exposed separately. It is not yet an expert-reviewed ontology. Unknown and
-  ambiguous concepts stay unclassified; no UI layout coordinates enter path
-  selection.
+  ambiguous concepts stay unclassified but may enter review after classified
+  paths; same-area paths are also reviewable. Curated taxonomy coordinates,
+  unlike UI node positions, affect review order only.
 - `lightrag_mcp/exploration.py` contains predicate policy and deterministic
-  formatting. One endpoint per candidate
-  keeps initial results diverse; round-robin across endpoint areas is bounded.
+  formatting. Per-target limits keep initial results diverse; more distant
+  classified endpoint pairs are reviewed first, followed by same-area and
+  unclassified pairs. All still require per-hop source review.
 - The tool requires an exact starting node label. It does not perform entity
   resolution, proof checking, sentence-level citation or contradiction search.
   It may find no candidate despite relevant corpus evidence; matching retrieved

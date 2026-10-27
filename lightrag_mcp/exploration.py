@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import defaultdict
 from functools import lru_cache
@@ -89,6 +90,23 @@ def classify_domain(name: str) -> str | None:
     return domains[0] if domains else None
 
 
+def domain_distance(
+    start_domains: list[str], target_domains: list[str]
+) -> tuple[float | None, str | None, str | None]:
+    """Use the nearest plausible domain pair so multi-label terms are not overrated."""
+
+    positions = _taxonomy().get("domain_positions", {})
+    pairs = []
+    for start in start_domains:
+        for target in target_domains:
+            if start in positions and target in positions:
+                a, b = positions[start], positions[target]
+                pairs.append((math.hypot(a[0] - b[0], a[1] - b[1]), start, target))
+    if not pairs:
+        return None, None, None
+    return min(pairs)
+
+
 def _normal(name: str) -> str:
     return " ".join(name.casefold().split())
 
@@ -150,7 +168,7 @@ def format_exploration(
     ][:10]
     start_subject = classify_subject(start)
     start_domains = set(start_subject["domains"])
-    by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    candidates: list[dict[str, Any]] = []
     target_counts: dict[str, int] = defaultdict(int)
     excluded: dict[str, int] = defaultdict(int)
 
@@ -176,13 +194,9 @@ def format_exploration(
         )
         path_start = classify_subject(start, source_files=first_files)
         target_subject = classify_subject(target, source_files=last_files)
-        target_domains = set(target_subject["domains"])
-        if not path_start["domains"] or not target_domains:
-            excluded["unclassified_domain"] += 1
-            continue
-        if set(path_start["domains"]).intersection(target_domains):
-            excluded["same_domain"] += 1
-            continue
+        distance, start_domain, target_domain = domain_distance(
+            path_start["domains"], target_subject["domains"]
+        )
         target_key = _normal(target)
         if target_counts[target_key] >= max_paths_per_target:
             excluded["target_diversity_limit"] += 1
@@ -237,31 +251,36 @@ def format_exploration(
                     "sources": sources,
                 }
             )
-        target_domain = sorted(target_domains)[0]
-        by_domain[target_domain].append(
+        candidates.append(
             {
                 "from": start,
                 "to": target,
-                "start_domain": path_start["domains"][0],
+                "start_domain": start_domain,
                 "target_domain": target_domain,
                 "start_domains": path_start["domains"],
                 "target_domains": target_subject["domains"],
+                "domain_distance": round(distance, 3) if distance is not None else None,
+                "review_priority": (
+                    "cross_domain" if distance is not None and distance > 0
+                    else "same_domain" if distance is not None else "unclassified"
+                ),
                 "start_concept_id": path_start["concept_id"],
                 "target_concept_id": target_subject["concept_id"],
                 "start_subject_status": path_start["status"],
                 "target_subject_status": target_subject["status"],
                 "taxonomy_status": _taxonomy()["review_status"],
+                "taxonomy_version": _taxonomy()["version"],
                 "hops": len(steps),
                 "path": steps,
                 "status": "unreviewed_indirect_connection",
             }
         )
 
-    results: list[dict[str, Any]] = []
-    while len(results) < limit and any(by_domain.values()):
-        for domain in sorted(by_domain):
-            if by_domain[domain] and len(results) < limit:
-                results.append(by_domain[domain].pop(0))
+    candidates.sort(key=lambda item: (
+        item["domain_distance"] is None,
+        -(item["domain_distance"] or 0),
+    ))
+    results = candidates[:limit]
     return {
         "start": start,
         "start_domain": start_subject["domains"][0] if start_domains else None,
@@ -270,22 +289,19 @@ def format_exploration(
         "taxonomy_version": _taxonomy()["version"],
         "suggested_start_nodes": suggested_starts if not results else [],
         "connections": results,
-        "candidate_count": sum(len(paths) for paths in by_domain.values())
-        + len(results),
+        "candidate_count": len(candidates),
         "retrieval_status": diagnostics.get("status", "unknown"),
         "retrieval_reason": diagnostics.get("reason"),
         "paths_examined": len(diagnostics.get("paths") or []),
         "excluded_paths": dict(excluded),
         "empty_reason": (
-            "Starting node has no provisional subject classification."
-            if not start_domains
-            else "No directed, source-resolved cross-area path survived the filters."
-            if not results
-            else None
+            "No directed, source-resolved 2-4-hop path survived the filters."
+            if not results else None
         ),
         "notice": (
-            "Exploratory, unreviewed paths. Cross-domain labels use a provisional "
-            "versioned taxonomy with provisional keyword fallback. Candidate "
+            "Exploratory, unreviewed paths. Versioned subject-map distance "
+            "prioritizes review but is not evidence quality or causal confidence. "
+            "Unknown and same-area endpoints remain eligible. Candidate "
             "spans only locate mentions, not proof. "
             "Each hop needs source and condition review; "
             "the endpoint pair is not a verified direct causal relation."

@@ -419,6 +419,9 @@ export type ExplorationCandidate = {
   to: string
   start_domains: string[]
   target_domains: string[]
+  domain_distance?: number | null
+  review_priority?: 'cross_domain' | 'same_domain' | 'unclassified'
+  taxonomy_version?: string
   hops: number
   path: ExplorationHop[]
   status: string
