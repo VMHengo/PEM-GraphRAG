@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "review_status": "provisional",
   "domains": [
     "Degradation und Alterung",
@@ -18,6 +18,7 @@
     "Materialien und Komponenten": ["electrolyte", "electrode", "cathode", "anode", "separator", "solvent", "binder", "graphite", "elektrolyt", "elektrode", "kathode", "loesungsmittel"]
   },
   "concepts": [
+    {"id": "battery_cell", "aliases": ["Battery Cell", "Lithium-Ion Battery Cell", "Batteriezelle"], "domains": ["Materialien und Komponenten"]},
     {"id": "calendering", "aliases": ["Electrode Calendering", "Calendering", "Kalandrieren"], "domains": ["Fertigung"]},
     {"id": "drying", "aliases": ["Electrode Drying Process", "Drying Process", "Elektrodentrocknung"], "domains": ["Fertigung"]},
     {"id": "coating", "aliases": ["Electrode Coating", "Coating Process", "Beschichtung"], "domains": ["Fertigung"]},

@@ -112,6 +112,11 @@ const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
 
 const exclusionLabels: Record<string, string> = {
   invalid_or_unresolved_path: 'Missing source or unsupported edge',
+  unsupported_path_length: 'Fewer than two or more than four hops',
+  different_start_node: 'Starts at a different node',
+  unsupported_edge: 'Not a directed causal edge',
+  edge_order_mismatch: 'Edge direction does not match the path',
+  missing_source_chunk: 'Source text unavailable',
   unclassified_domain: 'Unknown subject area',
   same_domain: 'Same subject area',
   target_diversity_limit: 'More than two paths to one target'
@@ -638,13 +643,13 @@ export default function HumanReviewManager() {
           <h3 className="font-semibold">Human Review</h3>
           <p className="text-muted-foreground text-sm">Review up to 20 exploratory paths against their source excerpts.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <label className="space-y-1 text-sm font-medium sm:w-44">
-            <span>Reviewer</span>
-            <Input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="flex flex-col gap-1 text-sm font-medium sm:w-44">
+            <span className="leading-5">Reviewer</span>
+            <Input className="h-10 w-full" value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
           </label>
-          <div className="min-w-72">
-            <span className="text-sm font-medium">Session</span>
+          <div className="flex min-w-72 flex-col gap-1">
+            <span className="text-sm font-medium leading-5">Session</span>
             <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
               <SelectTrigger><SelectValue placeholder={isLoadingSessions ? 'Loading sessions...' : 'Select a saved session'} /></SelectTrigger>
               <SelectContent>
@@ -686,7 +691,7 @@ export default function HumanReviewManager() {
               </datalist>
             </label>
             <label className="space-y-1 text-sm font-medium">
-              <span>Hop depth</span>
+              <span>Max hops</span>
               <NumberInput value={hopDepth} min={2} max={4} onValueChange={(value) => setHopDepth(value ?? 2)} />
             </label>
             <label className="space-y-1 text-sm font-medium">
@@ -736,12 +741,11 @@ export default function HumanReviewManager() {
               )}
             </p>
           ))}
-          {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0).map((item) => (
+          {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0 && !item.excluded_paths).map((item) => (
             <p key={item.start} className="text-muted-foreground text-sm">
               {item.start}: {item.paths_examined === 0
                 ? 'No directed paths were found from this node.'
                 : `${item.paths_examined} directed paths were found, but none met the source and cross-area review filters.`}
-              {item.suggested_start_nodes.length > 0 && ` Check the graph name: ${item.suggested_start_nodes.join(', ')}.`}
             </p>
           ))}
           {session.status === 'completed' && !session.seed_diagnostics?.length && candidates.length < session.limit && (

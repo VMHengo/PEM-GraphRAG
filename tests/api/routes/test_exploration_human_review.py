@@ -196,6 +196,58 @@ def test_empty_review_session_preserves_seed_diagnostics(tmp_path):
         }]
 
 
+def test_review_route_prefers_exact_start_graph_provider(tmp_path):
+    class Graph:
+        async def get_directed_neighbor_edges_batch(self, node_ids):
+            edges = {
+                "Battery Cell": [{
+                    "src_id": "Battery Cell", "tgt_id": "Heat Generation",
+                    "directionality": "directed", "relation_type": "causes",
+                    "relation_importance": 0.9, "source_id": "c1",
+                }],
+                "Heat Generation": [{
+                    "src_id": "Heat Generation", "tgt_id": "Thermal Runaway",
+                    "directionality": "directed", "relation_type": "leads_to",
+                    "relation_importance": 0.9, "source_id": "c2",
+                }],
+            }
+            return {node: edges.get(node, []) for node in node_ids}
+
+    class Chunks:
+        async def get_by_ids(self, ids):
+            return [{"content": "Battery Cell causes Heat Generation. Heat Generation leads to Thermal Runaway.", "file_path": "paper.pdf"} for _ in ids]
+
+    class Rag:
+        working_dir = str(tmp_path)
+        chunk_entity_relation_graph = Graph()
+        text_chunks = Chunks()
+
+        async def aquery_data(self, query, param):
+            raise AssertionError("General retrieval must not fill exact-start review slots")
+
+    app = FastAPI()
+    app.include_router(create_evaluation_routes(Rag(), "test-key"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/evaluation/exploration/sessions", headers=HEADERS,
+            json={"title": "Battery review", "starts": ["Battery Cell"], "hop_depth": 4, "limit": 20},
+        )
+        assert response.status_code == 202
+        session_id = response.json()["session"]["id"]
+        for _ in range(50):
+            detail = client.get(f"/evaluation/exploration/sessions/{session_id}", headers=HEADERS)
+            if detail.json()["session"]["status"] == "completed":
+                break
+            time.sleep(0.02)
+        session = detail.json()["session"]
+        assert session["status"] == "completed"
+        assert len(session["candidates"]) == 1
+        assert session["candidates"][0]["from"] == "Battery Cell"
+        assert session["seed_diagnostics"][0]["excluded_paths"] == {
+            "unsupported_path_length": 1,
+        }
+
+
 def test_hop_count_and_unknown_candidate_cannot_be_reviewed(tmp_path):
     session = create_session(
         tmp_path, title="Case", starts=["Electrode Calendering"],

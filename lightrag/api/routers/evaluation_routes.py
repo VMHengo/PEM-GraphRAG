@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from lightrag.base import QueryParam
+from lightrag.evaluation.exploration_discovery import discover_from_start
 from lightrag.evaluation.human_review import (
     add_review,
     create_session,
@@ -250,9 +251,11 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                         include_references=True,
                         stream=False,
                     )
-                    payload = await rag.aquery_data(
-                        f"What can {start} cause or influence downstream?", param=param
-                    )
+                    payload = await discover_from_start(rag, start, param)
+                    if payload is None:
+                        payload = await rag.aquery_data(
+                            f"What can {start} cause or influence downstream?", param=param
+                        )
                     discovery = format_exploration(
                         payload, start=start, limit=min(limit * 2, 40),
                         include_full_chunks=True, max_paths_per_target=2,

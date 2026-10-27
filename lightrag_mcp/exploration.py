@@ -93,27 +93,32 @@ def _normal(name: str) -> str:
     return " ".join(name.casefold().split())
 
 
-def _valid_path(
+def _invalid_path_reason(
     path: dict[str, Any], start: str, chunks: dict[str, dict[str, Any]]
-) -> bool:
+) -> str | None:
     nodes = path.get("nodes") or []
     edges = path.get("edges") or []
     if not (3 <= len(nodes) <= 5 and len(edges) == len(nodes) - 1):
-        return False
+        return "unsupported_path_length"
     if _normal(str(nodes[0])) != _normal(start):
-        return False
+        return "different_start_node"
     for index, edge in enumerate(edges):
+        if edge.get("directionality") != "directed" or edge.get("relation_type") not in CAUSAL_TYPES:
+            return "unsupported_edge"
         if (
-            edge.get("directionality") != "directed"
-            or edge.get("relation_type") not in CAUSAL_TYPES
-            or _normal(str(edge.get("source") or "")) != _normal(str(nodes[index]))
+            _normal(str(edge.get("source") or "")) != _normal(str(nodes[index]))
             or _normal(str(edge.get("target") or "")) != _normal(str(nodes[index + 1]))
-            or not any(
-                source_id in chunks for source_id in edge.get("source_ids") or []
-            )
         ):
-            return False
-    return True
+            return "edge_order_mismatch"
+        if not any(source_id in chunks for source_id in edge.get("source_ids") or []):
+            return "missing_source_chunk"
+    return None
+
+
+def _valid_path(
+    path: dict[str, Any], start: str, chunks: dict[str, dict[str, Any]]
+) -> bool:
+    return _invalid_path_reason(path, start, chunks) is None
 
 
 def format_exploration(
@@ -150,8 +155,12 @@ def format_exploration(
     excluded: dict[str, int] = defaultdict(int)
 
     for path in diagnostics.get("paths") or []:
-        if not isinstance(path, dict) or not _valid_path(path, start, chunks):
-            excluded["invalid_or_unresolved_path"] += 1
+        reason = (
+            _invalid_path_reason(path, start, chunks)
+            if isinstance(path, dict) else "unsupported_path_length"
+        )
+        if reason:
+            excluded[reason] += 1
             continue
         nodes = path["nodes"]
         target = str(nodes[-1])
