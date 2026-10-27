@@ -77,6 +77,87 @@ class Neo4JStorage(BaseGraphStorage):
     supports_query_aware_neighbor_selection = True
     directed_neighbor_candidate_limit = 200
 
+    async def get_review_start_recommendations(
+        self, hop_depth: int, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Bounded potential-path counts for read-only review seed selection."""
+
+        if hop_depth not in (2, 3, 4) or isinstance(hop_depth, bool):
+            raise ValueError("hop_depth must be 2, 3 or 4")
+        if not 1 <= limit <= 20:
+            raise ValueError("limit must be between 1 and 20")
+
+        from lightrag_mcp.exploration import CAUSAL_TYPES
+
+        label = self._get_workspace_label()
+        hops = []
+        for index in range(1, hop_depth + 1):
+            previous = "start" if index == 1 else f"n{index - 1}"
+            carried = ["start"] + [f"n{i}" for i in range(1, index)]
+            carried += [f"r{i}" for i in range(1, index)]
+            distinct = " AND ".join(f"n{index} <> {node}" for node in carried if node == "start" or node.startswith("n"))
+            hops.append(f"""
+          MATCH ({previous})-[r{index}:DIRECTED]-(n{index}:`{label}`)
+          WHERE {distinct}
+            AND r{index}.directionality = 'directed'
+            AND coalesce(r{index}.semantic_src_id, startNode(r{index}).entity_id) = {previous}.entity_id
+            AND coalesce(r{index}.semantic_tgt_id, endNode(r{index}).entity_id) = n{index}.entity_id
+            AND toLower(r{index}.relation_type) IN $relation_types
+            AND coalesce(r{index}.relation_importance, 0.5) >= $min_importance
+            AND r{index}.source_id IS NOT NULL
+          WITH {', '.join(carried)}, n{index}, r{index}
+          ORDER BY r{index}.relation_importance DESC
+          LIMIT 251
+            """)
+        query = f"""
+        MATCH (start:`{label}`)-[seed:DIRECTED]-(neighbor:`{label}`)
+        WHERE seed.directionality = 'directed'
+          AND coalesce(seed.semantic_src_id, startNode(seed).entity_id) = start.entity_id
+          AND coalesce(seed.semantic_tgt_id, endNode(seed).entity_id) = neighbor.entity_id
+          AND toLower(seed.relation_type) IN $relation_types
+          AND coalesce(seed.relation_importance, 0.5) >= $min_importance
+          AND seed.source_id IS NOT NULL
+        WITH start, count(DISTINCT neighbor) AS outgoing
+        ORDER BY outgoing DESC, start.entity_id
+        LIMIT 50
+        CALL {{
+          WITH start
+          {''.join(hops)}
+          RETURN count(*) AS found_paths, collect(DISTINCT n{hop_depth}.entity_id) AS targets
+        }}
+        WITH start, found_paths, targets
+        WHERE found_paths > 0
+        RETURN start.entity_id AS name, found_paths,
+               size(targets) AS distinct_targets, targets[0..5] AS example_targets
+        ORDER BY found_paths DESC, distinct_targets DESC, name
+        LIMIT $limit
+        """
+        result = None
+        try:
+            async with self._driver.session(
+                database=self._DATABASE, default_access_mode="READ"
+            ) as session:
+                result = await session.run(
+                    query,
+                    relation_types=sorted(CAUSAL_TYPES),
+                    min_importance=0.45,
+                    limit=limit,
+                )
+                rows = []
+                async for row in result:
+                    found = int(row["found_paths"])
+                    rows.append({
+                        "name": row["name"],
+                        "path_count": min(found, 250),
+                        "distinct_targets": int(row["distinct_targets"]),
+                        "example_targets": list(row["example_targets"]),
+                        "truncated": found > 250,
+                    })
+                return rows
+        finally:
+            if result is not None:
+                await result.consume()
+
     def __init__(self, namespace, global_config, embedding_func, workspace=None):
         # Read env and override the arg if present
         neo4j_workspace = os.environ.get("NEO4J_WORKSPACE")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from time import monotonic
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -186,6 +187,8 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     prompt_experiment_lock = asyncio.Lock()
     active_exploration: dict[str, asyncio.Task[None]] = {}
     exploration_lock = asyncio.Lock()
+    start_recommendations_lock = asyncio.Lock()
+    start_recommendations_cache: dict[int, tuple[float, list[dict]]] = {}
 
     def get_active_extraction_revision() -> dict | None:
         """Return provenance when the supplied RAG implementation supports it."""
@@ -297,6 +300,35 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
     @router.get("/exploration/sessions", dependencies=[Depends(combined_auth)])
     async def get_exploration_sessions():
         return {"sessions": list_sessions(working_dir)}
+
+    @router.get("/exploration/start-nodes", dependencies=[Depends(combined_auth)])
+    async def get_exploration_start_nodes(
+        hop_depth: int = Query(2, ge=2, le=4),
+        refresh: bool = False,
+    ):
+        graph = getattr(rag, "chunk_entity_relation_graph", None)
+        recommend = getattr(graph, "get_review_start_recommendations", None)
+        if not callable(recommend):
+            raise HTTPException(status_code=503, detail="Start-node recommendations unavailable")
+        async with start_recommendations_lock:
+            cached = start_recommendations_cache.get(hop_depth)
+            if refresh or cached is None or monotonic() - cached[0] > 300:
+                try:
+                    items = await asyncio.wait_for(recommend(hop_depth), timeout=20)
+                except TimeoutError as exc:
+                    raise HTTPException(
+                        status_code=503, detail="Start-node recommendations timed out"
+                    ) from exc
+                start_recommendations_cache[hop_depth] = (monotonic(), items)
+            else:
+                items = cached[1]
+        return {
+            "hop_depth": hop_depth,
+            "items": items,
+            "candidate_pool_limit": 50,
+            "path_count_cap": 250,
+            "bounded": True,
+        }
 
     @router.post(
         "/exploration/sessions", status_code=status.HTTP_202_ACCEPTED,

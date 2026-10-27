@@ -428,6 +428,22 @@ export type ExplorationCandidate = {
   inferred_connection?: ExplorationInferredConnection | null
 }
 
+export type ExplorationStartNodeRecommendation = {
+  name: string
+  path_count: number
+  distinct_targets: number
+  example_targets: string[]
+  truncated: boolean
+}
+
+export type ExplorationStartNodeRecommendations = {
+  hop_depth: number
+  items: ExplorationStartNodeRecommendation[]
+  candidate_pool_limit: number
+  path_count_cap: number
+  bounded: boolean
+}
+
 export type ExplorationReviewRequest = {
   candidate_id: string
   reviewer: string
@@ -1126,6 +1142,16 @@ export const startExplorationSession = async (
   request: ExplorationSessionRequest
 ): Promise<{ session: ExplorationSession }> => {
   const response = await axiosInstance.post('/evaluation/exploration/sessions', request)
+  return response.data
+}
+
+export const getExplorationStartNodes = async (
+  hopDepth: number,
+  refresh = false
+): Promise<ExplorationStartNodeRecommendations> => {
+  const response = await axiosInstance.get('/evaluation/exploration/start-nodes', {
+    params: { hop_depth: hopDepth, refresh }
+  })
   return response.data
 }
 

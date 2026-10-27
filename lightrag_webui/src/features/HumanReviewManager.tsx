@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner'
 import {
   ExplorationCandidate,
+  ExplorationStartNodeRecommendation,
   ExplorationConditions,
   ExplorationInferenceVerdict,
   ExplorationInterest,
@@ -27,7 +28,9 @@ import {
   downloadExplorationReviewSheet,
   getExplorationSession,
   getExplorationSessions,
+  getExplorationStartNodes,
   saveExplorationReview,
+  searchLabels,
   startExplorationSession
 } from '@/api/lightrag'
 import Badge from '@/components/ui/Badge'
@@ -46,6 +49,7 @@ import {
 import Textarea from '@/components/ui/Textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip'
 import { errorMessage } from '@/lib/utils'
+import { parseStartNodes, selectedStartNode, toggleStartNode } from '@/lib/startNodes'
 
 const REVIEW_LIMIT = 20
 const REVIEWER_STORAGE_KEY = 'pem-reviewer-name'
@@ -98,9 +102,6 @@ const formatRevision = (session: ExplorationSession | null) => {
   const fingerprint = revision.fingerprint ? revision.fingerprint.slice(0, 12) : 'unknown'
   return `${revision.version} / ${revision.prompt_profile} / ${fingerprint}`
 }
-
-const parseStarts = (value: string) =>
-  [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))]
 
 const candidateSpanText = (span: NonNullable<ExplorationCandidate['path'][number]['sources'][number]['candidate_span']>) => {
   if (typeof span === 'string') return span
@@ -498,8 +499,61 @@ export default function HumanReviewManager() {
   const [showCreate, setShowCreate] = useState(false)
   const [title, setTitle] = useState('')
   const [startsText, setStartsText] = useState('')
+  const [startRecommendations, setStartRecommendations] = useState<ExplorationStartNodeRecommendation[]>([])
+  const [isLoadingStartRecommendations, setIsLoadingStartRecommendations] = useState(false)
+  const [startRecommendationError, setStartRecommendationError] = useState('')
+  const [searchedStartNames, setSearchedStartNames] = useState<string[]>([])
+  const recommendationRequest = useRef(0)
   const [hopDepth, setHopDepth] = useState(2)
   const [limit, setLimit] = useState(REVIEW_LIMIT)
+
+  const loadStartRecommendations = useCallback(async (depth: number, refresh = false) => {
+    const request = ++recommendationRequest.current
+    setIsLoadingStartRecommendations(true)
+    setStartRecommendationError('')
+    try {
+      const response = await getExplorationStartNodes(depth, refresh)
+      if (request === recommendationRequest.current) setStartRecommendations(response.items)
+    } catch (error) {
+      if (request === recommendationRequest.current) {
+        setStartRecommendationError(errorMessage(error))
+        setStartRecommendations([])
+      }
+    } finally {
+      if (request === recommendationRequest.current) setIsLoadingStartRecommendations(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showCreate) return
+    const timeoutId = window.setTimeout(() => void loadStartRecommendations(hopDepth), 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [showCreate, hopDepth, loadStartRecommendations])
+
+  const activeStartQuery = startsText.split(/[,\n]/).at(-1)?.trim() || ''
+  useEffect(() => {
+    if (!showCreate || activeStartQuery.length < 2) return
+    let active = true
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const names = await searchLabels(activeStartQuery, 15)
+        if (active) setSearchedStartNames(names)
+      } catch {
+        if (active) setSearchedStartNames([])
+      }
+    }, 250)
+    return () => { active = false; window.clearTimeout(timeoutId) }
+  }, [showCreate, activeStartQuery])
+
+  const selectedStarts = parseStartNodes(startsText)
+  const recommendationByName = new Map(startRecommendations.map((item) => [item.name.toLowerCase(), item]))
+  const visibleStartNames = [...new Map([
+    ...selectedStarts.map((name) => [name.toLowerCase(), name] as const),
+    ...searchedStartNames
+      .filter((name) => activeStartQuery.length >= 2 && name.toLowerCase().includes(activeStartQuery.toLowerCase()))
+      .map((name) => [name.toLowerCase(), name] as const),
+    ...startRecommendations.map((item) => [item.name.toLowerCase(), item.name] as const)
+  ]).values()].slice(0, 35)
 
   useEffect(() => {
     try {
@@ -582,9 +636,13 @@ export default function HumanReviewManager() {
   const progress = candidates.length ? reviewedCount / candidates.length * 100 : 0
 
   const createSession = async () => {
-    const starts = parseStarts(startsText)
+    const starts = parseStartNodes(startsText)
     if (!title.trim() || starts.length === 0) {
       toast.error('Add a session title and at least one starting subject')
+      return
+    }
+    if (starts.length > 5) {
+      toast.error('Select at most five starting nodes')
       return
     }
     setIsCreating(true)
@@ -707,11 +765,9 @@ export default function HumanReviewManager() {
             </label>
             <label className="space-y-1 text-sm font-medium">
               <span>Starting nodes</span>
-              <Input value={startsText} onChange={(event) => setStartsText(event.target.value)} placeholder="e.g. Heat Generation" list="review-start-nodes" />
-              <datalist id="review-start-nodes">
-                <option value="Heat Generation" />
-                <option value="Electrode Calendering" />
-              </datalist>
+              <Input value={startsText} onChange={(event) => setStartsText(event.target.value)} placeholder="e.g. Heat Generation, Mixing Heat" aria-describedby="review-start-hint" />
+              <span id="review-start-hint" className="text-muted-foreground block text-xs">{selectedStarts.length}/5 selected; separate names with commas</span>
+              {selectedStarts.length > 5 && <span className="text-destructive block text-xs">Select at most five starting nodes.</span>}
             </label>
             <label className="space-y-1 text-sm font-medium">
               <span>Max hops</span>
@@ -721,6 +777,31 @@ export default function HumanReviewManager() {
               <span>Cases</span>
               <NumberInput value={limit} min={1} max={REVIEW_LIMIT} onValueChange={(value) => setLimit(value ?? REVIEW_LIMIT)} />
             </label>
+          </div>
+          <div className="max-w-2xl space-y-2">
+            <div className="flex items-center justify-between text-sm font-medium">
+              <span>Recommended starting nodes ({hopDepth} hops)</span>
+              <Button type="button" variant="ghost" size="icon" tooltip="Refresh recommendations" disabled={isLoadingStartRecommendations} onClick={() => void loadStartRecommendations(hopDepth, true)}>
+                <RefreshCwIcon className={isLoadingStartRecommendations ? 'animate-spin' : ''} />
+                <span className="sr-only">Refresh recommendations</span>
+              </Button>
+            </div>
+            <div className="max-h-56 overflow-auto border py-1">
+              {visibleStartNames.map((name) => {
+                const checked = selectedStartNode(startsText, name)
+                const recommendation = recommendationByName.get(name.toLowerCase())
+                return (
+                  <label key={name.toLowerCase()} className="hover:bg-muted/50 flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
+                    <Checkbox checked={checked} disabled={!checked && selectedStarts.length >= 5} onCheckedChange={(value) => setStartsText((current) => toggleStartNode(current, name, value === true))} aria-label={`Select ${name}`} />
+                    <span className="min-w-0 flex-1 break-words">{name}</span>
+                    {recommendation && <span className="text-muted-foreground shrink-0 text-xs">{recommendation.truncated ? 'at least ' : ''}{recommendation.path_count} paths; {recommendation.distinct_targets} targets</span>}
+                  </label>
+                )
+              })}
+              {!visibleStartNames.length && <p className="text-muted-foreground px-3 py-3 text-xs">{isLoadingStartRecommendations ? 'Loading recommendations...' : 'No matching nodes.'}</p>}
+            </div>
+            {startRecommendationError && <p className="text-destructive text-xs">Recommendations unavailable: {startRecommendationError}</p>}
+            <p className="text-muted-foreground text-xs">Bounded potential paths, not verified review cases.</p>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>Cancel</Button>
