@@ -458,6 +458,7 @@ export type ExplorationReviewRequest = {
 
 export type ExplorationReview = ExplorationReviewRequest & {
   id?: string
+  reviewer_email?: string | null
   created_at?: string
   updated_at?: string
   [key: string]: unknown
@@ -1204,6 +1205,11 @@ export const saveExplorationReview = async (
     `/evaluation/exploration/sessions/${encodeURIComponent(sessionId)}/reviews`,
     request
   )
+  return response.data
+}
+
+export const getReviewerIdentity = async (): Promise<{ email: string; default_name: string }> => {
+  const response = await axiosInstance.get('/evaluation/reviewer-identity')
   return response.data
 }
 

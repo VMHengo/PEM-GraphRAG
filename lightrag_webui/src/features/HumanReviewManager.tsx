@@ -31,6 +31,7 @@ import {
   getExplorationSession,
   getExplorationSessions,
   getExplorationStartNodes,
+  getReviewerIdentity,
   saveExplorationReview,
   searchLabels,
   startExplorationSession
@@ -59,7 +60,7 @@ import { errorMessage } from '@/lib/utils'
 import { parseStartNodes, selectedStartNode, toggleStartNode } from '@/lib/startNodes'
 
 const REVIEW_LIMIT = 20
-const REVIEWER_STORAGE_KEY = 'pem-reviewer-name'
+const REVIEWER_STORAGE_KEY = 'pem-reviewer-name:'
 
 const verdictOptions: Array<{ value: ExplorationVerdict; label: string }> = [
   { value: 'supported', label: 'Supported' },
@@ -490,13 +491,9 @@ function ReviewEditor({
 }
 
 export default function HumanReviewManager() {
-  const [reviewer, setReviewer] = useState(() => {
-    try {
-      return window.localStorage.getItem(REVIEWER_STORAGE_KEY) || ''
-    } catch {
-      return ''
-    }
-  })
+  const [reviewer, setReviewer] = useState('')
+  const [reviewerIdentity, setReviewerIdentity] = useState<{ email: string; default_name: string } | null>(null)
+  const [reviewerIdentityError, setReviewerIdentityError] = useState('')
   const [sessions, setSessions] = useState<ExplorationSessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
@@ -570,13 +567,32 @@ export default function HumanReviewManager() {
   ]).values()].slice(0, 35)
 
   useEffect(() => {
+    let active = true
+    void getReviewerIdentity().then((identity) => {
+      if (!active) return
+      setReviewerIdentity(identity)
+      setReviewerIdentityError('')
+      try {
+        setReviewer(window.localStorage.getItem(`${REVIEWER_STORAGE_KEY}${identity.email}`) || identity.default_name)
+      } catch {
+        setReviewer(identity.default_name)
+      }
+    }).catch((error) => {
+      if (active) setReviewerIdentityError(errorMessage(error))
+    })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!reviewerIdentity) return
     try {
-      if (reviewer.trim()) window.localStorage.setItem(REVIEWER_STORAGE_KEY, reviewer.trim())
-      else window.localStorage.removeItem(REVIEWER_STORAGE_KEY)
+      const key = `${REVIEWER_STORAGE_KEY}${reviewerIdentity.email}`
+      if (reviewer.trim()) window.localStorage.setItem(key, reviewer.trim())
+      else window.localStorage.removeItem(key)
     } catch {
       // Review remains usable when browser storage is unavailable.
     }
-  }, [reviewer])
+  }, [reviewer, reviewerIdentity])
 
   const loadSessions = useCallback(async () => {
     setIsLoadingSessions(true)
@@ -644,12 +660,15 @@ export default function HumanReviewManager() {
   const latestReviews = useMemo(() => {
     const reviews = new Map<string, ExplorationReview>()
     for (const review of session?.reviews || []) {
-      if (review.reviewer.trim().toLocaleLowerCase() === reviewer.trim().toLocaleLowerCase()) {
+      const mine = review.reviewer_email
+        ? review.reviewer_email.toLowerCase() === reviewerIdentity?.email.toLowerCase()
+        : review.reviewer.trim().toLocaleLowerCase() === reviewer.trim().toLocaleLowerCase()
+      if (mine && reviewerIdentity) {
         reviews.set(review.candidate_id, review)
       }
     }
     return reviews
-  }, [session?.reviews, reviewer])
+  }, [session?.reviews, reviewer, reviewerIdentity])
 
   const latestCaseReviews = useMemo(() => {
     const reviews = new Map<string, ExplorationReview>()
@@ -740,6 +759,10 @@ export default function HumanReviewManager() {
 
   const saveReview = async (request: ExplorationReviewRequest) => {
     if (!session) return
+    if (!reviewerIdentity) {
+      toast.error('Reviewer login could not be verified')
+      return
+    }
     setIsSaving(true)
     try {
       const response = await saveExplorationReview(session.id, request)
@@ -778,6 +801,8 @@ export default function HumanReviewManager() {
           <label className="flex flex-col gap-1 text-sm font-medium sm:w-44">
             <span className="leading-5">Reviewer</span>
             <Input className="h-10 w-full" value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
+            {reviewerIdentity && <span className="text-muted-foreground break-all text-xs">{reviewerIdentity.email}</span>}
+            {reviewerIdentityError && <span className="text-destructive text-xs">Login identity unavailable: {reviewerIdentityError}</span>}
           </label>
           <div className="flex min-w-0 flex-col gap-1 sm:w-[29rem]">
             <span className="text-sm font-medium leading-5">Session</span>
@@ -986,7 +1011,7 @@ export default function HumanReviewManager() {
                   candidate={selectedCandidate}
                   reviewer={reviewer}
                   review={latestReviews.get(selectedCandidate.id)}
-                  isSaving={isSaving}
+                  isSaving={isSaving || !reviewerIdentity}
                   onSave={saveReview}
                   onPrevious={() => setSelectedCandidateId(candidates[selectedIndex - 1]?.id || selectedCandidate.id)}
                   onNext={() => setSelectedCandidateId(candidates[selectedIndex + 1]?.id || selectedCandidate.id)}

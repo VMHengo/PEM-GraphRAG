@@ -22,6 +22,7 @@ from lightrag.evaluation.human_review import (
     select_review_candidates,
     update_session,
 )
+from lightrag.evaluation.reviewer_identity import ReviewerIdentity, resolve_reviewer_identity
 from lightrag_mcp.exploration import format_exploration
 from lightrag.api.utils_api import get_combined_auth_dependency
 from lightrag.evaluation.live_benchmark import (
@@ -401,12 +402,17 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
         "/exploration/sessions/{session_id}/reviews",
         dependencies=[Depends(combined_auth)],
     )
-    async def submit_exploration_review(session_id: str, request: ExplorationReviewRequest):
+    async def submit_exploration_review(
+        session_id: str,
+        request: ExplorationReviewRequest,
+        identity: ReviewerIdentity = Depends(resolve_reviewer_identity),
+    ):
         try:
             review = add_review(
                 working_dir, session_id,
                 candidate_id=request.candidate_id,
                 reviewer=request.reviewer.strip(),
+                reviewer_email=identity.email,
                 interest=request.interest,
                 correctness=request.correctness,
                 hop_verdicts=list(request.hop_verdicts),
@@ -420,6 +426,12 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.get("/reviewer-identity", dependencies=[Depends(combined_auth)])
+    async def get_reviewer_identity(
+        identity: ReviewerIdentity = Depends(resolve_reviewer_identity),
+    ):
+        return {"email": identity.email, "default_name": identity.default_name}
 
     @router.get(
         "/benchmarks",

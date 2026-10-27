@@ -149,6 +149,7 @@ def add_review(
     inference_verdict: str | None = None,
     follow_up: bool,
     note: str,
+    reviewer_email: str | None = None,
 ) -> dict[str, Any]:
     session = load_session(working_dir, session_id)
     if session["status"] != "completed":
@@ -168,6 +169,7 @@ def add_review(
         "id": f"vote_{uuid.uuid4().hex}",
         "candidate_id": candidate_id,
         "reviewer": reviewer,
+        "reviewer_email": reviewer_email,
         "interest": interest,
         "correctness": correctness,
         "hop_verdicts": hop_verdicts,

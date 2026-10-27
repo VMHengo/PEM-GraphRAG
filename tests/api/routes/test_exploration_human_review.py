@@ -20,6 +20,7 @@ from lightrag.evaluation.human_review import (
     select_review_candidates,
     update_session,
 )
+from lightrag.evaluation.reviewer_identity import ReviewerIdentity, resolve_reviewer_identity
 
 
 _original_argv = sys.argv[:]
@@ -72,8 +73,14 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
 
     app = FastAPI()
     app.include_router(create_evaluation_routes(Rag(), "test-key"))
+    app.dependency_overrides[resolve_reviewer_identity] = lambda: ReviewerIdentity(
+        email="reviewer@example.org", default_name="Reviewer A"
+    )
     with TestClient(app) as client:
         assert client.get("/evaluation/exploration/sessions").status_code in {401, 403}
+        assert client.get("/evaluation/reviewer-identity", headers=HEADERS).json() == {
+            "email": "reviewer@example.org", "default_name": "Reviewer A"
+        }
         assert client.post(
             "/evaluation/exploration/sessions", headers=HEADERS,
             json={"title": "Too deep", "starts": ["Electrode Calendering"], "hop_depth": 5, "limit": 20},
@@ -115,6 +122,7 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
 
         vote = {
             "candidate_id": candidate["id"], "reviewer": "Reviewer A",
+            "reviewer_email": "spoofed@example.org",
             "interest": "interesting", "correctness": "partial",
             "hop_verdicts": ["supported", "unclear"],
             "conditions": "unclear", "inference_verdict": "conditional", "follow_up": True,
@@ -128,6 +136,7 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         assert saved.json()["review"]["extraction_revision"] == {"version": "1.0.1"}
         assert saved.json()["review"]["inference_verdict"] == "conditional"
         assert saved.json()["review"]["inference_rule_version"] == "1"
+        assert saved.json()["review"]["reviewer_email"] == "reviewer@example.org"
         assert client.post(
             f"/evaluation/exploration/sessions/{session_id}/reviews",
             headers=HEADERS, json={**vote, "inference_verdict": "verified_fact"},

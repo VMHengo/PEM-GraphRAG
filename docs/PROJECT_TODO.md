@@ -82,8 +82,9 @@ below. No bulk re-extraction is authorized.
   Partial (local): saved path-level and per-hop human review events with source
   text and captured extraction revision. New sessions include a versioned,
   conditional X -> Z hypothesis and a separate human verdict. Automatic
-  context compatibility, sign entailment, model triage, random auditing and
-  verified reviewer identity remain pending.
+  verified reviewer identity uses the OAuth2 Proxy session and stores the email
+  beside the editable name. Automatic context compatibility, sign entailment,
+  model triage and random auditing remain pending.
 
 ### Quality Benchmark Triage (before further extraction changes)
 
