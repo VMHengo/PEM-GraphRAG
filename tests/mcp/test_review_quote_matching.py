@@ -1,6 +1,9 @@
 """Review text matching must not confuse a match with relation verification."""
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +14,34 @@ from lightrag.relation_assertions import (
     serialize_relation_assertions,
 )
 from lightrag.directed_retrieval import normalize_directed_edge
-from lightrag_mcp.evidence import propose_relation_context
+from lightrag_mcp.evidence import (
+    locate_exact_quote as gateway_locate_exact_quote,
+    propose_relation_context,
+)
+
+
+def test_mcp_evidence_imports_without_lightrag_core():
+    root = Path(__file__).resolve().parents[2]
+    script = (
+        "import builtins, sys; "
+        f"sys.path.insert(0, {str(root)!r}); "
+        "original = builtins.__import__; "
+        "builtins.__import__ = lambda name, *args, **kwargs: "
+        "(_ for _ in ()).throw(ImportError(name)) if name == 'lightrag' "
+        "or name.startswith('lightrag.') else original(name, *args, **kwargs); "
+        "import lightrag_mcp.evidence"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", script], capture_output=True, text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_core_and_gateway_quote_matching_agree():
+    content = "Mixing heat\nbecomes important under high-rate cycling."
+    quote = "Mixing heat becomes important under high–rate cycling."
+    assert gateway_locate_exact_quote(content, quote) == locate_exact_quote(content, quote)
 
 
 def test_exact_quote_survives_pdf_line_wrapping_and_dash_variants():

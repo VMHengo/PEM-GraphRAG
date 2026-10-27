@@ -4,8 +4,48 @@ from __future__ import annotations
 
 import re
 
-from lightrag.constants import GRAPH_FIELD_SEP
-from lightrag.evidence_quotes import locate_exact_quote, normalized_with_offsets
+# The MCP image intentionally ships without the LightRAG core package.
+GRAPH_FIELD_SEP = "<SEP>"
+_DASHES = "\u2010\u2011\u2012\u2013\u2014\u2212"
+
+
+def normalized_with_offsets(text: str) -> tuple[str, list[int]]:
+    normalized: list[str] = []
+    offsets: list[int] = []
+    for index, char in enumerate(text):
+        if char.isspace():
+            if char in "\r\n" and normalized and normalized[-1] == "-":
+                continue
+            if normalized and normalized[-1] != " ":
+                normalized.append(" ")
+                offsets.append(index)
+        else:
+            for folded in "-" if char in _DASHES else char.casefold():
+                normalized.append(folded)
+                offsets.append(index)
+    while normalized and normalized[-1] == " ":
+        normalized.pop()
+        offsets.pop()
+    return "".join(normalized), offsets
+
+
+def locate_exact_quote(content: str, quote: str) -> dict[str, object] | None:
+    """Return source offsets for a literal quote with PDF whitespace tolerance."""
+
+    if not content or not quote or len(quote.strip()) < 8:
+        return None
+    normalized, offsets = normalized_with_offsets(content)
+    needle, _ = normalized_with_offsets(quote.strip())
+    start = normalized.find(needle)
+    if start < 0 or not needle:
+        return None
+    left, right = offsets[start], offsets[start + len(needle) - 1] + 1
+    return {
+        "text": content[left:right],
+        "start": left,
+        "end": right,
+        "status": "exact_text_match",
+    }
 
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])|\n\s*\n")
 _WORD = re.compile(r"[\w-]{4,}", re.UNICODE)
