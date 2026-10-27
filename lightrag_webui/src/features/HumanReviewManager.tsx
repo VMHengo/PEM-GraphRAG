@@ -11,7 +11,8 @@ import {
   Loader2Icon,
   PlusIcon,
   RefreshCwIcon,
-  SaveIcon
+  SaveIcon,
+  Trash2Icon
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -26,6 +27,7 @@ import {
   ExplorationSessionSummary,
   ExplorationVerdict,
   downloadExplorationReviewSheet,
+  deleteExplorationSession,
   getExplorationSession,
   getExplorationSessions,
   getExplorationStartNodes,
@@ -34,11 +36,16 @@ import {
   startExplorationSession
 } from '@/api/lightrag'
 import Badge from '@/components/ui/Badge'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from '@/components/ui/AlertDialog'
 import Button from '@/components/ui/Button'
 import Checkbox from '@/components/ui/Checkbox'
 import Input from '@/components/ui/Input'
 import NumberInput from '@/components/ui/NumberInput'
 import Progress from '@/components/ui/Progress'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/Popover'
 import {
   Select,
   SelectContent,
@@ -95,6 +102,9 @@ const formatDate = (value?: string) => {
     ? value
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
+
+const sessionLabel = (item: ExplorationSessionSummary) =>
+  `${item.title} · ${formatDate(item.created_at)} · ${item.review_count || 0}/${item.candidate_count || 0} cases reviewed`
 
 const formatRevision = (session: ExplorationSession | null) => {
   const revision = session?.extraction_revision
@@ -489,6 +499,10 @@ export default function HumanReviewManager() {
   })
   const [sessions, setSessions] = useState<ExplorationSessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ExplorationSessionSummary | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const sessionRequest = useRef(0)
   const [session, setSession] = useState<ExplorationSession | null>(null)
   const [selectedCandidateId, setSelectedCandidateId] = useState('')
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
@@ -581,6 +595,7 @@ export default function HumanReviewManager() {
 
   const loadSession = useCallback(async (sessionId: string, quiet = false) => {
     if (!sessionId) return
+    const request = ++sessionRequest.current
     if (!quiet) {
       setIsLoadingSession(true)
       setSession(null)
@@ -588,16 +603,23 @@ export default function HumanReviewManager() {
     }
     try {
       const response = await getExplorationSession(sessionId)
+      if (request !== sessionRequest.current) return
       setSession(response.session)
+      setSessions((current) => current.map((item) => item.id === sessionId ? {
+        ...item,
+        status: response.session.status,
+        candidate_count: response.session.candidates.length,
+        review_count: new Set((response.session.reviews || []).map((review) => review.candidate_id)).size
+      } : item))
       setSelectedCandidateId((current) =>
         response.session.candidates.some((candidate) => candidate.id === current)
           ? current
           : response.session.candidates[0]?.id || ''
       )
     } catch (error) {
-      if (!quiet) toast.error(`Failed to load review session: ${errorMessage(error)}`)
+      if (!quiet && request === sessionRequest.current) toast.error(`Failed to load review session: ${errorMessage(error)}`)
     } finally {
-      if (!quiet) setIsLoadingSession(false)
+      if (!quiet && request === sessionRequest.current) setIsLoadingSession(false)
     }
   }, [])
 
@@ -629,10 +651,17 @@ export default function HumanReviewManager() {
     return reviews
   }, [session?.reviews, reviewer])
 
+  const latestCaseReviews = useMemo(() => {
+    const reviews = new Map<string, ExplorationReview>()
+    for (const review of session?.reviews || []) reviews.set(review.candidate_id, review)
+    return reviews
+  }, [session?.reviews])
+
   const candidates = useMemo(() => session?.candidates.slice(0, REVIEW_LIMIT) || [], [session?.candidates])
+  const selectedSessionSummary = sessions.find((item) => item.id === selectedSessionId)
   const selectedIndex = candidates.findIndex((candidate) => candidate.id === selectedCandidateId)
   const selectedCandidate = selectedIndex >= 0 ? candidates[selectedIndex] : undefined
-  const reviewedCount = candidates.filter((candidate) => latestReviews.has(candidate.id)).length
+  const reviewedCount = candidates.filter((candidate) => latestCaseReviews.has(candidate.id)).length
   const progress = candidates.length ? reviewedCount / candidates.length * 100 : 0
 
   const createSession = async () => {
@@ -688,6 +717,27 @@ export default function HumanReviewManager() {
     }
   }
 
+  const removeSession = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    try {
+      await deleteExplorationSession(deleteTarget.id)
+      setSessions((current) => current.filter((item) => item.id !== deleteTarget.id))
+      if (selectedSessionId === deleteTarget.id) {
+        sessionRequest.current += 1
+        setSelectedSessionId(sessions.find((item) => item.id !== deleteTarget.id)?.id || '')
+        setSession(null)
+        setSelectedCandidateId('')
+      }
+      setDeleteTarget(null)
+      toast.success('Review session deleted')
+    } catch (error) {
+      toast.error(`Could not delete review session: ${errorMessage(error)}`)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const saveReview = async (request: ExplorationReviewRequest) => {
     if (!session) return
     setIsSaving(true)
@@ -702,7 +752,7 @@ export default function HumanReviewManager() {
         : current
       )
       setSessions((current) => current.map((item) => item.id === session.id
-        ? { ...item, review_count: (item.review_count || 0) + 1 }
+        ? { ...item, review_count: (item.review_count || 0) + (latestCaseReviews.has(request.candidate_id) ? 0 : 1) }
         : item
       ))
       const nextUnreviewed = candidates.find((candidate, index) =>
@@ -729,14 +779,31 @@ export default function HumanReviewManager() {
             <span className="leading-5">Reviewer</span>
             <Input className="h-10 w-full" value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
           </label>
-          <div className="flex min-w-72 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1 sm:w-[29rem]">
             <span className="text-sm font-medium leading-5">Session</span>
-            <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-              <SelectTrigger><SelectValue placeholder={isLoadingSessions ? 'Loading sessions...' : 'Select a saved session'} /></SelectTrigger>
-              <SelectContent>
-                {sessions.map((item) => <SelectItem key={item.id} value={item.id}>{item.title} · {formatDate(item.created_at)}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <Popover open={sessionMenuOpen} onOpenChange={setSessionMenuOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-10 w-full justify-between overflow-hidden" aria-label="Select review session">
+                  <span className="truncate text-left">{selectedSessionSummary
+                    ? sessionLabel(selectedSessionSummary)
+                    : isLoadingSessions ? 'Loading sessions...' : 'Select a saved session'}</span>
+                  <ChevronDownIcon className="shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="max-h-80 w-[min(32rem,calc(100vw-2rem))] overflow-y-auto p-1">
+                {sessions.map((item) => (
+                  <div key={item.id} className="flex items-center gap-1">
+                    <button type="button" onClick={() => { setSelectedSessionId(item.id); setSessionMenuOpen(false) }} className="hover:bg-accent min-w-0 flex-1 px-2 py-2 text-left text-sm">
+                      <span className="block break-words">{sessionLabel(item)}</span>
+                    </button>
+                    <Button type="button" variant="ghost" size="icon" tooltip={`Delete ${item.title}`} disabled={item.status === 'queued' || item.status === 'running'} onClick={() => { setDeleteTarget(item); setSessionMenuOpen(false) }}>
+                      <Trash2Icon /><span className="sr-only">Delete {item.title}</span>
+                    </Button>
+                  </div>
+                ))}
+                {!sessions.length && <p className="text-muted-foreground px-2 py-3 text-sm">No saved sessions</p>}
+              </PopoverContent>
+            </Popover>
           </div>
           <Button variant="outline" size="icon" onClick={() => void loadSessions()} disabled={isLoadingSessions} tooltip="Refresh sessions">
             <RefreshCwIcon className={isLoadingSessions ? 'animate-spin' : ''} />
@@ -755,6 +822,21 @@ export default function HumanReviewManager() {
           <Button size="sm" onClick={() => setShowCreate((current) => !current)}><PlusIcon /> New Session</Button>
         </div>
       </div>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete review session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.title} and all its saved case reviews will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={(event) => { event.preventDefault(); void removeSession() }}>Delete session</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showCreate && (
         <div className="space-y-4 border-y py-4">
@@ -794,14 +876,13 @@ export default function HumanReviewManager() {
                   <label key={name.toLowerCase()} className="hover:bg-muted/50 flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
                     <Checkbox checked={checked} disabled={!checked && selectedStarts.length >= 5} onCheckedChange={(value) => setStartsText((current) => toggleStartNode(current, name, value === true))} aria-label={`Select ${name}`} />
                     <span className="min-w-0 flex-1 break-words">{name}</span>
-                    {recommendation && <span className="text-muted-foreground shrink-0 text-xs">{recommendation.truncated ? 'at least ' : ''}{recommendation.path_count} paths; {recommendation.distinct_targets} targets</span>}
+                    {recommendation && <span className="text-muted-foreground shrink-0 text-xs">{recommendation.truncated ? 'at least ' : ''}{recommendation.path_count} paths</span>}
                   </label>
                 )
               })}
               {!visibleStartNames.length && <p className="text-muted-foreground px-3 py-3 text-xs">{isLoadingStartRecommendations ? 'Loading recommendations...' : 'No matching nodes.'}</p>}
             </div>
             {startRecommendationError && <p className="text-destructive text-xs">Recommendations unavailable: {startRecommendationError}</p>}
-            <p className="text-muted-foreground text-xs">Bounded potential paths, not verified review cases.</p>
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>Cancel</Button>
@@ -877,7 +958,8 @@ export default function HumanReviewManager() {
             <div className="grid min-w-0 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
               <div className="max-h-[72vh] space-y-1 overflow-auto border-r pr-3">
                 {candidates.map((candidate, index) => {
-                  const reviewed = latestReviews.has(candidate.id)
+                  const caseReview = latestCaseReviews.get(candidate.id)
+                  const reviewed = !!caseReview
                   const selected = candidate.id === selectedCandidateId
                   return (
                     <button
@@ -888,7 +970,7 @@ export default function HumanReviewManager() {
                     >
                       {reviewed ? <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-400" /> : <CircleIcon className="mt-0.5 size-4 shrink-0 text-amber-400" />}
                       <span className="min-w-0 flex-1">
-                        <span className="block text-xs text-muted-foreground">Case {index + 1} · {reviewed ? 'Reviewed' : 'Unreviewed'}</span>
+                        <span className="block text-xs text-muted-foreground">Case {index + 1} · {caseReview ? `Reviewed by ${caseReview.reviewer}` : 'Unreviewed'}</span>
                         <span className="mt-0.5 block break-words">{candidate.from} to {candidate.to}</span>
                         {priorityLabel(candidate) && <span className="text-muted-foreground mt-1 block text-xs">{priorityLabel(candidate)}</span>}
                       </span>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,10 +102,26 @@ def list_sessions(working_dir: str | Path, *, limit: int = 25) -> list[dict[str,
         session = _load_json(path)
         summary = {key: value for key, value in session.items() if key != "candidates"}
         summary["candidate_count"] = len(session.get("candidates") or [])
+        reviews_dir = path.parent / "reviews"
+        summary["review_count"] = len({
+            _load_json(review_path).get("candidate_id")
+            for review_path in reviews_dir.glob("*.json")
+        }) if reviews_dir.is_dir() else 0
         sessions.append(summary)
         if len(sessions) >= limit:
             break
     return sessions
+
+
+def delete_session(working_dir: str | Path, session_id: str) -> None:
+    session_dir = _session_dir(working_dir, session_id)
+    session = _load_json(session_dir / "session.json")
+    if session["status"] in {"queued", "running"}:
+        raise ValueError("A running review session cannot be deleted")
+    root = _root(working_dir)
+    if session_dir.is_symlink() or session_dir.parent != root:
+        raise ValueError("Invalid review session directory")
+    shutil.rmtree(session_dir)
 
 
 def update_session(working_dir: str | Path, session_id: str, **changes: Any) -> dict[str, Any]:

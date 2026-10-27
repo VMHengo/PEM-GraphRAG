@@ -1171,6 +1171,10 @@ export const getExplorationSession = async (
   return response.data
 }
 
+export const deleteExplorationSession = async (sessionId: string): Promise<void> => {
+  await axiosInstance.delete(`/evaluation/exploration/sessions/${encodeURIComponent(sessionId)}`)
+}
+
 export const downloadExplorationReviewSheet = async (
   sessionId: string
 ): Promise<{ blob: Blob; filename: string }> => {

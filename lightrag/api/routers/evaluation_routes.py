@@ -14,6 +14,7 @@ from lightrag.evaluation.exploration_discovery import discover_from_start
 from lightrag.evaluation.human_review import (
     add_review,
     create_session,
+    delete_session,
     list_sessions,
     load_session,
     recover_interrupted_sessions,
@@ -362,6 +363,24 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
             return {"session": load_session(working_dir, session_id)}
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.delete(
+        "/exploration/sessions/{session_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def delete_exploration_session(session_id: str):
+        async with exploration_lock:
+            task = active_exploration.get(session_id)
+            if task is not None and not task.done():
+                raise HTTPException(status_code=409, detail="A running review session cannot be deleted")
+            try:
+                delete_session(working_dir, session_id)
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get(
         "/exploration/sessions/{session_id}/review-sheet",
