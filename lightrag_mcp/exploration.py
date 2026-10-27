@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from lightrag_mcp.evidence import propose_relation_span
+from lightrag_mcp.evidence import propose_relation_context, propose_relation_span
 
 
 CAUSAL_TYPES = frozenset(
@@ -147,9 +147,11 @@ def format_exploration(
     start_domains = set(start_subject["domains"])
     by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
     target_counts: dict[str, int] = defaultdict(int)
+    excluded: dict[str, int] = defaultdict(int)
 
     for path in diagnostics.get("paths") or []:
         if not isinstance(path, dict) or not _valid_path(path, start, chunks):
+            excluded["invalid_or_unresolved_path"] += 1
             continue
         nodes = path["nodes"]
         target = str(nodes[-1])
@@ -167,11 +169,14 @@ def format_exploration(
         target_subject = classify_subject(target, source_files=last_files)
         target_domains = set(target_subject["domains"])
         if not path_start["domains"] or not target_domains:
+            excluded["unclassified_domain"] += 1
             continue
         if set(path_start["domains"]).intersection(target_domains):
+            excluded["same_domain"] += 1
             continue
         target_key = _normal(target)
         if target_counts[target_key] >= max_paths_per_target:
+            excluded["target_diversity_limit"] += 1
             continue
         target_counts[target_key] += 1
         steps = []
@@ -191,6 +196,11 @@ def format_exploration(
                         or ref.get("download_url"),
                         "chunk_excerpt": str(chunk.get("content") or "")[:900],
                         "candidate_span": propose_relation_span(
+                            str(chunk.get("content") or ""),
+                            edge["source"],
+                            edge["target"],
+                        ),
+                        "context_excerpt": propose_relation_context(
                             str(chunk.get("content") or ""),
                             edge["source"],
                             edge["target"],
@@ -252,6 +262,7 @@ def format_exploration(
         "retrieval_status": diagnostics.get("status", "unknown"),
         "retrieval_reason": diagnostics.get("reason"),
         "paths_examined": len(diagnostics.get("paths") or []),
+        "excluded_paths": dict(excluded),
         "empty_reason": (
             "Starting node has no provisional subject classification."
             if not start_domains

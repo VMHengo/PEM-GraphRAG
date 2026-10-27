@@ -264,6 +264,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                         "retrieval_reason": discovery["retrieval_reason"],
                         "paths_examined": discovery["paths_examined"],
                         "eligible_paths": discovery["candidate_count"],
+                        "excluded_paths": discovery["excluded_paths"],
                         "empty_reason": discovery["empty_reason"],
                         "suggested_start_nodes": discovery["suggested_start_nodes"],
                     })

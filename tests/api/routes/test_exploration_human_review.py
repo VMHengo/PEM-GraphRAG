@@ -101,6 +101,7 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
         assert session["seed_diagnostics"][0]["start"] == "Electrode Calendering"
         assert session["seed_diagnostics"][0]["paths_examined"] == 1
         assert session["seed_diagnostics"][0]["eligible_paths"] == 1
+        assert session["seed_diagnostics"][0]["excluded_paths"] == {}
         candidate = session["candidates"][0]
         assert candidate["path"][0]["sources"][0]["candidate_span"]["status"] == "candidate_mention_only"
         assert candidate["path"][0]["sources"][0]["document"] == "a.pdf"
@@ -189,6 +190,7 @@ def test_empty_review_session_preserves_seed_diagnostics(tmp_path):
             "retrieval_reason": "no_matching_paths",
             "paths_examined": 0,
             "eligible_paths": 0,
+            "excluded_paths": {},
             "empty_reason": "No directed, source-resolved cross-area path survived the filters.",
             "suggested_start_nodes": [],
         }]

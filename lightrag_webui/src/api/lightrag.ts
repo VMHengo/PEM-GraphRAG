@@ -386,6 +386,12 @@ export type ExplorationSource = {
   full_chunk_text?: string
   full_chunk_truncated?: boolean
   candidate_span?: ExplorationCandidateSpan
+  context_excerpt?: {
+    text: string
+    match_start: number
+    match_end: number
+    status: string
+  } | null
 }
 
 export type ExplorationHop = {
@@ -457,6 +463,7 @@ export type ExplorationSessionSummary = {
     retrieval_reason?: string | null
     paths_examined: number
     eligible_paths: number
+    excluded_paths?: Record<string, number>
     empty_reason?: string | null
     suggested_start_nodes: string[]
   }>

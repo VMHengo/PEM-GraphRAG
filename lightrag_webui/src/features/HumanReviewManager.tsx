@@ -48,6 +48,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { errorMessage } from '@/lib/utils'
 
 const REVIEW_LIMIT = 20
+const REVIEWER_STORAGE_KEY = 'pem-reviewer-name'
 
 const verdictOptions: Array<{ value: ExplorationVerdict; label: string }> = [
   { value: 'supported', label: 'Supported' },
@@ -109,6 +110,30 @@ const candidateSpanText = (span: NonNullable<ExplorationCandidate['path'][number
 
 const isWebUrl = (value: string) => /^https?:\/\//i.test(value)
 
+const exclusionLabels: Record<string, string> = {
+  invalid_or_unresolved_path: 'Missing source or unsupported edge',
+  unclassified_domain: 'Unknown subject area',
+  same_domain: 'Same subject area',
+  target_diversity_limit: 'More than two paths to one target'
+}
+
+function SourceExcerpt({ source }: { source: ExplorationCandidate['path'][number]['sources'][number] }) {
+  const excerpt = source.context_excerpt
+  if (excerpt && excerpt.match_start >= 0 && excerpt.match_end <= excerpt.text.length
+    && excerpt.match_start < excerpt.match_end) {
+    return (
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm">
+        {excerpt.text.slice(0, excerpt.match_start)}
+        <mark className="bg-amber-300/40 text-inherit">{excerpt.text.slice(excerpt.match_start, excerpt.match_end)}</mark>
+        {excerpt.text.slice(excerpt.match_end)}
+      </p>
+    )
+  }
+  return source.candidate_span
+    ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{candidateSpanText(source.candidate_span)}</p>
+    : <p className="text-muted-foreground mt-2 text-xs">No matching sentence found in this chunk. Open the extracted chunk to inspect it.</p>
+}
+
 function RubricLabel({ label, description }: { label: string; description: string }) {
   const [open, setOpen] = useState(false)
 
@@ -139,6 +164,7 @@ function RubricLabel({ label, description }: { label: string; description: strin
 type ReviewEditorProps = {
   sessionId: string
   candidate: ExplorationCandidate
+  reviewer: string
   review?: ExplorationReview
   isSaving: boolean
   onSave: (request: ExplorationReviewRequest) => Promise<void>
@@ -151,6 +177,7 @@ type ReviewEditorProps = {
 function ReviewEditor({
   sessionId,
   candidate,
+  reviewer,
   review,
   isSaving,
   onSave,
@@ -159,7 +186,6 @@ function ReviewEditor({
   hasPrevious,
   hasNext
 }: ReviewEditorProps) {
-  const [reviewer, setReviewer] = useState(review?.reviewer || '')
   const [interest, setInterest] = useState<ExplorationInterest | ''>(review?.interest || '')
   const [correctness, setCorrectness] = useState<ExplorationVerdict | ''>(review?.correctness || '')
   const [conditions, setConditions] = useState<ExplorationConditions | ''>(review?.conditions || '')
@@ -357,14 +383,7 @@ function ReviewEditor({
                       </a>
                     )}
                   </div>
-                  {source.candidate_span && (
-                    <div className="mt-2 text-sm">
-                      <p className="text-muted-foreground text-xs font-medium">
-                        Candidate passage (extracted text, not independently verified)
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap break-words">{candidateSpanText(source.candidate_span)}</p>
-                    </div>
-                  )}
+                  <SourceExcerpt source={source} />
                   <details className="group mt-2 text-xs">
                     <summary className="text-muted-foreground hover:text-foreground focus-visible:text-foreground inline-flex cursor-pointer list-none items-center gap-1 font-medium focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
                       {source.full_chunk_text
@@ -388,11 +407,7 @@ function ReviewEditor({
         ))}
       </div>
 
-      <div className="grid gap-4 border-t pt-4 md:grid-cols-2 xl:grid-cols-4">
-        <label className="space-y-1 text-sm font-medium">
-          <span>Reviewer</span>
-          <Input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
-        </label>
+      <div className="grid gap-4 border-t pt-4 md:grid-cols-3">
         <div className="space-y-1 text-sm font-medium">
           <RubricLabel label="Interest" description={rubricDescriptions.interest} />
           <Select value={interest} onValueChange={(value) => setInterest(value as ExplorationInterest)}>
@@ -436,6 +451,13 @@ function ReviewEditor({
 }
 
 export default function HumanReviewManager() {
+  const [reviewer, setReviewer] = useState(() => {
+    try {
+      return window.localStorage.getItem(REVIEWER_STORAGE_KEY) || ''
+    } catch {
+      return ''
+    }
+  })
   const [sessions, setSessions] = useState<ExplorationSessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [session, setSession] = useState<ExplorationSession | null>(null)
@@ -450,6 +472,15 @@ export default function HumanReviewManager() {
   const [startsText, setStartsText] = useState('')
   const [hopDepth, setHopDepth] = useState(2)
   const [limit, setLimit] = useState(REVIEW_LIMIT)
+
+  useEffect(() => {
+    try {
+      if (reviewer.trim()) window.localStorage.setItem(REVIEWER_STORAGE_KEY, reviewer.trim())
+      else window.localStorage.removeItem(REVIEWER_STORAGE_KEY)
+    } catch {
+      // Review remains usable when browser storage is unavailable.
+    }
+  }, [reviewer])
 
   const loadSessions = useCallback(async () => {
     setIsLoadingSessions(true)
@@ -508,9 +539,13 @@ export default function HumanReviewManager() {
 
   const latestReviews = useMemo(() => {
     const reviews = new Map<string, ExplorationReview>()
-    for (const review of session?.reviews || []) reviews.set(review.candidate_id, review)
+    for (const review of session?.reviews || []) {
+      if (review.reviewer.trim().toLocaleLowerCase() === reviewer.trim().toLocaleLowerCase()) {
+        reviews.set(review.candidate_id, review)
+      }
+    }
     return reviews
-  }, [session?.reviews])
+  }, [session?.reviews, reviewer])
 
   const candidates = useMemo(() => session?.candidates.slice(0, REVIEW_LIMIT) || [], [session?.candidates])
   const selectedIndex = candidates.findIndex((candidate) => candidate.id === selectedCandidateId)
@@ -581,7 +616,7 @@ export default function HumanReviewManager() {
         : current
       )
       setSessions((current) => current.map((item) => item.id === session.id
-        ? { ...item, review_count: Math.max(item.review_count || 0, reviewedCount + (latestReviews.has(request.candidate_id) ? 0 : 1)) }
+        ? { ...item, review_count: (item.review_count || 0) + 1 }
         : item
       ))
       const nextUnreviewed = candidates.find((candidate, index) =>
@@ -604,7 +639,12 @@ export default function HumanReviewManager() {
           <p className="text-muted-foreground text-sm">Review up to 20 exploratory paths against their source excerpts.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="space-y-1 text-sm font-medium sm:w-44">
+            <span>Reviewer</span>
+            <Input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={80} placeholder="Name or initials" />
+          </label>
           <div className="min-w-72">
+            <span className="text-sm font-medium">Session</span>
             <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
               <SelectTrigger><SelectValue placeholder={isLoadingSessions ? 'Loading sessions...' : 'Select a saved session'} /></SelectTrigger>
               <SelectContent>
@@ -688,6 +728,14 @@ export default function HumanReviewManager() {
               {failure.start}: {failure.error}
             </p>
           ))}
+          {(session.seed_diagnostics || []).map((item) => (
+            <p key={item.start} className="text-muted-foreground text-sm">
+              {item.start}: {item.paths_examined} retrieved paths, {item.eligible_paths} eligible before session selection.
+              {Object.entries(item.excluded_paths || {}).map(([reason, count]) =>
+                ` ${exclusionLabels[reason] || reason}: ${count}.`
+              )}
+            </p>
+          ))}
           {(session.seed_diagnostics || []).filter((item) => item.eligible_paths === 0).map((item) => (
             <p key={item.start} className="text-muted-foreground text-sm">
               {item.start}: {item.paths_examined === 0
@@ -696,7 +744,7 @@ export default function HumanReviewManager() {
               {item.suggested_start_nodes.length > 0 && ` Check the graph name: ${item.suggested_start_nodes.join(', ')}.`}
             </p>
           ))}
-          {session.status === 'completed' && candidates.length < session.limit && (
+          {session.status === 'completed' && !session.seed_diagnostics?.length && candidates.length < session.limit && (
             <p className="text-muted-foreground text-sm">
               Only {candidates.length} eligible {candidates.length === 1 ? 'path' : 'paths'} found for {session.starts.join(', ')}.
               Try another starting node or hop depth in a new session; increasing the case limit alone will not add paths.
@@ -742,9 +790,10 @@ export default function HumanReviewManager() {
 
               {selectedCandidate && (
                 <ReviewEditor
-                  key={`${session.id}-${selectedCandidate.id}-${latestReviews.get(selectedCandidate.id)?.updated_at || latestReviews.get(selectedCandidate.id)?.created_at || 'new'}`}
+                  key={`${session.id}-${selectedCandidate.id}-${reviewer}-${latestReviews.get(selectedCandidate.id)?.updated_at || latestReviews.get(selectedCandidate.id)?.created_at || 'new'}`}
                   sessionId={session.id}
                   candidate={selectedCandidate}
+                  reviewer={reviewer}
                   review={latestReviews.get(selectedCandidate.id)}
                   isSaving={isSaving}
                   onSave={saveReview}
