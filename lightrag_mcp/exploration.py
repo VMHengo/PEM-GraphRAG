@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from lightrag_mcp.evidence import propose_relation_context, propose_relation_span
+from lightrag_mcp.source_links import source_pdf_url
 
 
 CAUSAL_TYPES = frozenset(
@@ -143,6 +144,7 @@ def format_exploration(
     payload: dict[str, Any], *, start: str, limit: int = 5,
     include_full_chunks: bool = False,
     max_paths_per_target: int = 1,
+    public_webui_base_url: str = "",
 ) -> dict[str, Any]:
     """Return diverse cross-domain candidates, never a synthesized direct edge."""
 
@@ -211,9 +213,17 @@ def format_exploration(
                     continue
                 file_path = str(chunk.get("file_path") or "")
                 ref = references.get(file_path) or {}
+                chunk_doc_match = re.fullmatch(r"(doc-[0-9a-f]{32})-chunk-\d+", source_id)
+                chunk_doc_id = chunk.get("full_doc_id") or (
+                    chunk_doc_match.group(1) if chunk_doc_match else None
+                )
                 source = {
                         "chunk_id": source_id,
                         "document": file_path,
+                        "document_id": chunk_doc_id,
+                        "pdf_url": source_pdf_url(
+                            public_webui_base_url, chunk_doc_id
+                        ),
                         "url": ref.get("url")
                         or ref.get("source_url")
                         or ref.get("download_url"),

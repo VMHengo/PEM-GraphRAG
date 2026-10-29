@@ -1,0 +1,4 @@
+services:
+  mcp-gateway:
+    environment:
+      LIGHTRAG_PUBLIC_WEBUI_BASE_URL: "https://lightrag-staging.vmhnguyen.dev"

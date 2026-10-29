@@ -381,6 +381,7 @@ export type ExplorationCandidateSpan =
 export type ExplorationSource = {
   chunk_id: string
   document: string
+  document_id?: string | null
   url: string | null
   chunk_excerpt: string
   full_chunk_text?: string
@@ -392,6 +393,14 @@ export type ExplorationSource = {
     match_end: number
     status: string
   } | null
+}
+
+export const sourcePdfUrl = (docId: string): string =>
+  `${backendBaseUrl.replace(/\/$/, '')}/documents/${encodeURIComponent(docId)}/source-pdf`
+
+export const locateSourcePdf = async (docId: string, quote: string): Promise<{ page: number | null; status: string }> => {
+  const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/source-pdf/locate`, { quote })
+  return response.data
 }
 
 export type ExplorationHop = {

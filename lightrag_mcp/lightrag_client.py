@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
 import httpx
+
+from lightrag_mcp.source_links import source_pdf_url
 
 QueryMode = Literal["mix", "local", "global", "hybrid", "naive"]
 RetrievalStrategy = Literal["normal", "directed", "combined", "auto"]
@@ -247,18 +250,6 @@ def _citation_url(source: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
 
-    # Future hook: return a stable HTTPS URL for a source document or chunk here,
-    # e.g. https://lightrag.example.edu/sources/{document_id}?chunk={chunk_id}
-
-    # document_id = source.get("document_id")
-    # chunk_id = source.get("chunk_id")
-    # if not document_id:
-    #     return None
-    # url = f"https://lightrag.vmhnguyen.dev/sources/{document_id}"
-    # if chunk_id:
-    #     url += f"?chunk={chunk_id}"
-    # return url
-    
     return None
 
 
@@ -296,6 +287,10 @@ def build_citations(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "title": title,
                 "kind": "document_chunk" if source.get("chunk_id") else "document",
                 "url": source.get("url") or _citation_url(citation_source),
+                "pdf_url": source_pdf_url(
+                    os.getenv("LIGHTRAG_PUBLIC_WEBUI_BASE_URL", ""),
+                    source.get("document_id"),
+                ),
                 "excerpt": _excerpt(source.get("content")),
                 "source": citation_source,
             }

@@ -24,6 +24,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from lightrag import LightRAG
@@ -51,6 +52,8 @@ from lightrag.utils import (
     move_file_to_parsed_dir,
 )
 from lightrag.api.utils_api import get_combined_auth_dependency
+from lightrag.api.source_pdfs import locate_source_page, resolve_source_pdf
+from lightrag.evaluation.reviewer_identity import resolve_reviewer_identity
 from lightrag.api.azure_batch import (
     AzureBatchConfigError,
     azure_batch_enabled,
@@ -3261,6 +3264,38 @@ def create_document_routes(
 
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
+
+    async def retained_pdf(doc_id: str) -> Path:
+        status_doc = await rag.doc_status.get_by_id(doc_id)
+        if status_doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        file_path = (
+            status_doc.get("file_path")
+            if isinstance(status_doc, dict)
+            else status_doc.file_path
+        )
+        pdf = resolve_source_pdf(doc_manager.input_dir, file_path)
+        if pdf is None:
+            raise HTTPException(status_code=404, detail="Original PDF unavailable")
+        return pdf
+
+    @router.get("/{doc_id}/source-pdf", dependencies=[Depends(resolve_reviewer_identity)])
+    async def get_source_pdf(doc_id: str):
+        pdf = await retained_pdf(doc_id)
+        return FileResponse(
+            pdf, media_type="application/pdf", content_disposition_type="inline",
+            filename=pdf.name,
+            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @router.post("/{doc_id}/source-pdf/locate", dependencies=[Depends(resolve_reviewer_identity)])
+    async def locate_pdf_excerpt(doc_id: str, request: dict[str, str]):
+        quote = request.get("quote", "")
+        if not isinstance(quote, str) or len(quote) > 1000:
+            raise HTTPException(status_code=422, detail="Quote must be at most 1000 characters")
+        pdf = await retained_pdf(doc_id)
+        page, status = await asyncio.to_thread(locate_source_page, pdf, quote)
+        return {"page": page, "status": status}
 
     @router.post(
         "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]

@@ -9,6 +9,7 @@ import {
   DownloadIcon,
   ExternalLinkIcon,
   Loader2Icon,
+  FileTextIcon,
   PlusIcon,
   RefreshCwIcon,
   SaveIcon,
@@ -32,9 +33,11 @@ import {
   getExplorationSessions,
   getExplorationStartNodes,
   getReviewerIdentity,
+  locateSourcePdf,
   saveExplorationReview,
   searchLabels,
-  startExplorationSession
+  startExplorationSession,
+  sourcePdfUrl
 } from '@/api/lightrag'
 import Badge from '@/components/ui/Badge'
 import {
@@ -42,6 +45,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from '@/components/ui/AlertDialog'
 import Button from '@/components/ui/Button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
 import Checkbox from '@/components/ui/Checkbox'
 import Input from '@/components/ui/Input'
 import NumberInput from '@/components/ui/NumberInput'
@@ -167,6 +171,54 @@ function SourceExcerpt({ source }: { source: ExplorationCandidate['path'][number
   return source.candidate_span
     ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{candidateSpanText(source.candidate_span)}</p>
     : <p className="text-muted-foreground mt-2 text-xs">No reliable short text match found. Inspect the extracted chunk before rating this hop.</p>
+}
+
+function SourcePdf({ source }: { source: ExplorationCandidate['path'][number]['sources'][number] }) {
+  const [open, setOpen] = useState(false)
+  const [page, setPage] = useState<number | null>(null)
+  const [locateStatus, setLocateStatus] = useState('')
+  const documentId = source.document_id || source.chunk_id.match(/^(doc-[0-9a-f]{32})-chunk-\d+$/)?.[1]
+  if (!documentId || !source.document.toLowerCase().endsWith('.pdf')) return null
+
+  const url = sourcePdfUrl(documentId)
+  const excerpt = source.context_excerpt
+  const quote = excerpt && excerpt.match_start >= 0
+    ? excerpt.text.slice(excerpt.match_start, excerpt.match_end)
+    : typeof source.candidate_span === 'string' ? source.candidate_span : source.candidate_span?.text || ''
+  const openPdf = async () => {
+    setOpen(true)
+    setPage(null)
+    setLocateStatus('')
+    if (!quote.trim()) return
+    try {
+      const located = await locateSourcePdf(documentId, quote.slice(0, 1000))
+      setPage(located.page)
+      setLocateStatus(located.status)
+    } catch {
+      setLocateStatus('unavailable')
+    }
+  }
+
+  return <>
+    <button type="button" className="text-primary inline-flex items-center gap-1 hover:underline" onClick={() => void openPdf()}>
+      PDF <FileTextIcon className="size-3" />
+    </button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="flex h-[92vh] max-w-[96vw] flex-col gap-2 p-4 sm:max-w-[96vw]">
+        <DialogHeader>
+          <DialogTitle className="pr-8 text-base break-words">{source.document}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span>{page ? `Page ${page} (text match)` : locateStatus === 'not_found' ? 'Page not located in PDF text' : 'Original PDF'}</span>
+          <a className="text-primary inline-flex items-center gap-1 hover:underline" href={`${url}${page ? `#page=${page}` : ''}`} target="_blank" rel="noreferrer">
+            Open separately <ExternalLinkIcon className="size-3" />
+          </a>
+        </div>
+        <iframe title={`Original PDF: ${source.document}`} src={`${url}${page ? `#page=${page}` : ''}`} className="min-h-0 w-full flex-1 border" />
+        {quote && <p className="text-muted-foreground max-h-24 overflow-auto text-xs">Extracted text to compare: {quote}</p>}
+      </DialogContent>
+    </Dialog>
+  </>
 }
 
 function RubricLabel({ label, description }: { label: string; description: string }) {
@@ -422,6 +474,7 @@ function ReviewEditor({
                         Source <ExternalLinkIcon className="size-3" />
                       </a>
                     )}
+                    <SourcePdf source={source} />
                   </div>
                   <SourceExcerpt source={source} />
                   <details className="group mt-2 text-xs">

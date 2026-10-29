@@ -209,6 +209,7 @@ class ReferenceItem(BaseModel):
     """A single reference item in query responses."""
 
     reference_id: str = Field(description="Unique reference identifier")
+    document_id: Optional[str] = Field(default=None, description="Source document ID")
     file_path: str = Field(description="Path to the source file")
     title: Optional[str] = Field(default=None, description="Document title")
     source_url: Optional[str] = Field(
@@ -285,21 +286,25 @@ def _source_metadata_url(metadata: dict[str, Any]) -> str | None:
 async def _metadata_by_file_path(rag) -> dict[str, dict[str, Any]]:
     docs = await rag.doc_status.get_docs_by_statuses(list(DocStatus))
     by_path: dict[str, dict[str, Any]] = {}
-    for _doc_id, doc in docs.items():
+    ambiguous: set[str] = set()
+    for doc_id, doc in docs.items():
         if isinstance(doc, dict):
             metadata = doc.get("metadata")
             file_path = doc.get("file_path")
         else:
             metadata = getattr(doc, "metadata", None)
             file_path = getattr(doc, "file_path", None)
-        if not metadata or not file_path:
+        if not file_path:
             continue
         normalized_path = _normalize_reference_path(file_path)
         basename = normalized_path.rsplit("/", 1)[-1]
-        if normalized_path:
-            by_path[normalized_path] = dict(metadata)
-        if basename:
-            by_path[basename] = dict(metadata)
+        for key in {normalized_path, basename} - {""}:
+            if key in by_path:
+                ambiguous.add(key)
+            else:
+                by_path[key] = {**(metadata or {}), "document_id": doc_id}
+    for key in ambiguous:
+        by_path.pop(key, None)
     return by_path
 
 
@@ -322,6 +327,7 @@ async def _enrich_references_with_source_metadata(
         basename = normalized_path.rsplit("/", 1)[-1]
         metadata = metadata_by_path.get(normalized_path) or metadata_by_path.get(basename)
         if metadata:
+            ref_copy["document_id"] = metadata["document_id"]
             for key in ("title", "source_url", "download_url"):
                 value = metadata.get(key)
                 if value and key not in ref_copy:

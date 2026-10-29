@@ -14,6 +14,7 @@ def _env_bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class MCPGatewayConfig:
     lightrag_base_url: str = os.getenv("LIGHTRAG_BASE_URL", "http://lightrag:9621")
+    public_webui_base_url: str = os.getenv("LIGHTRAG_PUBLIC_WEBUI_BASE_URL", "")
     lightrag_api_key: str | None = os.getenv("LIGHTRAG_API_KEY") or None
     lightrag_timeout: float = float(os.getenv("LIGHTRAG_MCP_TIMEOUT", "120"))
     retrieval_strategy: str = os.getenv(

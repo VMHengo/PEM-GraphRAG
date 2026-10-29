@@ -159,7 +159,10 @@ async def explore_pem_connections(
             api_key=config.lightrag_api_key,
             timeout=config.lightrag_timeout,
         )
-        return format_exploration(payload, start=start.strip(), limit=limit)
+        return format_exploration(
+            payload, start=start.strip(), limit=limit,
+            public_webui_base_url=config.public_webui_base_url,
+        )
     except (LightRAGQueryError, ValueError) as exc:
         return {"error": str(exc), "start": start}
 
