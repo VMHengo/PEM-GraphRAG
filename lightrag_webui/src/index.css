@@ -8,6 +8,50 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.pdf-source-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  transform-origin: 0 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-source-text-layer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+  user-select: text;
+}
+
+.pdf-source-text-layer > :not(.markedContent),
+.pdf-source-text-layer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-source-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-source-text-layer .pdf-evidence-hit {
+  margin: -2px;
+  padding: 2px;
+  border-radius: 2px;
+  background: rgb(250 204 21 / 45%);
+  box-shadow: 0 0 0 1px rgb(202 138 4 / 45%);
+}
+
 :root {
   --background: hsl(0 0% 100%);
   --foreground: hsl(240 10% 3.9%);

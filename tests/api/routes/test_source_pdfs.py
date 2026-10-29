@@ -51,6 +51,21 @@ def test_locate_page_reports_only_text_actually_found(monkeypatch, tmp_path):
     )
 
 
+def test_locate_page_rejects_repeated_quote(monkeypatch, tmp_path):
+    from lightrag.api import source_pdfs
+
+    class Reader:
+        def __init__(self, _path):
+            text = "Electrode calendering decreased cathode porosity."
+            self.pages = [SimpleNamespace(extract_text=lambda: text)] * 2
+
+    monkeypatch.setattr(source_pdfs, "PdfReader", Reader)
+    (tmp_path / "study.pdf").write_bytes(b"mock")
+    assert locate_source_page(tmp_path / "study.pdf", "Electrode calendering decreased cathode porosity.") == (
+        None, "ambiguous"
+    )
+
+
 def test_pdf_route_requires_login_and_serves_only_document_id(tmp_path):
     original_argv = sys.argv[:]
     try:

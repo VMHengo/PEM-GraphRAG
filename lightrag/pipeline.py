@@ -218,6 +218,7 @@ class _PipelineMixin:
         process_options: str | list[str] | None = None,
         chunk_options: dict | list[dict] | None = None,
         from_scan: bool = False,
+        source_page_ranges: list[list[dict[str, int]]] | None = None,
     ) -> str:
         """
         Pipeline for Processing Documents
@@ -367,6 +368,8 @@ class _PipelineMixin:
             raise ValueError(
                 "Number of chunk_options dicts must match the number of documents"
             )
+        if source_page_ranges is not None and len(source_page_ranges) != len(input):
+            raise ValueError("Number of PDF page range lists must match the documents")
 
         def _parse_engine_at(index: int) -> str | None:
             if parse_engine is None:
@@ -519,6 +522,8 @@ class _PipelineMixin:
                 content_data["sidecar_location"] = sidecar_location
             if engine := _parse_engine_at(index):
                 content_data["parse_engine"] = engine
+            if source_page_ranges is not None and source_page_ranges[index]:
+                content_data["source_page_ranges"] = source_page_ranges[index]
             if doc_format == FULL_DOCS_FORMAT_PENDING_PARSE:
                 source_file_name = Path(str(file_paths[index] or "").strip()).name
                 if has_known_document_source(source_file_name):
@@ -2124,6 +2129,22 @@ class _PipelineMixin:
                 chunks = build_chunks_dict_from_chunking_result(
                     chunking_result, doc_id=doc_id, file_path=file_path
                 )
+                if file_path.lower().endswith(".pdf"):
+                    from lightrag.pdf_provenance import (
+                        attach_pdf_page_locations,
+                        page_ranges_from_sidecar,
+                    )
+
+                    page_ranges = (content_data or {}).get("source_page_ranges")
+                    if not page_ranges and blocks_path:
+                        try:
+                            page_ranges = await asyncio.to_thread(
+                                page_ranges_from_sidecar, Path(blocks_path), content
+                            )
+                        except (OSError, ValueError) as exc:
+                            logger.warning("PDF sidecar provenance unavailable for %s: %s", doc_id, exc)
+                    if page_ranges:
+                        attach_pdf_page_locations(chunks, content, page_ranges)
 
                 if not chunks:
                     logger.warning("No document chunks to process")

@@ -1820,6 +1820,20 @@ def _extract_pdf_pypdf(file_bytes: bytes, password: str = None) -> str:
     return content
 
 
+def _extract_pdf_page_ranges_pypdf(
+    file_bytes: bytes, password: str | None = None
+) -> list[dict[str, int]]:
+    """Reproduce legacy PDF page offsets for later chunk/source grounding."""
+    from pypdf import PdfReader
+
+    from lightrag.pdf_provenance import sanitized_page_ranges
+
+    reader = PdfReader(BytesIO(file_bytes))
+    if reader.is_encrypted and reader.decrypt(password or "") == 0:
+        raise ValueError("PDF password is required for page provenance")
+    return sanitized_page_ranges([page.extract_text() or "" for page in reader.pages])
+
+
 def _extract_docx(file_bytes: bytes) -> str:
     """Extract DOCX content including tables in document order (synchronous).
 
@@ -2297,6 +2311,15 @@ async def pipeline_enqueue_file(
                             f"[File Extraction]Error processing PDF {file_path.name}: {str(e)}"
                         )
                         return False, track_id
+                    try:
+                        pdf_page_ranges = await asyncio.to_thread(
+                            _extract_pdf_page_ranges_pypdf,
+                            file,
+                            global_args.pdf_decrypt_password,
+                        )
+                    except Exception as exc:
+                        pdf_page_ranges = []
+                        logger.warning("PDF page provenance unavailable for %s: %s", file_path.name, exc)
 
                 case ".docx":
                     try:
@@ -2414,6 +2437,8 @@ async def pipeline_enqueue_file(
                     "process_options": api_process_options,
                     "from_scan": from_scan,
                 }
+                if ext == ".pdf" and pdf_page_ranges:
+                    enqueue_kwargs["source_page_ranges"] = [pdf_page_ranges]
                 enqueue_result = await rag.apipeline_enqueue_documents(
                     content, **enqueue_kwargs
                 )

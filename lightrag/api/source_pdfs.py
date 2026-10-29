@@ -8,6 +8,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from lightrag.constants import PARSED_DIR_NAME
+from lightrag.evidence_quotes import normalized_with_offsets
 
 
 def resolve_source_pdf(input_dir: Path, stored_file_path: str) -> Path | None:
@@ -41,7 +42,7 @@ def resolve_source_pdf(input_dir: Path, stored_file_path: str) -> Path | None:
 
 def locate_source_page(path: Path, quote: str) -> tuple[int | None, str]:
     """Find a page containing the quoted text; never claim a PDF highlight."""
-    normalized = re.sub(r"\s+", " ", quote).strip().casefold()
+    normalized, _ = normalized_with_offsets(quote.strip())
     if len(normalized) < 20:
         return None, "insufficient_quote"
     if path.stat().st_size > 50_000_000:
@@ -49,8 +50,13 @@ def locate_source_page(path: Path, quote: str) -> tuple[int | None, str]:
     reader = PdfReader(str(path))
     if len(reader.pages) > 500:
         return None, "too_many_pages"
+    matches = []
     for index, page in enumerate(reader.pages):
-        page_text = re.sub(r"\s+", " ", page.extract_text() or "").casefold()
-        if normalized in page_text:
-            return index + 1, "exact_text_match"
+        page_text, _ = normalized_with_offsets(page.extract_text() or "")
+        occurrences = page_text.count(normalized)
+        matches.extend([index + 1] * occurrences)
+        if len(matches) > 1:
+            return None, "ambiguous"
+    if matches:
+        return matches[0], "exact_text_match"
     return None, "not_found"

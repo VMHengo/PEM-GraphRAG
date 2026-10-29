@@ -58,6 +58,7 @@ async def discover_from_start(
             "content": chunk.get("content") or "",
             "file_path": chunk.get("file_path") or "",
             "full_doc_id": chunk.get("full_doc_id") or "",
+            "pdf_location": chunk.get("pdf_location"),
         }
         for source_id, chunk in zip(source_ids, stored_chunks)
         if isinstance(chunk, dict)

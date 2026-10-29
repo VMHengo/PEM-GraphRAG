@@ -121,6 +121,19 @@ def test_exploration_keeps_indirect_hops_and_each_source():
     assert connection["path"][1]["sources"][0]["chunk_id"] == "chunk-2"
 
 
+def test_exploration_keeps_pdf_page_anchor_and_exact_evidence_quote():
+    payload = _payload([_path()])
+    payload["data"]["chunks"][0]["pdf_location"] = {
+        "page": 2, "pages": [2], "status": "chunk_text_match"
+    }
+    payload["metadata"]["directed_paths"]["paths"][0]["edges"][0]["evidence"] = (
+        "Electrode calendering decreased cathode porosity."
+    )
+    source = format_exploration(payload, start="Electrode Calendering")["connections"][0]["path"][0]["sources"][0]
+    assert source["pdf_location"]["page"] == 2
+    assert source["evidence_quote"] == "Electrode calendering decreased cathode porosity."
+
+
 def test_exploration_exposes_candidate_span_without_claiming_support():
     payload = _payload([_path()])
     payload["data"]["chunks"][0]["content"] = (

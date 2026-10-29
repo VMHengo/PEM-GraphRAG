@@ -456,6 +456,35 @@ async def test_pipeline_enqueue_parser_routed_pdf_defers_without_extraction(
     ]
 
 
+async def test_pipeline_enqueue_legacy_pdf_forwards_page_ranges(tmp_path, monkeypatch):
+    monkeypatch.delenv("LIGHTRAG_PARSER", raising=False)
+    monkeypatch.setattr(_document_routes, "_extract_pdf_pypdf", lambda *_: "Page one.\nPage two.\n")
+    monkeypatch.setattr(
+        _document_routes,
+        "_extract_pdf_page_ranges_pypdf",
+        lambda *_: [
+            {"page": 1, "start": 0, "end": 9},
+            {"page": 2, "start": 10, "end": 19},
+        ],
+    )
+    file_path = tmp_path / "paper.pdf"
+    file_path.write_bytes(b"fake-pdf")
+
+    class CapturingRag(_FakeRag):
+        async def apipeline_enqueue_documents(self, input, **kwargs):
+            self.enqueued.append({"input": input, **kwargs})
+            return "track-pdf"
+
+    rag = CapturingRag()
+    success, _ = await pipeline_enqueue_file(rag, file_path, "track-pdf")
+
+    assert success is True
+    assert rag.enqueued[0]["source_page_ranges"] == [[
+        {"page": 1, "start": 0, "end": 9},
+        {"page": 2, "start": 10, "end": 19},
+    ]]
+
+
 async def test_pipeline_enqueue_passes_process_options_from_filename_hint(
     tmp_path, monkeypatch
 ):

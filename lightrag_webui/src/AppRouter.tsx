@@ -1,12 +1,14 @@
 import '@/lib/extensions'; // Import all global extensions
 import { HashRouter as Router, Routes, Route, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useAuthStore } from '@/stores/state'
 import { navigationService } from '@/services/navigation'
 import { Toaster } from 'sonner'
 import App from './App'
 import LoginPage from '@/features/LoginPage'
 import ThemeProvider from '@/components/ThemeProvider'
+
+const ReviewSourceViewer = lazy(() => import('@/features/ReviewSourceViewer'))
 
 const AppContent = () => {
   const [initializing, setInitializing] = useState(true)
@@ -68,6 +70,14 @@ const AppContent = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/review-source"
+        element={isAuthenticated ? (
+          <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm">Loading PDF viewer...</div>}>
+            <ReviewSourceViewer />
+          </Suspense>
+        ) : null}
+      />
       <Route
         path="/*"
         element={isAuthenticated ? <App /> : null}

@@ -224,6 +224,8 @@ def format_exploration(
                         "pdf_url": source_pdf_url(
                             public_webui_base_url, chunk_doc_id
                         ),
+                        "pdf_location": chunk.get("pdf_location"),
+                        "evidence_quote": edge.get("evidence") or None,
                         "url": ref.get("url")
                         or ref.get("source_url")
                         or ref.get("download_url"),

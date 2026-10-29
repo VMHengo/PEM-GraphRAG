@@ -386,6 +386,13 @@ export type ExplorationSource = {
   chunk_excerpt: string
   full_chunk_text?: string
   full_chunk_truncated?: boolean
+  evidence_quote?: string | null
+  pdf_location?: {
+    page: number | null
+    pages?: number[]
+    status: string
+    boxes?: number[][]
+  } | null
   candidate_span?: ExplorationCandidateSpan
   context_excerpt?: {
     text: string
@@ -400,6 +407,11 @@ export const sourcePdfUrl = (docId: string): string =>
 
 export const locateSourcePdf = async (docId: string, quote: string): Promise<{ page: number | null; status: string }> => {
   const response = await axiosInstance.post(`/documents/${encodeURIComponent(docId)}/source-pdf/locate`, { quote })
+  return response.data
+}
+
+export const fetchSourcePdf = async (docId: string): Promise<ArrayBuffer> => {
+  const response = await axiosInstance.get(sourcePdfUrl(docId), { responseType: 'arraybuffer' })
   return response.data
 }
 

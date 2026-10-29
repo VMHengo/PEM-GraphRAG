@@ -30,12 +30,31 @@ This endpoint uses the same server-verified OAuth2 Proxy session as reviewer
 identity and serves only a uniquely matched retained original under the
 workspace input directory or its `__parsed__` archive. It does not accept a
 filesystem path or grant access by API key alone. Removed or ambiguous original
-files return 404. The WebUI PDF button opens the original in a protected viewer;
-`POST /documents/{doc_id}/source-pdf/locate` searches extracted PDF text for
-the review excerpt and opens a matching page when found. The excerpt remains
-visible beside the original for comparison. This is a page locator, **not** a
-coordinate-accurate PDF highlight: figures, formulas and OCR differences may
-prevent an exact text match. Reviewers must inspect the original page.
+files return 404. **Review in PDF** opens a dedicated WebUI tab. It loads the
+original through the authenticated endpoint, displays the graph assertion and
+grounded quote alongside the PDF, and highlights a unique verbatim PDF.js text
+match. No original PDF bytes are modified. The viewer searches the page anchors
+saved with the source chunk first. `POST /documents/{doc_id}/source-pdf/locate`
+is the fallback when an older chunk has no saved anchor; repeated matches are
+reported as ambiguous rather than silently selecting one. Figures, formulas,
+OCR differences and large PDF text runs may prevent a precise mark. Reviewers
+must still inspect the original page and assess whether the marked text supports
+the **relation**, not just whether the words appear.
+
+For new Legacy PDF ingestion, `full_docs.source_page_ranges` preserves page
+offsets after the PDF text is sanitized. For Docling/MinerU PDFs, the existing
+`blocks.jsonl` positions provide page ranges. A chunk receives a
+`pdf_location` only if its text has a unique normalized match in the parsed
+document. The exact relation quote (`evidence_quote`) is passed to review
+sources when extraction grounded it in that chunk.
+
+To test persisted anchors, ingest or fully re-parse a PDF **after** deploying
+the backend change, then create a **new** Human Review session and click
+**Review in PDF** beside a hop with a source. The graph-only `/documents/reextract`
+operation retains old chunks and does not add page anchors; the viewer can
+still use its slower page-search fallback for those documents. Confirm the
+sidebar shows the expected relation and quote, and that the yellow mark is on
+the right page. A missing mark is preferable to marking an unrelated passage.
 
 MCP citations and exploratory sources include a separate `pdf_url` when
 `LIGHTRAG_PUBLIC_WEBUI_BASE_URL` is set on the MCP gateway to the HTTPS WebUI
