@@ -26,7 +26,52 @@ New long-term goals require explicit user input before changing the roadmap.
 
 ## Ordered Queue
 
-### Exploratory Discovery Demo (explicit 2026-10-25 priority)
+### Priority 0: Heat-Generation Quality Attribution (2026-11-02)
+
+Diagnose the low aging-paper/Heat-Generation scores before another paid
+extraction or broad prompt/ontology change. Freeze the source PDF, benchmark,
+saved extraction artifact, graph snapshot, scorer version and retrieval
+settings. The matching QUAL/IMP/EXT entries below provide detailed acceptance
+criteria, not a second independent work order. Resume EXP-02 afterward. No
+Staging deployment, model calls or bulk re-extraction are authorized here.
+
+- [ ] **AGE-01: Attribute every zero-scored aging relation.** Reconcile the
+  31 zero-scored expected relations with source passages, saved model outputs,
+  parsed assertions, stored graph assertions and retrieved paths. Classify
+  each as unsupported gold, alias/inverse/sign mismatch, extraction loss,
+  parser/merge loss or retrieval miss; distinguish unknown from absent when
+  source artifacts are missing. Publish counts and representative examples
+  with chunk IDs. Reuse QUAL-01, QUAL-09 and EXT-01. No model calls.
+- [ ] **AGE-02: Correct benchmark semantics on frozen artifacts.** Review
+  inverse `part_of`/`contains`, accepted predicates, aliases, conditions and
+  source scope against the PDF; fix only evidence-backed gold/scorer mismatches.
+  Replay the same artifact with old and new scorer, reporting exact and semantic
+  entity/edge scores, denominator changes and every changed case. No extraction
+  or generation calls. Reuse QUAL-04/05/06; never award credit for a reversed
+  causal effect or unsupported relation.
+- [ ] **AGE-03: Repair graph-present directed-path misses.** Trace a verified
+  aging-paper chain that exists in the graph but is absent from the top-20
+  directed results, starting with High-Temperature Aging -> DC Resistance ->
+  Irreversible Heat. Locate the first anchor, provider, filter, pruning,
+  ranking or citation failure using bounded diagnostics; add a focused fix and
+  regression test. Compare supported-path recall, false bridges, latency and
+  context size on the unchanged graph. Normal retrieval remains the default.
+  Reuse QUAL-07/08 and IMP-03/04.
+- [ ] **AGE-04: Preserve and validate assertion evidence.** Persist every
+  newly extracted assertion, including when no quote is available and ontology
+  annotation is off; record an explicit unverified-evidence state. Add tests
+  for opposite directions/predicates, legacy reads and repeated merges. Then
+  flag unsupported, negated, reversed or sign-conflicting claims without
+  silently deleting plausible edges. Reuse IMP-02, EXT-02 and EXP-04.
+- [ ] **AGE-05: Controlled extraction comparison and decision.** Only after
+  AGE-01 through AGE-04, compare the active prompt with at most two targeted
+  variants on retained chunks and a fixed scorer/gold set. Measure completion,
+  source-supported directed paths, unsupported edges, evidence coverage,
+  tokens and cost. A reversible single-document Staging import requires the
+  existing QUAL-10 approval gate; keep document ID/URL and a rollback path.
+  Reuse EXT-03/04 and QUAL-10/12. Do not use Overall alone as a go/no-go metric.
+
+### Exploratory Discovery Demo (resumes after AGE-05)
 
 Detailed plan: [Exploratory Discovery Plan](EXPLORATORY_DISCOVERY_PLAN.md).
 This reprioritization does not cancel the quality, ontology or ingestion queue
@@ -205,8 +250,14 @@ before paying for a broad re-run.
   Partial: `scripts/audit_azure_batch_completeness.py` provides a read-only
   per-job report from saved manifests, request JSONL and downloaded output
   JSONL, with source file/line evidence and unknown status when an output file
-  is unavailable. Focused tests pass. The actual Staging batch artifacts are
-  not present locally, so the real per-document repair list is still pending.
+  is unavailable. Focused tests pass. On Staging, all 32 job manifests lacked
+  locally saved output artifacts, so the first offline audit assessed 0/32;
+  `0 require repair` was not a clean bill of health. Read-only downloads by
+  the original output file IDs then confirmed `max_output_tokens` in 10/10
+  aging-paper responses (`doc-1c985b11ca48c9796d50febb7eaca9ea`) and
+  60/74 parameter-paper responses (`doc-a541269fc2d87b893687c9cae8fb533d`),
+  with 14/74 marked completed. The other 30 documents remain unassessed;
+  retain output files securely for a reproducible per-document repair list.
 - [ ] **QUAL-10: Pilot one paid, reversible re-extraction.** After QUAL-09,
   re-extract one affected Staging document from retained chunks with a measured
   output budget, preserving ID, URL and source metadata. Compare completion,
@@ -358,6 +409,9 @@ work; keep the scorer, source-document scope and baseline artifacts fixed.
   identifies repair candidates, and records the active prompt, extraction
   revision and output budget. Depends on frozen source artifacts; do not infer
   missing facts from benchmark scores alone.
+  Partial Staging evidence: original Batch outputs for the aging paper and
+  74-chunk parameter paper confirm 10/10 and 60/74 output-limit stops,
+  respectively. Their exact downstream assertion loss still needs attribution.
 - [ ] **EXT-02: Evidence contract and conservative checks.** For newly
   extracted relations, retain the model's candidate quote and its exact-match
   status against the cited chunk, plus a clear missing/ambiguous state. Do not
