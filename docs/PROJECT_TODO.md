@@ -302,7 +302,14 @@ answers; they do not change the long-term roadmap or authorize deployment.
   remain discoverable in normal and directed retrieval after write, restart,
   re-extraction and single-document deletion; measure storage and query cost.
   Local implementation and restart/delete regression tests are in place.
-  Pending: staging cost and query-latency measurements on representative data.
+  Before enabling assertion retrieval, ensure every newly extracted assertion
+  is persisted even when its evidence quote is absent and ontology annotation
+  is off; keep an explicit unverified-evidence state. The current merge writes
+  `relation_assertions_json` only when ontology annotation is on or at least
+  one new edge has evidence. Test opposite directions and predicates without
+  quotes, legacy reads, repeated merge and document deletion. Keep normal
+  retrieval unchanged by default. Pending: this evidence-less write case and
+  staging cost/query-latency measurements on representative data.
 - [ ] **IMP-03: Query-aware Neo4j neighbor selection.** Avoid discarding a
   relevant assertion when physical pair edges are capped before assertion
   expansion. Done when high-degree-node fixtures show recall under the
@@ -333,6 +340,53 @@ answers; they do not change the long-term roadmap or authorize deployment.
   document status recoverable after a partial merge failure. Done when a
   failure-injection test can rerun import or re-extraction without duplicate
   assertions, orphaned indexes or lost source metadata.
+
+### Extraction Quality Without Human Review
+
+These are ordered, additive tasks for a measured extraction pilot. They do not
+authorize bulk re-extraction, ontology rollout or a changed default retrieval
+strategy. Reuse QUAL-09/10/12 and IMP-02/05/06 rather than repeating their
+work; keep the scorer, source-document scope and baseline artifacts fixed.
+
+- [ ] **EXT-01: Offline loss inventory.** On saved extraction/Batch artifacts,
+  count per document and chunk: incomplete/invalid outputs, missing entities,
+  missing directed assertions, absent/non-verbatim evidence, and pairs with
+  multiple predicates or opposing directions. Separate failures at model
+  output, parser, merge/storage and retrieval using source chunk IDs. Reuse
+  QUAL-09's Batch audit; do not call an LLM. Done when a reproducible report
+  names the first loss stage for representative stress and aging-paper cases,
+  identifies repair candidates, and records the active prompt, extraction
+  revision and output budget. Depends on frozen source artifacts; do not infer
+  missing facts from benchmark scores alone.
+- [ ] **EXT-02: Evidence contract and conservative checks.** For newly
+  extracted relations, retain the model's candidate quote and its exact-match
+  status against the cited chunk, plus a clear missing/ambiguous state. Do not
+  silently treat a description or co-mention as proof. Add deterministic
+  direction/inverse, negation and contradictory-sign checks that flag uncertain
+  assertions for later review without automatically deleting plausible edges.
+  Done when positive and adversarial stress fixtures preserve valid relations,
+  flag unsupported/reversed ones, and report coverage and false-rejection
+  rates separately. Follow EXT-01 and coordinate with EXP-04.
+- [ ] **EXT-03: Condition-aware entity and relation identity.** Pilot
+  source-scoped aliases/coreference for abbreviations, passive subjects and
+  indirect references; preserve states such as `Reduced Cathode Porosity`
+  separately from the underlying quantity. Represent effect sign, negation
+  and experimental conditions explicitly or mark them unknown; do not derive
+  a signed multi-hop effect from `affects` alone. Done when same-concept aliases
+  join across chunks but signed/conditional counterexamples do not, with
+  isolated merge/retrieval tests and no embedding-model change. Follow EXT-02;
+  keep ONT-04/05 optional until their separate pilot is reviewed.
+- [ ] **EXT-04: Fixed-score prompt and re-extraction pilot.** Compare the
+  active prompt with at most two targeted variants on the same retained chunks
+  after EXT-01 through EXT-03. Report exact and semantic entity/edge recall,
+  unsupported or reversed assertions, evidence coverage, directed path
+  support, token cost and latency; do not optimize Overall alone. Run one
+  reversible paid Staging re-extraction only after QUAL-09 identifies an
+  affected document and QUAL-10's approval gate is met. Done when a paired
+  report on unchanged scorer/gold/source scope shows whether the new pipeline
+  improves supported paths without unacceptable false bridges; retain normal
+  retrieval as the control (QUAL-12). No Extract All before this decision.
+
 - [ ] **OPS-01: Isolated staging graph diagnostics MCP.** Implement bounded
   fixed graph-inspection tools behind a separate Auth0 audience and the
   `read:graph-diagnostics` permission. Done when unauthorized tokens receive
