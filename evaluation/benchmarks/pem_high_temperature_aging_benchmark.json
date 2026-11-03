@@ -2279,6 +2279,9 @@
           "accepted_relation_types": {
             "has_component": 1
           },
+          "accepted_inverse_relation_types": {
+            "part_of": 1
+          },
           "target": "Irreversible Heat",
           "directionality": "directed",
           "evidence_ids": [
@@ -2290,6 +2293,9 @@
           "relation_type": "contains",
           "accepted_relation_types": {
             "has_component": 1
+          },
+          "accepted_inverse_relation_types": {
+            "part_of": 1
           },
           "target": "Reversible Heat",
           "directionality": "directed",

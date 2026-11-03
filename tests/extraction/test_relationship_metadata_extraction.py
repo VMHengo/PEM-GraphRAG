@@ -217,6 +217,61 @@ async def test_relationship_metadata_survives_edge_merge_with_sorted_storage_key
 
 @pytest.mark.offline
 @pytest.mark.asyncio
+async def test_edge_merge_persists_unquoted_assertions_without_ontology(monkeypatch):
+    from lightrag.relation_assertions import parse_relation_assertions
+
+    async def summarize(_kind, _name, descriptions, _separator, _config, _cache=None):
+        return " ".join(descriptions), False
+
+    monkeypatch.setattr(
+        "lightrag.operate._handle_entity_relation_summary", summarize
+    )
+    monkeypatch.setattr(
+        "lightrag.operate.ontology_annotations_enabled", lambda: False
+    )
+    graph = _FakeGraphStorage()
+    edges = [
+        {
+            "src_id": source, "tgt_id": target,
+            "semantic_src_id": source, "semantic_tgt_id": target,
+            "directionality": "directed", "relation_type": predicate,
+            "description": f"{source} {predicate} {target}.",
+            "keywords": predicate, "weight": 1.0,
+            "source_id": "chunk-1", "file_path": "paper.pdf",
+        }
+        for source, predicate, target in (
+            ("A", "causes", "B"),
+            ("A", "increases", "B"),
+            ("B", "causes", "A"),
+        )
+    ]
+    config = {
+        "source_ids_limit_method": "KEEP",
+        "max_source_ids_per_relation": 100,
+        "max_source_ids_per_entity": 100,
+        "max_file_paths": 10,
+    }
+    for _ in range(2):
+        await _merge_edges_then_upsert(
+            "A", "B", edges, knowledge_graph_inst=graph,
+            relationships_vdb=None, entity_vdb=None, global_config=config,
+        )
+
+    assertions = parse_relation_assertions(graph.edges[("A", "B")], "A", "B")
+    assert len(assertions) == 3
+    assert {
+        (a["semantic_src_id"], a["relation_type"], a["semantic_tgt_id"])
+        for a in assertions
+    } == {
+        ("A", "causes", "B"),
+        ("A", "increases", "B"),
+        ("B", "causes", "A"),
+    }
+    assert all(a["evidence_status"] == "unverified" for a in assertions)
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_entity_vdb", [False, True])
 async def test_existing_edge_endpoint_updates_with_optional_entity_vdb(
     monkeypatch, use_entity_vdb

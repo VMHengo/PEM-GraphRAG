@@ -3359,28 +3359,27 @@ async def _merge_edges_then_upsert(
                 relationship_metadata["relation_type"], relation=True
             )
         )
-        assertion_properties = {}
-        if ontology_annotations_enabled() or any(
-            edge.get("evidence") for edge in edges_data
-        ):
-            new_assertions = [
-                {
-                    **edge,
-                    **(
-                        annotate_ontology_label(
-                            str(edge.get("relation_type") or ""), relation=True
-                        )
-                        if ontology_annotations_enabled() else {}
-                    ),
-                }
-                for edge in edges_data
-            ]
-            assertions = merge_relation_assertions(
-                already_edge, new_assertions, src_id, tgt_id
+        new_assertions = [
+            {
+                **edge,
+                "evidence_status": "quoted" if edge.get("evidence") else "unverified",
+                **(
+                    annotate_ontology_label(
+                        str(edge.get("relation_type") or ""), relation=True
+                    )
+                    if ontology_annotations_enabled() else {}
+                ),
+            }
+            for edge in edges_data
+        ]
+        assertions = merge_relation_assertions(
+            already_edge, new_assertions, src_id, tgt_id
+        )
+        assertion_properties = {
+            RELATION_ASSERTIONS_FIELD: serialize_relation_assertions(
+                assertions, src_id, tgt_id
             )
-            assertion_properties[RELATION_ASSERTIONS_FIELD] = (
-                serialize_relation_assertions(assertions, src_id, tgt_id)
-            )
+        }
         if relation_chunks_storage is not None and full_source_ids:
             directional_storage_key = make_directional_relation_chunk_key(
                 src_id, tgt_id, relationship_metadata

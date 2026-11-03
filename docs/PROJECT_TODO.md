@@ -42,6 +42,10 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   parser/merge loss or retrieval miss; distinguish unknown from absent when
   source artifacts are missing. Publish counts and representative examples
   with chunk IDs. Reuse QUAL-01, QUAL-09 and EXT-01. No model calls.
+  Partial offline audit: 31 zero checks in the saved earlier Validation run;
+  23 endpoint-absent/name-mismatch and 8 relation-absent/gold-mismatch in the
+  parsed artifact. See [aging quality audit](AGING_QUALITY_AUDIT_2026-11-02.md).
+  Raw-output, PDF-by-relation and live-graph attribution remains open.
 - [ ] **AGE-02: Correct benchmark semantics on frozen artifacts.** Review
   inverse `part_of`/`contains`, accepted predicates, aliases, conditions and
   source scope against the PDF; fix only evidence-backed gold/scorer mismatches.
@@ -49,6 +53,11 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   entity/edge scores, denominator changes and every changed case. No extraction
   or generation calls. Reuse QUAL-04/05/06; never award credit for a reversed
   causal effect or unsupported relation.
+  Partial: the PDF-supported heat-component inverse is now accepted in the
+  aging gold; replaying that case against the same parsed artifact raises its
+  relation score from 0 to 100. Full 38-case parsed-artifact replay changes
+  relation 31.79 -> 36.79 and exact 21.67 -> 26.67; entity scores and
+  denominators are unchanged. Live merged-graph/scorer replay remains open.
 - [ ] **AGE-03: Repair graph-present directed-path misses.** Trace a verified
   aging-paper chain that exists in the graph but is absent from the top-20
   directed results, starting with High-Temperature Aging -> DC Resistance ->
@@ -57,12 +66,19 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   regression test. Compare supported-path recall, false bridges, latency and
   context size on the unchanged graph. Normal retrieval remains the default.
   Reuse QUAL-07/08 and IMP-03/04.
+  Partial offline diagnosis: the saved run's causal predicate allowlist omitted
+  `increases` even though both gold edges scored 100 in graph checks. Current
+  code includes `increases`; frozen-graph Staging replay and stage counters
+  are needed before claiming this path fixed.
 - [ ] **AGE-04: Preserve and validate assertion evidence.** Persist every
   newly extracted assertion, including when no quote is available and ontology
   annotation is off; record an explicit unverified-evidence state. Add tests
   for opposite directions/predicates, legacy reads and repeated merges. Then
   flag unsupported, negated, reversed or sign-conflicting claims without
   silently deleting plausible edges. Reuse IMP-02, EXT-02 and EXP-04.
+  Partial: new merges persist assertions without quotes or ontology annotation
+  and record `quoted`/`unverified`; focused merge and replay tests pass.
+  Deterministic sign/negation flags and Staging verification remain open.
 - [ ] **AGE-05: Controlled extraction comparison and decision.** Only after
   AGE-01 through AGE-04, compare the active prompt with at most two targeted
   variants on retained chunks and a fixed scorer/gold set. Measure completion,

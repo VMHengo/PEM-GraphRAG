@@ -5,6 +5,7 @@ from pathlib import Path
 from lightrag.adaptive_retrieval import route_retrieval_query
 from lightrag.base import QueryParam
 from lightrag.evaluation.live_benchmark import load_benchmark_file
+from lightrag.evaluation.semantic_matching import relation_match
 
 
 BENCHMARK_PATH = (
@@ -13,6 +14,25 @@ BENCHMARK_PATH = (
     / "benchmarks"
     / "pem_high_temperature_aging_benchmark.json"
 )
+
+
+def test_heat_components_accept_reviewed_part_of_inverse_only():
+    benchmark = load_benchmark_file(BENCHMARK_PATH)
+    case = next(
+        case for case in benchmark["cases"]
+        if case["id"] == "relations_heat_decomposition"
+    )
+    for expected in case["expected_relations"]:
+        actual = {
+            "semantic_src_id": expected["target"],
+            "semantic_tgt_id": "Total Heat",
+            "relation_type": "part_of",
+            "directionality": "directed",
+        }
+        assert relation_match(expected, actual)["score"] == 1
+        assert relation_match(expected, {
+            **actual, "relation_type": "causes"
+        })["score"] == 0
 
 
 def test_aging_benchmark_has_evidence_for_each_case_and_relation():

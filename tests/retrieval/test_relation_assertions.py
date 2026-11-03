@@ -145,6 +145,23 @@ def test_duplicate_replay_is_idempotent_and_serialization_is_deterministic():
 
 
 @pytest.mark.offline
+def test_unquoted_replay_does_not_downgrade_quoted_assertion():
+    quoted = _assertion(
+        "A", "B", "causes", "chunk-1",
+        evidence="A causes B.", evidence_status="quoted",
+    )
+    edge = {RELATION_ASSERTIONS_FIELD: serialize_relation_assertions([quoted])}
+    replay = _assertion(
+        "A", "B", "causes", "chunk-1", evidence_status="unverified"
+    )
+
+    [assertion] = merge_relation_assertions(edge, [replay], "A", "B")
+
+    assert assertion["evidence"] == "A causes B."
+    assert assertion["evidence_status"] == "quoted"
+
+
+@pytest.mark.offline
 def test_filter_removes_only_assertions_from_deleted_source_chunks():
     assertions = [
         _assertion("A", "B", "causes", "chunk-delete"),

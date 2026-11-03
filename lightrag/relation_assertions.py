@@ -36,6 +36,7 @@ _OPTIONAL_FIELDS = (
     "raw_relation_type",
     "description",
     "evidence",
+    "evidence_status",
     "keywords",
     "source_id",
     "file_path",
@@ -223,7 +224,11 @@ def _deduplicate_assertions(
                     or key in ("ontology_iri", "ontology_source")
                 }
             )
+            if merged.get("evidence"):
+                merged["evidence_status"] = "quoted"
         else:
+            if assertion.get("evidence"):
+                assertion["evidence_status"] = "quoted"
             by_identity[identity] = assertion
     return [by_identity[key] for key in sorted(by_identity)]
 
