@@ -10,6 +10,7 @@ artefacts into the active graph without reparsing or rechunking the document.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import json
 import os
@@ -44,6 +45,8 @@ BenchmarkMode = Literal["graph", "retrieval", "full"]
 
 _MANIFEST_NAME = "manifest.json"
 _SOURCE_SNAPSHOT_NAME = "source_snapshot.json"
+_EXTRACTION_CACHE_SNAPSHOT_NAME = "extraction_llm_cache.json.gz"
+_MAX_EXTRACTION_CACHE_SNAPSHOT_BYTES = 16 * 1024 * 1024
 _EXPERIMENT_STATUSES = {
     "queued",
     "running",
@@ -137,6 +140,44 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
+
+
+def _snapshot_extraction_llm_cache(cache: Any, candidate_dir: Path) -> dict[str, Any]:
+    """Retain a bounded private copy before the disposable workspace is dropped."""
+
+    source_name = getattr(cache, "_file_name", None)
+    if not source_name:
+        return {"status": "unavailable", "reason": "Cache storage is not file-backed"}
+    source = Path(source_name).resolve()
+    if not source.is_relative_to(candidate_dir.resolve()) or not source.is_file():
+        return {"status": "unavailable", "reason": "Cache file is outside candidate workspace or missing"}
+    if source.stat().st_size > _MAX_EXTRACTION_CACHE_SNAPSHOT_BYTES:
+        return {"status": "unavailable", "reason": "Cache exceeds snapshot size limit"}
+
+    raw = source.read_bytes()
+    try:
+        cache_records = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"status": "unavailable", "reason": "Cache is not valid JSON"}
+    if not isinstance(cache_records, dict) or not cache_records:
+        return {"status": "unavailable", "reason": "Cache is empty"}
+
+    destination = candidate_dir / _EXTRACTION_CACHE_SNAPSHOT_NAME
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as target:
+            with gzip.GzipFile(fileobj=target, mode="wb") as compressed:
+                compressed.write(raw)
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "status": "saved",
+        "path": destination.name,
+        "record_count": len(cache_records),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
 
 
 def load_prompt_experiment(working_dir: str | Path, experiment_id: str) -> dict[str, Any]:
@@ -560,7 +601,7 @@ def _candidate_rag(
         max_relation_tokens=rag.max_relation_tokens,
         max_total_tokens=rag.max_total_tokens,
         enable_llm_cache=False,
-        enable_llm_cache_for_entity_extract=False,
+        enable_llm_cache_for_entity_extract=True,
         role_llm_configs=_role_llm_configs_from_rag(rag),
         addon_params=addon_params,
         ollama_server_infos=deepcopy(getattr(rag, "ollama_server_infos", None)),
@@ -772,6 +813,9 @@ async def _extract_candidate(
                 }
             )
         await candidate._insert_done()
+        extraction_cache_snapshot = _snapshot_extraction_llm_cache(
+            candidate.llm_response_cache, candidate_dir
+        )
         result = await run_live_benchmark(
             candidate,
             str(manifest["benchmark_id"]),
@@ -800,6 +844,7 @@ async def _extract_candidate(
                 "artifact": str(artifact_path.relative_to(experiment_dir)),
                 "result": str(result_path.relative_to(experiment_dir)),
                 "extraction_revision": extraction_revision,
+                "extraction_cache_snapshot": extraction_cache_snapshot,
             }
         )
     except asyncio.CancelledError:

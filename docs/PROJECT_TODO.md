@@ -33,7 +33,8 @@ extraction or broad prompt/ontology change. Freeze the source PDF, benchmark,
 saved extraction artifact, graph snapshot, scorer version and retrieval
 settings. The matching QUAL/IMP/EXT entries below provide detailed acceptance
 criteria, not a second independent work order. Resume EXP-02 afterward. No
-Staging deployment, model calls or bulk re-extraction are authorized here.
+Staging deployment, model calls or bulk re-extraction are authorized by this
+TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
 
 - [ ] **AGE-01: Attribute every zero-scored aging relation.** Reconcile the
   31 zero-scored expected relations with source passages, saved model outputs,
@@ -52,6 +53,14 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   Several missing intermediate states remain in edge descriptions but not in
   traversable nodes; evaluate text-answer quality separately from graph paths.
   Raw-output, PDF-by-relation and live-graph attribution remains open.
+  A follow-up [parsed-artifact triage](AGING_ARTIFACT_TRIAGE_2026-11-04.md)
+  compares two separate same-prompt runs and identifies description-only
+  intermediate states with chunk IDs. Raw-output and live-graph attribution
+  remain open; the score difference is not a prompt ablation.
+  Read-only Staging inspection found the old experiment's LLM cache empty
+  after candidate cleanup. The [follow-up audit](AGING_ARTIFACT_TRIAGE_2026-11-04.md)
+  records ten PDF-anchored adjudication units and a controlled A/B protocol;
+  the original model-versus-parser distinction remains unknown.
 - [ ] **AGE-02: Correct benchmark semantics on frozen artifacts.** Review
   inverse `part_of`/`contains`, accepted predicates, aliases, conditions and
   source scope against the PDF; fix only evidence-backed gold/scorer mismatches.
@@ -104,6 +113,13 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   tokens and cost. A reversible single-document Staging import requires the
   existing QUAL-10 approval gate; keep document ID/URL and a rollback path.
   Reuse EXT-03/04 and QUAL-10/12. Do not use Overall alone as a go/no-go metric.
+  A user-authorized isolated ten-chunk Validation comparison ran on
+  2026-11-04; [case-level results](AGING_ARTIFACT_TRIAGE_2026-11-04.md)
+  show Directed 24.32 -> 40.22, but exact paths remain 2/15 and one case
+  regressed. Raw responses were not retained because candidate extraction
+  caching was disabled during this run. Do not promote on these scores:
+  review changed claims against the PDF, smoke-test the new candidate-only
+  cache/snapshot path, then assess query-only paths and answer quality.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 

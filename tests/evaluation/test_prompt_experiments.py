@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import importlib
+import gzip
+import json
+import os
 import sys
 from types import SimpleNamespace
 
@@ -12,6 +15,7 @@ from lightrag.evaluation.prompt_experiments import (
     _cancel_unfinished_candidates,
     _estimate_for_profile,
     _serialise_chunk_results,
+    _snapshot_extraction_llm_cache,
     deserialise_chunk_results,
     list_prompt_experiments,
     list_prompt_profiles,
@@ -73,6 +77,40 @@ def test_source_fingerprint_changes_when_retained_chunk_content_changes():
     }
 
     assert source_fingerprint(chunks) != source_fingerprint(changed)
+
+
+def test_extraction_cache_snapshot_survives_workspace_cleanup(tmp_path):
+    candidate_dir = tmp_path / "candidate"
+    source = candidate_dir / "workspace" / "experiment" / "kv_store_llm_response_cache.json"
+    source.parent.mkdir(parents=True)
+    records = {"extract:chunk-001": {"return": '{"entities": [], "relationships": []}'}}
+    source.write_text(json.dumps(records), encoding="utf-8")
+
+    snapshot = _snapshot_extraction_llm_cache(SimpleNamespace(_file_name=str(source)), candidate_dir)
+    source.unlink()
+
+    assert snapshot["status"] == "saved"
+    assert snapshot["record_count"] == 1
+    with gzip.open(candidate_dir / snapshot["path"], "rt", encoding="utf-8") as saved:
+        assert json.load(saved) == records
+    if os.name != "nt":
+        assert (candidate_dir / snapshot["path"]).stat().st_mode & 0o077 == 0
+
+
+def test_extraction_cache_snapshot_rejects_empty_and_external_cache(tmp_path):
+    candidate_dir = tmp_path / "candidate"
+    source = candidate_dir / "workspace" / "kv_store_llm_response_cache.json"
+    source.parent.mkdir(parents=True)
+    source.write_text("{}", encoding="utf-8")
+    empty = _snapshot_extraction_llm_cache(SimpleNamespace(_file_name=str(source)), candidate_dir)
+
+    external = tmp_path / "other.json"
+    external.write_text('{"secret": "do not copy"}', encoding="utf-8")
+    outside = _snapshot_extraction_llm_cache(SimpleNamespace(_file_name=str(external)), candidate_dir)
+
+    assert empty == {"status": "unavailable", "reason": "Cache is empty"}
+    assert outside["status"] == "unavailable"
+    assert not (candidate_dir / "extraction_llm_cache.json.gz").exists()
 
 
 def test_cost_estimate_accounts_for_profile_size_and_one_gleaning_pass(monkeypatch):
