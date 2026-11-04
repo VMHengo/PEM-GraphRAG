@@ -132,6 +132,14 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   polarization as traversable, signed intermediate states. Acceptance:
   improve direct reviewed matches and supported multi-hop paths without
   turning related shortcuts into full-credit paths or adding unsupported edges.
+  A separately approved [two-chunk Staging probe](AGING_TWO_CHUNK_INTERMEDIATE_PROBE_2026-11-04.md)
+  tested an explicit-intermediate variant on retained chunks 003/006: direct
+  reviewed matches improved 3/9 -> 5/9 (diffusion difficulty and severe
+  polarization); gas/drying intermediates remain absent despite raw-text
+  mentions. No semantic reverse-edge violations in two targeted controls.
+  Candidate-only LLM cache snapshots succeeded (two records per profile).
+  Do not promote; next iterate specifically on the joint gas/drying clause,
+  then test full-document quality and unsupported-edge precision.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 

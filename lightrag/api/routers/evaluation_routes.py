@@ -133,6 +133,7 @@ class PromptExperimentEstimateRequest(BaseModel):
     profile_files: list[str] = Field(min_length=1, max_length=5)
     optimization_mode: Literal["screening", "validation", "final"] = "screening"
     benchmark_id: str | None = Field(default=None, min_length=1, max_length=160)
+    selected_chunk_ids: list[str] | None = Field(default=None, min_length=1, max_length=10)
 
 
 class PromptExperimentStartRequest(PromptExperimentEstimateRequest):
@@ -634,6 +635,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                 profile_files=request.profile_files,
                 optimization_mode=request.optimization_mode,
                 benchmark_id=request.benchmark_id,
+                selected_chunk_ids=request.selected_chunk_ids,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -700,6 +702,7 @@ def create_evaluation_routes(rag, api_key: Optional[str] = None):
                     benchmark_id=request.benchmark_id,
                     optimization_mode=request.optimization_mode,
                     benchmark_mode=request.benchmark_mode,
+                    selected_chunk_ids=request.selected_chunk_ids,
                 )
             except PermissionError as exc:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

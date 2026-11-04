@@ -4,6 +4,10 @@
   "reviewer": "Hoang",
   "review_date": "2026-11-04",
   "note": "PDF support and graph structure are separate. Direct matches below are case-specific reviewed equivalences, not global ontology synonyms. Related edges never count as complete multi-hop links.",
+  "forbidden": [
+    {"id": "reverse_transition_metal", "source": ["Side Reaction", "Side Reactions"], "type": ["causes", "results_in", "leads_to", "influences", "affects"], "target": ["Transition-Metal Dissolution"], "reason": "The PDF states dissolution aggravates side reactions, not the reverse."},
+    {"id": "reverse_aging", "source": ["Deteriorated Electrochemical Performance", "Electrochemical Performance Degradation"], "type": ["causes", "results_in", "leads_to", "influences", "affects"], "target": ["High-Temperature Aging"], "reason": "The paper investigates aging as an upstream condition, not an effect of degraded performance."}
+  ],
   "cases": [
     {
       "id": "H01",
@@ -88,7 +92,7 @@
       "pages": [4],
       "pdf_support": "supported_signed",
       "claim": "Aging makes solid-state lithium diffusion more difficult, resulting in increased Warburg resistance; greater diffusion is not equivalent.",
-      "direct": [{"source": ["Increased Difficulty Of Solid-State Lithium Diffusion", "Difficult Lithium Ion Diffusion"], "type": ["increases", "causes", "results_in", "leads_to"], "target": ["Warburg Resistance", "Increased Warburg Resistance"]}],
+      "direct": [{"source": ["Increased Difficulty Of Solid-State Lithium Diffusion", "Difficult Lithium Ion Diffusion", "Lithium Ion Diffusion Difficulty In Active Material Particles"], "type": ["increases", "causes", "results_in", "leads_to"], "target": ["Warburg Resistance", "Increased Warburg Resistance"]}],
       "related": [{"source": ["Cell Aging", "High-Temperature Aging"], "type": ["increases"], "target": ["Warburg Resistance", "Increased Warburg Resistance"], "reason": "diffusion_difficulty_intermediate_omitted"}]
     },
     {

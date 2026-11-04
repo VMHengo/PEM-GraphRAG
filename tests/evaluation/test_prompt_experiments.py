@@ -14,9 +14,11 @@ from fastapi.testclient import TestClient
 from lightrag.evaluation.prompt_experiments import (
     _cancel_unfinished_candidates,
     _estimate_for_profile,
+    _load_source_documents,
     _serialise_chunk_results,
     _snapshot_extraction_llm_cache,
     deserialise_chunk_results,
+    estimate_prompt_experiment,
     list_prompt_experiments,
     list_prompt_profiles,
     recover_interrupted_prompt_experiments,
@@ -77,6 +79,61 @@ def test_source_fingerprint_changes_when_retained_chunk_content_changes():
     }
 
     assert source_fingerprint(chunks) != source_fingerprint(changed)
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_explicit_validation_chunk_selection_is_exact_and_ordered():
+    class Status:
+        async def get_docs_by_status(self, _status):
+            return {"doc-1": SimpleNamespace(
+                metadata={}, chunks_list=["chunk-000", "chunk-003", "chunk-006"],
+                file_path="aging.pdf",
+            )}
+
+    class Chunks:
+        async def get_by_ids(self, ids):
+            return [{"content": key, "tokens": 1, "full_doc_id": "doc-1"} for key in ids]
+
+    class FullDocs:
+        async def get_by_id(self, _doc_id):
+            return {"content": "source"}
+
+    rag = SimpleNamespace(doc_status=Status(), text_chunks=Chunks(), full_docs=FullDocs())
+    selected = await _load_source_documents(
+        rag, ["doc-1"], sample_limit=None,
+        selected_chunk_ids=["chunk-006", "chunk-003"],
+    )
+
+    assert list(selected[0]["chunks"]) == ["chunk-003", "chunk-006"]
+    assert selected[0]["all_chunk_count"] == 3
+    assert selected[0]["source_fingerprint"] != selected[0]["selected_fingerprint"]
+    with pytest.raises(ValueError, match="do not belong"):
+        await _load_source_documents(
+            rag, ["doc-1"], sample_limit=None,
+            selected_chunk_ids=["chunk-999"],
+        )
+    with pytest.raises(ValueError, match="distinct"):
+        await _load_source_documents(
+            rag, ["doc-1"], sample_limit=None,
+            selected_chunk_ids=["chunk-003", "chunk-003"],
+        )
+    with pytest.raises(ValueError, match="screening sampling"):
+        await _load_source_documents(
+            rag, ["doc-1"], sample_limit=1,
+            selected_chunk_ids=["chunk-003"],
+        )
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_explicit_chunks_cannot_be_used_in_promotable_mode():
+    with pytest.raises(ValueError, match="non-promotable validation"):
+        await estimate_prompt_experiment(
+            SimpleNamespace(), document_ids=["doc-1"],
+            profile_files=["profile.yml"], optimization_mode="final",
+            selected_chunk_ids=["chunk-003"],
+        )
 
 
 def test_extraction_cache_snapshot_survives_workspace_cleanup(tmp_path):

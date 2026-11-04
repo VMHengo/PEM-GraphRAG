@@ -97,3 +97,46 @@ def test_artifacts_must_use_the_same_frozen_chunks():
 
     with pytest.raises(ValueError, match="selected_fingerprint"):
         audit(gold, baseline, variant)
+
+
+def test_two_chunk_report_only_counts_explicitly_selected_cases():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    artifact = _artifact()
+    report = audit(gold, artifact, artifact, {"G01", "G02", "R01"})
+
+    assert [case["id"] for case in report["cases"]] == ["G01", "G02", "R01"]
+    assert report["baseline_summary"] == {"missing": 3}
+    with pytest.raises(ValueError, match="Unknown reviewed case IDs"):
+        audit(gold, artifact, artifact, {"not-reviewed"})
+
+
+def test_reversed_causal_claims_are_flagged_separately_from_recall():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    baseline = _artifact()
+    variant = _artifact(
+        ("Side Reactions", "influences", "Transition-Metal Dissolution", "directed"),
+        ("Deteriorated Electrochemical Performance", "causes", "High-Temperature Aging", "directed"),
+    )
+
+    report = audit(gold, baseline, variant, {"G07"})
+
+    assert report["baseline_forbidden"] == []
+    assert {item["id"] for item in report["variant_forbidden"]} == {
+        "reverse_transition_metal", "reverse_aging",
+    }
+    assert report["cases"][0]["variant"]["status"] == "missing"
+
+
+def test_reviewed_diffusion_difficulty_alias_is_not_generic_diffusion():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    specific = _artifact(
+        ("Lithium Ion Diffusion Difficulty In Active Material Particles", "increases", "Warburg Resistance", "directed")
+    )
+    generic = _artifact(
+        ("Lithium Ion Diffusion", "increases", "Warburg Resistance", "directed")
+    )
+
+    report = audit(gold, generic, specific, {"R01"})
+
+    assert report["cases"][0]["baseline"]["status"] == "missing"
+    assert report["cases"][0]["variant"]["status"] == "direct_match"

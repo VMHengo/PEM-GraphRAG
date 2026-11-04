@@ -67,7 +67,8 @@ def _evaluate_case(case: dict[str, Any], edges: list[dict[str, str]]) -> dict[st
 
 
 def audit(
-    gold: dict[str, Any], baseline: dict[str, Any], variant: dict[str, Any]
+    gold: dict[str, Any], baseline: dict[str, Any], variant: dict[str, Any],
+    case_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Require a frozen document/chunk selection, then classify reviewed edges."""
 
@@ -82,6 +83,10 @@ def audit(
         raise ValueError("Gold source document does not match the artifact")
     baseline_edges = _edges(baseline)
     variant_edges = _edges(variant)
+    if case_ids is not None:
+        unknown_cases = case_ids - {case["id"] for case in gold["cases"]}
+        if unknown_cases:
+            raise ValueError(f"Unknown reviewed case IDs: {sorted(unknown_cases)}")
     cases = [
         {
             "id": case["id"],
@@ -92,7 +97,18 @@ def audit(
             "variant": _evaluate_case(case, variant_edges),
         }
         for case in gold["cases"]
+        if case_ids is None or case["id"] in case_ids
     ]
+
+    def forbidden_matches(edges: list[dict[str, str]]) -> list[dict[str, str]]:
+        return [
+            {"id": pattern["id"], "source": edge["source"],
+             "type": edge["type"], "target": edge["target"], "chunk": edge["chunk"]}
+            for pattern in gold.get("forbidden", [])
+            for edge in edges
+            if _matches(edge, pattern)
+        ]
+
     return {
         "gold_id": gold["id"],
         "doc_id": source["doc_id"],
@@ -101,6 +117,8 @@ def audit(
         "chunk_count": len(source["chunk_ids"]),
         "baseline_summary": dict(Counter(case["baseline"]["status"] for case in cases)),
         "variant_summary": dict(Counter(case["variant"]["status"] for case in cases)),
+        "baseline_forbidden": forbidden_matches(baseline_edges),
+        "variant_forbidden": forbidden_matches(variant_edges),
         "cases": cases,
     }
 
@@ -138,7 +156,12 @@ def render_markdown(report: dict[str, Any], scores: dict[str, Any] | None = None
     for case in report["cases"]:
         baseline = case["baseline"]
         variant = case["variant"]
-        reasons = ", ".join(variant["related_reasons"] or baseline["related_reasons"])
+        if variant["status"] == "direct_match" and baseline["status"] != "direct_match":
+            reasons = "resolved: " + ", ".join(baseline["related_reasons"] or ["missing_in_baseline"])
+        elif variant["status"] == "missing" and baseline["status"] == "related_only":
+            reasons = "regressed: " + ", ".join(baseline["related_reasons"])
+        else:
+            reasons = ", ".join(variant["related_reasons"] or baseline["related_reasons"])
         lines.append(
             f"| {case['id']} | {case['pdf_support']} | {baseline['status']} | "
             f"{variant['status']} | {reasons or '-'} |"
@@ -146,6 +169,19 @@ def render_markdown(report: dict[str, Any], scores: dict[str, Any] | None = None
     lines.extend([
         "",
         f"Baseline: {report['baseline_summary']}; variant: {report['variant_summary']}.",
+        "",
+        "Forbidden reverse-direction checks:",
+        "",
+    ])
+    for label in ("baseline", "variant"):
+        matches = report[f"{label}_forbidden"]
+        lines.append(f"- {label}: {len(matches)} matched assertions")
+        for match in matches:
+            lines.append(
+                f"  - `{match['id']}`: {match['source']} --[{match['type']}]--> "
+                f"{match['target']} (`{match['chunk']}`)"
+            )
+    lines.extend([
         "",
         "A direct match is a structural match under the reviewed case-specific",
         "aliases, **not** independent verification that the saved edge is true",
@@ -164,12 +200,13 @@ def main() -> None:
     parser.add_argument("--baseline-result", type=Path)
     parser.add_argument("--variant-result", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--case-id", action="append", default=[], help="Restrict to a source-covered reviewed case")
     args = parser.parse_args()
     gold, baseline, variant = (
         json.loads(path.read_text(encoding="utf-8"))
         for path in (args.gold, args.baseline_artifact, args.variant_artifact)
     )
-    report = audit(gold, baseline, variant)
+    report = audit(gold, baseline, variant, set(args.case_id) if args.case_id else None)
     scores = None
     if args.baseline_result and args.variant_result:
         scores = {

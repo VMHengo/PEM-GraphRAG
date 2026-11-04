@@ -15,8 +15,10 @@ BASE = "http://127.0.0.1:9621/evaluation/prompt-experiments"
 DOC_ID = "doc-1c985b11ca48c9796d50febb7eaca9ea"
 BENCHMARK_ID = "pem_high_temperature_aging_evidence_benchmark"
 BASELINE = "pem_aging_baseline_20261104.yml"
-VARIANT = "pem_aging_signed_states_v1.yml"
+VARIANT = "pem_aging_explicit_intermediates_v2.yml"
 BASELINE_SHA = "c149a623ec855eb8a65a5362fdefeb5ba1dc2a0c12bb410cc3bcc71a7f49a497"
+VARIANT_SHA = "8a610991743cf04073d76983d51e75f38710836ea76319fd2ad1b0b388c21546"
+CHUNK_IDS = [f"{DOC_ID}-chunk-{number:03d}" for number in (3, 6)]
 
 
 def request_json(method: str, path: str, payload: dict | None = None) -> dict:
@@ -67,8 +69,8 @@ def main() -> None:
     profiles = {item["file"]: item for item in config.get("profiles", [])}
     if profiles.get(BASELINE, {}).get("fingerprint") != BASELINE_SHA:
         raise SystemExit("Staging baseline fingerprint changed; refusing to compare")
-    if VARIANT not in profiles:
-        raise SystemExit("Staging variant profile is missing or invalid")
+    if profiles.get(VARIANT, {}).get("fingerprint") != VARIANT_SHA:
+        raise SystemExit("Staging variant fingerprint changed or profile is missing")
 
     current = request_json("GET", "?limit=5")
     if any(item.get("status") in {"queued", "running"} for item in current.get("experiments", [])):
@@ -79,6 +81,7 @@ def main() -> None:
         "profile_files": [BASELINE, VARIANT],
         "optimization_mode": "validation",
         "benchmark_id": BENCHMARK_ID,
+        "selected_chunk_ids": CHUNK_IDS,
     }
     estimate = request_json("POST", "/estimate", payload)
     print(json.dumps({
@@ -93,7 +96,7 @@ def main() -> None:
         ],
     }, indent=2))
 
-    if estimate.get("selected_documents") != 1 or estimate.get("selected_chunks") != 10:
+    if estimate.get("selected_documents") != 1 or estimate.get("selected_chunks") != 2:
         raise SystemExit("Unexpected document or chunk scope; refusing to start")
     preflight = estimate.get("benchmark_preflight") or {}
     if not preflight.get("compatible"):
@@ -105,8 +108,8 @@ def main() -> None:
     if args.start:
         started = request_json("POST", "", {
             **payload,
-            "title": "Aging signed-state prompt A/B 2026-11-04",
-            "note": "Isolated 10-chunk Validation; baseline snapshot versus state/sign/evidence variant. Do not promote without source review.",
+            "title": "Aging intermediate-state two-chunk A/B",
+            "note": "Isolated chunks 003 and 006 only. Benchmark totals are incomplete-document diagnostics, not comparable to ten-chunk runs. Do not promote.",
         })
         print(json.dumps({"experiment_id": started.get("id"), "status": started.get("status")}))
 

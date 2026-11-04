@@ -355,7 +355,13 @@ async def _load_source_documents(
     document_ids: list[str],
     *,
     sample_limit: int | None,
+    selected_chunk_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
+    if selected_chunk_ids is not None:
+        if sample_limit is not None or len(document_ids) != 1:
+            raise ValueError("Explicit chunk selection requires one document without screening sampling")
+        if not selected_chunk_ids or len(selected_chunk_ids) > 10 or len(set(selected_chunk_ids)) != len(selected_chunk_ids):
+            raise ValueError("Select one to ten distinct chunk IDs")
     processed = await rag.doc_status.get_docs_by_status(DocStatus.PROCESSED)
     documents: list[dict[str, Any]] = []
     missing = set(document_ids)
@@ -376,7 +382,13 @@ async def _load_source_documents(
         }
         if len(chunks) != len(chunk_ids):
             raise ValueError(f"Document {doc_id} no longer has all retained chunks")
-        selected_ids = chunk_ids if sample_limit is None else chunk_ids[:sample_limit]
+        if selected_chunk_ids is not None:
+            missing_chunks = set(selected_chunk_ids) - set(chunk_ids)
+            if missing_chunks:
+                raise ValueError(f"Selected chunks do not belong to document {doc_id}: {sorted(missing_chunks)}")
+            selected_ids = [chunk_id for chunk_id in chunk_ids if chunk_id in selected_chunk_ids]
+        else:
+            selected_ids = chunk_ids if sample_limit is None else chunk_ids[:sample_limit]
         selected_chunks = {chunk_id: chunks[chunk_id] for chunk_id in selected_ids}
         full_doc = await rag.full_docs.get_by_id(doc_id)
         documents.append(
@@ -450,14 +462,18 @@ async def estimate_prompt_experiment(
     profile_files: list[str],
     optimization_mode: PromptExperimentMode,
     benchmark_id: str | None = None,
+    selected_chunk_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Return a provider-independent extraction estimate before execution."""
 
     document_ids = _normalise_doc_ids(document_ids)
-    profile_files = _normalise_profiles(rag, profile_files)
     settings = _mode_settings(rag, optimization_mode)
+    if selected_chunk_ids is not None and optimization_mode != "validation":
+        raise ValueError("Explicit chunk selection is available only in non-promotable validation mode")
+    profile_files = _normalise_profiles(rag, profile_files)
     documents = await _load_source_documents(
-        rag, document_ids, sample_limit=settings["sample_limit"]
+        rag, document_ids, sample_limit=settings["sample_limit"],
+        selected_chunk_ids=selected_chunk_ids,
     )
     benchmark_preflight = None
     if benchmark_id:
@@ -663,6 +679,7 @@ async def create_prompt_experiment(
     benchmark_id: str,
     optimization_mode: PromptExperimentMode,
     benchmark_mode: BenchmarkMode | None = None,
+    selected_chunk_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Validate and persist a queued experiment. Execution is scheduled by the API."""
 
@@ -680,6 +697,7 @@ async def create_prompt_experiment(
         profile_files=profile_files,
         optimization_mode=optimization_mode,
         benchmark_id=benchmark_id,
+        selected_chunk_ids=selected_chunk_ids,
     )
     preflight = estimate.get("benchmark_preflight") or {}
     if preflight and not preflight.get("compatible"):
@@ -696,6 +714,7 @@ async def create_prompt_experiment(
         rag,
         _normalise_doc_ids(document_ids),
         sample_limit=settings["sample_limit"],
+        selected_chunk_ids=selected_chunk_ids,
     )
     experiment_id = f"prompt_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     workspace_root = _experiment_dir(rag.working_dir, experiment_id)
@@ -726,6 +745,7 @@ async def create_prompt_experiment(
         "completed_at": None,
         "error": None,
         "document_ids": [document["doc_id"] for document in documents],
+        "selected_chunk_ids": list(selected_chunk_ids) if selected_chunk_ids is not None else None,
         "profile_files": _normalise_profiles(rag, profile_files),
         "benchmark_id": benchmark_id,
         "optimization_mode": optimization_mode,
@@ -880,6 +900,7 @@ async def execute_prompt_experiment(rag: Any, experiment_id: str) -> None:
             rag,
             list(manifest.get("document_ids") or []),
             sample_limit=settings.get("sample_limit"),
+            selected_chunk_ids=manifest.get("selected_chunk_ids"),
         )
         for candidate in manifest.get("candidates") or []:
             if not isinstance(candidate, dict) or candidate.get("status") != "queued":
