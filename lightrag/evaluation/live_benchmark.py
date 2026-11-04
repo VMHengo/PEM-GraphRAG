@@ -781,6 +781,27 @@ def _directed_query_param(
     return param
 
 
+def _gold_intermediate_keyword_hints(case: dict[str, Any]) -> list[str]:
+    """Report gold intermediate nodes supplied as keywords but absent from the question."""
+
+    question = canonical_text(case.get("question") or "")
+    keywords = {
+        canonical_text(keyword)
+        for keyword in _as_list(case.get("ll_keywords"))
+    }
+    hints: set[str] = set()
+    for path in _as_list(case.get("expected_directed_paths")):
+        if not isinstance(path, dict):
+            continue
+        nodes = _as_list(path.get("traversal_nodes") or path.get("nodes"))
+        for node in nodes[1:-1]:
+            name = str(node)
+            normalized = canonical_text(name)
+            if normalized in keywords and normalized not in question:
+                hints.add(name)
+    return sorted(hints, key=str.casefold)
+
+
 def _directed_path_matches(
     expected: dict[str, Any], actual: dict[str, Any], *, traversal_direction: str = "both"
 ) -> tuple[bool, list[dict[str, Any]]]:
@@ -1177,6 +1198,7 @@ async def score_directed_retrieval_cases(
             {
                 "id": str(case.get("id") or question),
                 "question": question,
+                "gold_intermediate_keyword_hints": _gold_intermediate_keyword_hints(case),
                 "strategies": strategy_results,
             }
         )
@@ -1216,6 +1238,9 @@ async def score_directed_retrieval_cases(
     ]
     summary = {
         "cases": len(results),
+        "cases_with_gold_intermediate_keywords": sum(
+            bool(case["gold_intermediate_keyword_hints"]) for case in results
+        ),
         "strategies": strategy_summary,
         "score": _format_percent(sum(directed_scores) / len(directed_scores))
         if directed_scores

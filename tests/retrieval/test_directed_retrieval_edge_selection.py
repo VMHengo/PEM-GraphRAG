@@ -241,3 +241,33 @@ def test_evidence_predicate_fallback_is_opt_in_and_role_constrained():
 
     assert selected(False) == []
     assert [edge.relation_type for edge in selected(True)] == ["removes"]
+
+
+@pytest.mark.offline
+def test_weak_exact_focus_does_not_displace_stronger_cause():
+    param = QueryParam(retrieval_strategy="auto", chain_fanout=1)
+    route = route_retrieval_query("What causes heat increase?", param)
+    edges = select_directed_edges(
+        [
+            {
+                "semantic_src_id": "Well Supported Cause",
+                "semantic_tgt_id": "Heat Increase",
+                "relation_type": "causes",
+                "directionality": "directed",
+                "relation_importance": 0.95,
+            },
+            {
+                "semantic_src_id": "Weak Cause",
+                "semantic_tgt_id": "Heat Increase",
+                "relation_type": "causes",
+                "directionality": "directed",
+                "relation_importance": 0.4,
+            },
+        ],
+        anchor="Heat Increase",
+        route=route,
+        query_param=param,
+        focus_entities=["Weak Cause"],
+    )
+
+    assert [edge.source for edge in edges] == ["Well Supported Cause"]

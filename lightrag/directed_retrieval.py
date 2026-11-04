@@ -29,6 +29,7 @@ _DIRECTION_RELIABILITY = {
     "unknown": 0.75,
 }
 _GENERIC_RELATION_TYPES = frozenset({"related_to", "co_occurs_with", "unknown"})
+_FOCUS_EDGE_BONUS = 0.18
 _ROUTE_CHAIN_ROLES = {
     "root_cause": frozenset({"root_cause", "process_parameter", "defect", "consequence", "quality_outcome"}),
     "causal_chain": frozenset({"root_cause", "process_parameter", "defect", "consequence", "quality_outcome", "process_improvement"}),
@@ -287,16 +288,25 @@ def select_directed_edges(
     query_param: QueryParam,
     apply_fanout: bool = True,
     diagnostics: dict[str, int] | None = None,
+    focus_entities: Sequence[str] = (),
 ) -> list[DirectedEdge]:
     """Normalize, filter, and rank relationship records for one anchor.
 
     This helper intentionally performs no graph access. A later Neo4j query
     will provide the bounded candidate records; ``chain_fanout`` then caps the
-    locally retained candidates per anchor.
+    locally retained candidates per anchor. Exact query-entity matches receive
+    a bounded bonus before that cap, without bypassing semantic filters.
     """
 
     selected: list[DirectedEdge] = []
     target_types = set(route.target_relation_types)
+    focus = {name.casefold().strip() for name in focus_entities if name.strip()}
+
+    def is_focused(edge: DirectedEdge) -> bool:
+        next_node = _other_endpoint(
+            edge, current_node=anchor, direction=route.edge_direction
+        )
+        return bool(next_node and next_node.casefold().strip() in focus)
 
     def count(key: str) -> None:
         if diagnostics is not None:
@@ -333,6 +343,9 @@ def select_directed_edges(
     sorted_edges = sorted(
         selected,
         key=lambda edge: (
+            -(score_directed_edge(edge, route) + (
+                _FOCUS_EDGE_BONUS if is_focused(edge) else 0.0
+            )),
             -score_directed_edge(edge, route),
             edge.source.casefold(),
             edge.target.casefold(),
@@ -567,6 +580,7 @@ async def find_directed_paths(
                 query_param=query_param,
                 apply_fanout=False,
                 diagnostics=level["selection"] if diagnostics is not None else None,
+                focus_entities=focus_entities,
             ):
                 next_node = _other_endpoint(
                     edge,

@@ -49,6 +49,32 @@ omits `increases`, the type of both graph-scored edges. The current router
 includes `increases`, so predicate filtering is a concrete, version-specific
 candidate cause; a frozen-graph Staging replay is still needed to establish
 whether the path now survives provider limits and top-20 ranking.
+An offline replay against the saved 224-assertion artifact with the current
+router and benchmark settings exposed a second loss stage: the first edge to
+`DC Resistance` was ranked 17th, below `chain_fanout=10`. An exact focus-entity
+match now receives a bounded 0.18 edge-ranking bonus before that local fanout.
+With the benchmark's `ll_keywords` (which include the gold intermediate
+`DC Resistance`), the two-hop path appears in the top 20 with chunk-000 and
+chunk-006 citations. This is an **oracle-aided upper bound**, not a realistic
+query-only result: the actual question does not name `DC Resistance`.
+Using only the question's start and endpoint terms still misses the path at
+fanout 10; fanout 20 recovers it offline with more expansion. Neither replay
+validates live Neo4j candidate limits, actual keyword generation or answers.
+On all 16 declared directed gold paths in this single-paper artifact, a
+paired offline replay using gold-first-node anchors and benchmark-provided
+`ll_keywords` finds 1 exact node sequence without the focus bonus and 2 with
+it. The already-found gas/current/plating sequence remains; the additional
+hit is the aging/resistance/heat chain. This is an oracle-aided diagnostic,
+not an unbiased retrieval-quality estimate, and it does not measure
+false-positive path precision.
+The active aging benchmark supplies a gold intermediate as an `ll_keywords`
+entry absent from the question in 14 of 15 directed cases. The benchmark
+runner now reports `gold_intermediate_keyword_hints` for each directed case
+and `cases_with_gold_intermediate_keywords` in the summary. Historical saved
+results do not gain this field retroactively; their scores remain unchanged.
+For an unbiased retrieval comparison, run a separate query-only setting where
+intermediates are not manually supplied, while retaining the current
+keyword-assisted setting as an explicitly labeled upper bound.
 
 ## Reproduce and finish attribution
 

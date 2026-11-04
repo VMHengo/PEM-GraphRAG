@@ -64,6 +64,10 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   relation score from 0 to 100. Full 38-case parsed-artifact replay changes
   relation 31.79 -> 36.79 and exact 21.67 -> 26.67; entity scores and
   denominators are unchanged. Live merged-graph/scorer replay remains open.
+  In 14/15 directed aging cases, `ll_keywords` include a gold intermediate
+  absent from the question. The runner now exposes these hints per case and
+  in its summary without changing scores. Add a separate query-only
+  comparison before claiming retrieval improvement.
 - [ ] **AGE-03: Repair graph-present directed-path misses.** Trace a verified
   aging-paper chain that exists in the graph but is absent from the top-20
   directed results, starting with High-Temperature Aging -> DC Resistance ->
@@ -75,7 +79,15 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   Partial offline diagnosis: the saved run's causal predicate allowlist omitted
   `increases` even though both gold edges scored 100 in graph checks. Current
   code includes `increases`; frozen-graph Staging replay and stage counters
-  are needed before claiming this path fixed.
+  are needed before claiming this path fixed. Offline replay of the saved
+  artifact found the first needed edge at rank 17 versus `chain_fanout=10`;
+  a bounded exact focus-entity bonus before fanout returns the two-hop path
+  with both chunk citations **only when** the benchmark supplies the gold
+  intermediate `DC Resistance` as a keyword. The oracle-aided single-paper
+  replay moves exact gold-node-path coverage from 1/16 to 2/16, but the
+  query-only terms still miss at fanout 10. Fanout 20 recovers the path offline
+  with more expansion. Do not treat this as a live quality gain.
+  Live Neo4j cap, anchors, false-positive paths and answer quality remain open.
 - [ ] **AGE-04: Preserve and validate assertion evidence.** Persist every
   newly extracted assertion, including when no quote is available and ontology
   annotation is off; record an explicit unverified-evidence state. Add tests

@@ -58,8 +58,11 @@ not a measurement of model accuracy:
    frozen chunks and adversarial sign controls before any bulk ingestion.
 4. **Separate retrieval.** In the saved `causal_aging_dc_heat` case, both
    required graph edges scored 100 but the directed path scored 0. The run's
-   causal allowlist omitted `increases`; current code includes it, but a
-   frozen-graph Staging replay is still required.
+   causal allowlist omitted `increases`; current code includes it. Offline
+   artifact replay then found the first needed edge at rank 17 before a
+   fanout of 10. A bounded exact focus-entity bonus recovers the path offline
+   only when the benchmark supplies the gold intermediate as a keyword; a
+   frozen-graph query-only Staging replay is still required.
 5. **Separate text retention from graph reasoning.** Some critical qualifiers
    survived in edge descriptions but not in structured endpoints. A text-based
    answer may be adequate while a graph-only 4-5-hop traversal is still

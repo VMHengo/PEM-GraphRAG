@@ -374,3 +374,98 @@ async def test_query_focus_keeps_a_three_hop_chain_among_distractors():
 
     assert names in [path.nodes for path in paths]
     assert {len(path.edges) for path in paths} == {1, 2, 3}
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_query_focus_reaches_lower_importance_bridge_before_fanout():
+    aging = "High-Temperature Aging"
+    resistance = "DC Resistance"
+    heat = "Irreversible Heat"
+    graph = {
+        aging: [
+            {
+                "semantic_src_id": aging,
+                "semantic_tgt_id": f"Other {index}",
+                "relation_type": "causes",
+                "directionality": "directed",
+                "relation_importance": 0.95,
+                "source_id": f"chunk-noise-{index}",
+            }
+            for index in range(15)
+        ] + [{
+            "semantic_src_id": aging,
+            "semantic_tgt_id": resistance,
+            "relation_type": "increases",
+            "directionality": "directed",
+            "relation_importance": 0.84,
+            "source_id": "chunk-aging-resistance",
+        }],
+        resistance: [{
+            "semantic_src_id": resistance,
+            "semantic_tgt_id": heat,
+            "relation_type": "increases",
+            "directionality": "directed",
+            "relation_importance": 0.9,
+            "source_id": "chunk-resistance-heat",
+        }],
+    }
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(
+        retrieval_strategy="directed", hop_depth=2,
+        chain_fanout=10, chain_top_k=20,
+    )
+    route = _route("How does aging change irreversible heat?", param)
+    without_focus = await find_directed_paths(
+        [aging], provider, route=route, query_param=param
+    )
+    with_focus = await find_directed_paths(
+        [aging], provider, route=route, query_param=param,
+        focus_entities=[resistance, heat],
+    )
+
+    target = (aging, resistance, heat)
+    assert target not in [path.nodes for path in without_focus]
+    assert target in [path.nodes for path in with_focus]
+
+
+@pytest.mark.asyncio
+@pytest.mark.offline
+async def test_query_focus_prioritizes_upstream_node_for_root_cause():
+    target = "Heat Increase"
+    graph = {
+        target: [
+            {
+                "semantic_src_id": f"Other {index}",
+                "semantic_tgt_id": target,
+                "relation_type": "causes",
+                "directionality": "directed",
+                "relation_importance": 0.95,
+            }
+            for index in range(4)
+        ] + [{
+            "semantic_src_id": "DC Resistance",
+            "semantic_tgt_id": target,
+            "relation_type": "increases",
+            "directionality": "directed",
+            "relation_importance": 0.8,
+        }],
+    }
+
+    async def provider(nodes):
+        return {node: graph.get(node, []) for node in nodes}
+
+    param = QueryParam(
+        retrieval_strategy="directed", hop_depth=1, chain_fanout=2,
+    )
+    paths = await find_directed_paths(
+        [target], provider,
+        route=_route("What causes heat increase?", param),
+        query_param=param,
+        focus_entities=["DC Resistance"],
+    )
+
+    assert (target, "DC Resistance") in [path.nodes for path in paths]

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from lightrag.evaluation.live_benchmark import (
+    _gold_intermediate_keyword_hints,
     _resolve_scoring_model,
     _directed_path_matches,
     _directed_query_param,
@@ -12,6 +13,22 @@ from lightrag.evaluation.live_benchmark import (
     run_live_benchmark,
     score_graph_cases,
 )
+
+
+def test_gold_intermediate_keyword_hints_are_reported_separately_from_scores():
+    case = {
+        "question": "How does aging change irreversible heat?",
+        "ll_keywords": ["Aging", "DC Resistance", "Irreversible Heat"],
+        "expected_directed_paths": [{
+            "nodes": ["Aging", "DC Resistance", "Irreversible Heat"],
+        }],
+    }
+
+    assert _gold_intermediate_keyword_hints(case) == ["DC Resistance"]
+    assert _gold_intermediate_keyword_hints({
+        **case, "question": "Does DC resistance change irreversible heat?"
+    }) == []
+    assert _gold_intermediate_keyword_hints({**case, "ll_keywords": []}) == []
 
 
 def test_directed_benchmark_can_compare_optional_path_controls():
@@ -641,6 +658,7 @@ def test_run_live_benchmark_compares_normal_directed_and_combined_paths(
         result["summary"]["directed"]["strategies"]["combined"]["path_score"] == 100.0
     )
     assert result["summary"]["directed"]["strategies"]["auto"]["path_score"] == 100.0
+    assert result["summary"]["directed"]["cases_with_gold_intermediate_keywords"] == 0
     assert result["quality_gates"]["configured"] is True
     assert result["quality_gates"]["passed"] is True
     assert result["failed_checks"] == []
