@@ -45,6 +45,12 @@ Staging deployment, model calls or bulk re-extraction are authorized here.
   Partial offline audit: 31 zero checks in the saved earlier Validation run;
   23 endpoint-absent/name-mismatch and 8 relation-absent/gold-mismatch in the
   parsed artifact. See [aging quality audit](AGING_QUALITY_AUDIT_2026-11-02.md).
+  A PDF-anchored [case classification](AGING_FAILURE_CLASSIFICATION_2026-11-03.md)
+  now assigns all 31 checks across 16 cases (29 unique gold relations) to
+  reviewed inverse mismatch, alternative granularity, missing state/role or
+  sign-sensitive mechanism; these are provisional source/artifact findings.
+  Several missing intermediate states remain in edge descriptions but not in
+  traversable nodes; evaluate text-answer quality separately from graph paths.
   Raw-output, PDF-by-relation and live-graph attribution remains open.
 - [ ] **AGE-02: Correct benchmark semantics on frozen artifacts.** Review
   inverse `part_of`/`contains`, accepted predicates, aliases, conditions and
