@@ -1,0 +1,135 @@
+{
+  "id": "aging_20261104_reviewed_relations",
+  "source_document": "Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging.pdf",
+  "reviewer": "Hoang",
+  "review_date": "2026-11-04",
+  "note": "PDF support and graph structure are separate. Direct matches below are case-specific reviewed equivalences, not global ontology synonyms. Related edges never count as complete multi-hop links.",
+  "cases": [
+    {
+      "id": "H01",
+      "pages": [5],
+      "pdf_support": "supported",
+      "claim": "Irreversible heat is a component of total heat.",
+      "direct": [
+        {"source": ["Irreversible Heat"], "type": ["part_of"], "target": ["Total Heat"]},
+        {"source": ["Total Heat"], "type": ["contains"], "target": ["Irreversible Heat"]}
+      ],
+      "related": [{"source": ["Heat Generation"], "type": ["contains"], "target": ["Irreversible Heat"], "reason": "generic_total_heat_alias_requires_review"}]
+    },
+    {
+      "id": "H02",
+      "pages": [5],
+      "pdf_support": "supported",
+      "claim": "Reversible heat is a component of total heat.",
+      "direct": [
+        {"source": ["Reversible Heat"], "type": ["part_of"], "target": ["Total Heat"]},
+        {"source": ["Total Heat"], "type": ["contains"], "target": ["Reversible Heat"]}
+      ],
+      "related": [{"source": ["Heat Generation"], "type": ["contains"], "target": ["Reversible Heat"], "reason": "generic_total_heat_alias_requires_review"}]
+    },
+    {
+      "id": "G01",
+      "pages": [8],
+      "pdf_support": "supported",
+      "claim": "Local electrolyte drying changes local potential.",
+      "direct": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "results_in", "leads_to"], "target": ["Local Potential Change", "Local Electrode Potential Change"]}],
+      "related": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "leads_to"], "target": ["Nonuniform Local Current", "Local Current Nonuniformity"], "reason": "potential_intermediate_omitted"}]
+    },
+    {
+      "id": "G02",
+      "pages": [8],
+      "pdf_support": "supported_in_context",
+      "claim": "Potential change contributes to nonuniform local current during recharging; gas and drying are discussed together.",
+      "direct": [{"source": ["Local Potential Change", "Local Electrode Potential Change"], "type": ["causes", "leads_to", "contributes_to", "results_in"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current", "Nonuniform Recharge Current"]}],
+      "related": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "leads_to"], "target": ["Nonuniform Local Current", "Local Current Nonuniformity"], "reason": "potential_intermediate_and_recharge_condition_omitted"}]
+    },
+    {
+      "id": "G03",
+      "pages": [4, 8],
+      "pdf_support": "supported_no_sign",
+      "claim": "Generated gas changes electrode spacing; the PDF does not specify an increase or decrease.",
+      "direct": [{"source": ["Gas Generation", "Generated Gas"], "type": ["changes", "affects", "influences", "leads_to"], "target": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance"]}],
+      "related": [{"source": ["Gas Generation"], "type": ["leads_to", "influences"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"], "reason": "spacing_intermediate_omitted"}]
+    },
+    {
+      "id": "G04",
+      "pages": [4, 8],
+      "pdf_support": "supported_in_context",
+      "claim": "Changed electrode spacing contributes to local current nonuniformity in the discussed charging mechanism.",
+      "direct": [{"source": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance"], "type": ["causes", "leads_to", "contributes_to", "results_in"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"]}],
+      "related": [{"source": ["Gas Generation"], "type": ["leads_to", "influences"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"], "reason": "spacing_intermediate_omitted"}]
+    },
+    {
+      "id": "G05",
+      "pages": [4],
+      "pdf_support": "supported_with_eis_qualification",
+      "claim": "Lithium plating is identified as a main cause of lithium inventory loss, in conjunction with EIS results.",
+      "direct": [{"source": ["Lithium Plating"], "type": ["causes", "leads_to", "results_in"], "target": ["Loss Of Lithium Inventory", "Lithium Inventory Loss"]}],
+      "related": []
+    },
+    {
+      "id": "G06",
+      "pages": [4],
+      "pdf_support": "supported",
+      "claim": "SEI film thickening increases SEI film resistance.",
+      "direct": [{"source": ["SEI Film Thickening", "Thickened SEI Film"], "type": ["increases", "leads_to", "results_in"], "target": ["SEI Film Resistance", "Increased SEI Film Resistance"]}],
+      "related": [{"source": ["SEI Film"], "type": ["increases"], "target": ["SEI Film Resistance"], "reason": "thickening_state_only_in_prose"}]
+    },
+    {
+      "id": "G07",
+      "pages": [8],
+      "pdf_support": "supported",
+      "claim": "Transition-metal dissolution aggravates side reactions.",
+      "direct": [{"source": ["Transition-Metal Dissolution"], "type": ["influences", "increases", "aggravates", "promotes"], "target": ["Side Reactions", "Side Reaction"]}],
+      "related": []
+    },
+    {
+      "id": "R01",
+      "pages": [4],
+      "pdf_support": "supported_signed",
+      "claim": "Aging makes solid-state lithium diffusion more difficult, resulting in increased Warburg resistance; greater diffusion is not equivalent.",
+      "direct": [{"source": ["Increased Difficulty Of Solid-State Lithium Diffusion", "Difficult Lithium Ion Diffusion"], "type": ["increases", "causes", "results_in", "leads_to"], "target": ["Warburg Resistance", "Increased Warburg Resistance"]}],
+      "related": [{"source": ["Cell Aging", "High-Temperature Aging"], "type": ["increases"], "target": ["Warburg Resistance", "Increased Warburg Resistance"], "reason": "diffusion_difficulty_intermediate_omitted"}]
+    },
+    {
+      "id": "R02",
+      "pages": [4, 8],
+      "pdf_support": "supported_only_for_increased_polarization",
+      "claim": "Increased internal polarization shifts the IC curve toward lower voltage.",
+      "direct": [{"source": ["Increased Internal Polarization", "Severe Internal Polarization"], "type": ["causes", "results_in", "leads_to"], "target": ["IC Curve Shift Toward Lower Voltages", "Lower-Voltage IC Curve Shift", "IC Peak Shift To Lower Voltage"]}],
+      "related": [{"source": ["Internal Polarization"], "type": ["causes", "results_in", "leads_to"], "target": ["IC Curve Shift Toward Lower Voltages", "IC Curve Shift"], "reason": "increased_polarization_state_missing"}]
+    },
+    {
+      "id": "R03",
+      "pages": [4],
+      "pdf_support": "supported",
+      "claim": "Loss of lithium inventory contributes to reduced IC-curve area; loss of active materials is another stated cause.",
+      "direct": [{"source": ["Loss Of Lithium Inventory", "Lithium Inventory Loss"], "type": ["causes", "results_in", "leads_to", "decreases"], "target": ["Reduced IC Curve Area", "IC Curve Area Reduction"]}],
+      "related": []
+    },
+    {
+      "id": "R04",
+      "pages": [8, 9],
+      "pdf_support": "supported_under_adiabatic_discharge",
+      "claim": "Increased DC resistance raises irreversible heat during adiabatic discharging; increases or leads_to is a clearer predicate than generic causes.",
+      "direct": [{"source": ["DC Resistance Increase", "Increased DC Resistance"], "type": ["increases", "causes", "leads_to", "results_in"], "target": ["Irreversible Heat Increase During Adiabatic Discharging", "Increased Irreversible Heat During Adiabatic Discharging"]}],
+      "related": [{"source": ["Internal Resistance"], "type": ["causes", "increases"], "target": ["Irreversible Heat"], "reason": "dc_increase_and_discharge_condition_missing"}]
+    },
+    {
+      "id": "M01",
+      "pages": [2],
+      "pdf_support": "supported",
+      "claim": "The tested pouch cell uses NCM622 cathode material; uses and contains are case-specific acceptable wording, not global synonyms.",
+      "direct": [{"source": ["Pouch Lithium-Ion Battery", "Pouch Lithium-Ion Cell"], "type": ["uses", "contains"], "target": ["NCM622", "NCM622 Cathode", "Li(Ni0.6Co0.2Mn0.2)O2"]}],
+      "related": []
+    },
+    {
+      "id": "M02",
+      "pages": [2, 3],
+      "pdf_support": "supported",
+      "claim": "SEM observes sample morphology; the methods sentence crosses the PDF page boundary.",
+      "direct": [{"source": ["Scanning Electron Microscopy", "Scanning Electron Microscope", "SEM"], "type": ["measures", "characterizes", "observes"], "target": ["Electrode Morphology", "Sample Morphology", "Morphology Of The Samples"]}],
+      "related": [{"source": ["Scanning Electron Microscope", "SEM"], "type": ["measures", "studies"], "target": ["Electrode Sample", "Samples"], "reason": "morphology_measurement_target_missing"}]
+    }
+  ]
+}

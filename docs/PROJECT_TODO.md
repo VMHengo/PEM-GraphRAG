@@ -77,6 +77,13 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   absent from the question. The runner now exposes these hints per case and
   in its summary without changing scores. Add a separate query-only
   comparison before claiming retrieval improvement.
+  The [reviewed 15-claim offline audit](AGING_REVIEWED_ARTIFACT_AUDIT_2026-11-04.md)
+  now separates PDF support from direct structural matches and related
+  shortcuts on the same two frozen artifacts (2 -> 5 direct matches). Safe
+  case-specific aliases are documented in
+  `evaluation/reviews/aging_20261104_reviewed_relations.json`; no live scorer
+  weights or benchmark gold were changed. Finish the full scorer replay only
+  after deciding whether generic `Heat Generation` denotes `Total Heat`.
 - [ ] **AGE-03: Repair graph-present directed-path misses.** Trace a verified
   aging-paper chain that exists in the graph but is absent from the top-20
   directed results, starting with High-Temperature Aging -> DC Resistance ->
@@ -120,6 +127,11 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   caching was disabled during this run. Do not promote on these scores:
   review changed claims against the PDF, smoke-test the new candidate-only
   cache/snapshot path, then assess query-only paths and answer quality.
+  Reviewer-confirmed priority for the next targeted variant: preserve
+  potential change, spacing change, diffusion difficulty and increased
+  polarization as traversable, signed intermediate states. Acceptance:
+  improve direct reviewed matches and supported multi-hop paths without
+  turning related shortcuts into full-credit paths or adding unsupported edges.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 
