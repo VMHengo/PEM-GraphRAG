@@ -261,24 +261,27 @@ function ReviewEditor({
   const [note, setNote] = useState(review?.note || '')
   const hasContradictedHop = review?.hop_verdicts.includes('contradicted') || false
   const hasIncompatibleConditions = review?.conditions === 'incompatible'
+  const singleRelation = candidate.path.length === 1
 
   const complete = Boolean(
-    reviewer.trim() && interest && correctness && conditions && hopVerdicts.every(Boolean)
-    && (!candidate.inferred_connection || inferenceVerdict)
+    reviewer.trim() && hopVerdicts.every(Boolean)
+    && (singleRelation || (interest && correctness && conditions
+      && (!candidate.inferred_connection || inferenceVerdict)))
   )
 
   const submit = () => {
-    if (!complete || !interest || !correctness || !conditions) {
-      toast.error('Complete the reviewer, path and hop verdicts, and inferred-claim verdict first')
+    if (!complete) {
+      toast.error(singleRelation ? 'Select a relation verdict first' : 'Complete the reviewer, path and hop verdicts, and inferred-claim verdict first')
       return
     }
+    const relationVerdict = hopVerdicts[0] as ExplorationVerdict
     const request: ExplorationReviewRequest = {
       candidate_id: candidate.id,
       reviewer: reviewer.trim(),
-      interest,
-      correctness,
+      interest: singleRelation ? 'unclear' : interest as ExplorationInterest,
+      correctness: singleRelation ? relationVerdict : correctness as ExplorationVerdict,
       hop_verdicts: hopVerdicts as ExplorationVerdict[],
-      conditions,
+      conditions: singleRelation ? 'unclear' : conditions as ExplorationConditions,
       follow_up: followUp,
       note: note.trim()
     }
@@ -410,7 +413,7 @@ function ReviewEditor({
           <section key={`${candidate.id}-hop-${index}`} className="space-y-3 border-b pb-4 last:border-b-0">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-muted-foreground text-xs font-medium uppercase">Hop {index + 1}</p>
+                <p className="text-muted-foreground text-xs font-medium uppercase">{singleRelation ? 'Relation' : `Hop ${index + 1}`}</p>
                 <p className="mt-1 text-sm font-medium break-words">
                   {hop.source} <span className="text-muted-foreground">[{hop.relation}]</span> {hop.target}
                 </p>
@@ -418,7 +421,7 @@ function ReviewEditor({
               </div>
               <div className="w-full shrink-0 sm:w-48">
                 <div className="mb-1 text-sm font-medium">
-                  <RubricLabel label="Hop verdict" description={rubricDescriptions.hop} />
+                  <RubricLabel label={singleRelation ? 'Relation verdict' : 'Hop verdict'} description={rubricDescriptions.hop} />
                 </div>
                 <Select
                   value={hopVerdicts[index]}
@@ -426,8 +429,8 @@ function ReviewEditor({
                     current.map((item, itemIndex) => itemIndex === index ? value as ExplorationVerdict : item)
                   )}
                 >
-                  <SelectTrigger aria-label={`Hop ${index + 1} verdict`}>
-                    <SelectValue placeholder="Hop verdict" />
+                  <SelectTrigger aria-label={singleRelation ? 'Relation verdict' : `Hop ${index + 1} verdict`}>
+                    <SelectValue placeholder={singleRelation ? 'Relation verdict' : 'Hop verdict'} />
                   </SelectTrigger>
                   <SelectContent>
                     {verdictOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
@@ -480,7 +483,7 @@ function ReviewEditor({
         ))}
       </div>
 
-      <div className="grid gap-4 border-t pt-4 md:grid-cols-3">
+      {!singleRelation && <div className="grid gap-4 border-t pt-4 md:grid-cols-3">
         <div className="space-y-1 text-sm font-medium">
           <RubricLabel label="Interest" description={rubricDescriptions.interest} />
           <Select value={interest} onValueChange={(value) => setInterest(value as ExplorationInterest)}>
@@ -502,7 +505,7 @@ function ReviewEditor({
             <SelectContent>{conditionOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-      </div>
+      </div>}
 
       <label className="block space-y-1 text-sm font-medium">
         <span>Review note</span>
@@ -516,7 +519,7 @@ function ReviewEditor({
         </label>
         <Button onClick={submit} disabled={!complete || isSaving}>
           {isSaving ? <Loader2Icon className="animate-spin" /> : <SaveIcon />}
-          {review ? 'Save revision' : 'Save review'}
+          {review ? 'Save revision' : singleRelation ? 'Save relation review' : 'Save review'}
         </Button>
       </div>
     </div>

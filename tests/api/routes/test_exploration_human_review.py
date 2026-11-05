@@ -165,6 +165,49 @@ def test_review_session_routes_persist_hop_verdicts_and_sheet(tmp_path):
     assert calls[0][1].ll_keywords == ["Electrode Calendering"]
 
 
+def test_one_hop_artifact_relation_can_be_reviewed(tmp_path):
+    class Rag:
+        working_dir = str(tmp_path)
+
+    session = create_session(
+        tmp_path, title="Artifact relation", starts=["Aging"], hop_depth=2,
+        limit=1, extraction_revision={"version": "isolated"},
+    )
+    update_session(tmp_path, session["id"], status="completed", candidates=[{
+        "id": "candidate-001", "from": "Aging", "to": "Resistance", "hops": 1,
+        "path": [{"source": "Aging", "relation": "increases", "target": "Resistance",
+                  "description": "Aging increases resistance.", "sources": []}],
+        "start_domains": [], "target_domains": [], "status": "unreviewed",
+    }])
+    app = FastAPI()
+    app.include_router(create_evaluation_routes(Rag(), "test-key"))
+    app.dependency_overrides[resolve_reviewer_identity] = lambda: ReviewerIdentity(
+        email="reviewer@example.org", default_name="Reviewer A"
+    )
+    vote = {
+        "candidate_id": "candidate-001", "reviewer": "Reviewer A",
+        "interest": "unclear", "correctness": "supported",
+        "hop_verdicts": ["supported"], "conditions": "unclear",
+        "follow_up": False, "note": "Verified against source PDF.",
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            f"/evaluation/exploration/sessions/{session['id']}/reviews",
+            headers=HEADERS, json=vote,
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["review"]["hop_verdicts"] == ["supported"]
+        assert response.json()["review"]["reviewer_email"] == "reviewer@example.org"
+        assert client.post(
+            f"/evaluation/exploration/sessions/{session['id']}/reviews",
+            headers=HEADERS, json={**vote, "hop_verdicts": []},
+        ).status_code == 422
+        assert client.post(
+            f"/evaluation/exploration/sessions/{session['id']}/reviews",
+            headers=HEADERS, json={**vote, "hop_verdicts": ["supported", "supported"]},
+        ).status_code == 422
+
+
 def test_empty_review_session_preserves_seed_diagnostics(tmp_path):
     class Rag:
         working_dir = str(tmp_path)

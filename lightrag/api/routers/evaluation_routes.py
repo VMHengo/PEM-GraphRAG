@@ -170,7 +170,7 @@ class ExplorationReviewRequest(BaseModel):
     interest: Literal["interesting", "neutral", "not_interesting", "unclear"]
     correctness: Literal["supported", "partial", "contradicted", "unclear"]
     hop_verdicts: list[Literal["supported", "partial", "contradicted", "unclear"]] = Field(
-        min_length=2, max_length=4
+        min_length=1, max_length=4
     )
     conditions: Literal["compatible", "incompatible", "unclear"]
     inference_verdict: Literal[
