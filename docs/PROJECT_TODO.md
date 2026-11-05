@@ -138,8 +138,12 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   polarization); gas/drying intermediates remain absent despite raw-text
   mentions. No semantic reverse-edge violations in two targeted controls.
   Candidate-only LLM cache snapshots succeeded (two records per profile).
-  Do not promote; next iterate specifically on the joint gas/drying clause,
-  then test full-document quality and unsupported-edge precision.
+  A second [two-chunk v2/v3 A/B](AGING_CAUSAL_BRIDGE_AB_2026-11-05.md)
+  completed on 2026-11-05. The new clause-decomposition v3 did not solve
+  G01-G04 and regressed G01 (v2 direct, v3 missing); v3 only recovered R02.
+  Do not promote. Next: inspect raw JSON and supporting quotes for the four
+  bridge cases, then use a small gold-separated repeated test to distinguish
+  prompt effect from run variance before full-document re-extraction.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 
