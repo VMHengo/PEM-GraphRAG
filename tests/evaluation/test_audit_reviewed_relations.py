@@ -13,7 +13,7 @@ from scripts.audit_reviewed_relations import audit, render_markdown
 GOLD = Path("evaluation/reviews/aging_20261104_reviewed_relations.json")
 
 
-def _artifact(*edges: tuple[str, str, str, str]) -> dict:
+def _artifact(*edges: tuple[str, str, str, str] | tuple[str, str, str, str, str]) -> dict:
     return {
         "documents": [
             {
@@ -33,10 +33,12 @@ def _artifact(*edges: tuple[str, str, str, str]) -> dict:
                                         "relation_type": predicate,
                                         "directionality": direction,
                                         "source_id": "chunk-1",
+                                        "description": edge[4] if len(edge) > 4 else "",
                                     }
                                 ],
                             }
-                            for source, predicate, target, direction in edges
+                            for edge in edges
+                            for source, predicate, target, direction in [edge[:4]]
                         ]
                     }
                 ],
@@ -140,3 +142,62 @@ def test_reviewed_diffusion_difficulty_alias_is_not_generic_diffusion():
 
     assert report["cases"][0]["baseline"]["status"] == "missing"
     assert report["cases"][0]["variant"]["status"] == "direct_match"
+
+
+def test_case_specific_predicates_and_signed_diffusion_variants():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    artifact = _artifact(
+        ("Local Potential Change", "influences", "Nonuniform Local Current", "directed"),
+        ("Gas Generation", "affects", "Electrode Distance Change", "directed"),
+        ("Electrode Distance Change", "leads_to", "Local Current Nonuniformity", "directed"),
+        ("Increased Lithium-Ion Diffusion Difficulty", "increases", "Warburg Resistance", "directed"),
+    )
+    report = audit(gold, artifact, artifact, {"G02", "G03", "G04", "R01"})
+    assert all(case["baseline"]["status"] == "direct_match" for case in report["cases"])
+    assert report["chains"][0]["baseline"]["status"] == "direct_chain"
+
+
+def test_generic_intermediate_requires_description_and_gets_partial_chain():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    variant = _artifact(
+        ("Local Electrolyte Drying", "changes", "Local Potential", "directed",
+         "Local electrolyte drying causes the local potential to change."),
+        ("Local Potential", "affects", "Nonuniform Local Current", "directed",
+         "Local potential change contributes to nonuniform local current during recharging."),
+    )
+    report = audit(gold, _artifact(), variant, {"G01", "G02"})
+    assert [case["variant"]["status"] for case in report["cases"]] == [
+        "state_in_description_only", "state_in_description_only",
+    ]
+    chain = report["chains"][0]["variant"]
+    assert chain["status"] == "partial_chain"
+    assert chain["matched_paths"][0]["first"]["target"] == "Local Potential"
+    assert chain["matched_paths"][0]["second"]["source"] == "Local Potential"
+
+
+def test_generic_state_without_explicit_change_is_not_credited():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    artifact = _artifact(
+        ("Local Electrolyte Drying", "changes", "Local Potential", "directed",
+         "Local electrolyte drying and local potential were observed."),
+        ("Local Potential", "affects", "Nonuniform Local Current", "directed",
+         "Local potential and nonuniform local current were observed."),
+        ("Gas Generation", "increases", "Electrode Distance Change", "directed",
+         "Generated gas changes the distance; the sign is not known."),
+    )
+    report = audit(gold, artifact, artifact, {"G01", "G02", "G03"})
+    assert all(case["baseline"]["status"] == "missing" for case in report["cases"])
+    assert report["chains"][0]["baseline"]["status"] == "missing_chain"
+
+
+def test_shortcut_disconnected_and_reverse_paths_never_complete_chain():
+    gold = json.loads(GOLD.read_text(encoding="utf-8"))
+    artifact = _artifact(
+        ("Gas Generation", "leads_to", "Local Current Nonuniformity", "directed"),
+        ("Gas Generation", "affects", "Electrode Distance Change", "directed"),
+        ("Changed Electrode Spacing", "leads_to", "Local Current Nonuniformity", "directed"),
+        ("Local Current Nonuniformity", "leads_to", "Electrode Distance Change", "directed"),
+    )
+    report = audit(gold, artifact, artifact, {"G03", "G04"})
+    assert all(case["baseline"]["status"] == "direct_match" for case in report["cases"])
+    assert report["chains"][0]["baseline"]["status"] == "missing_chain"

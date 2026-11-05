@@ -37,6 +37,7 @@
       "pdf_support": "supported",
       "claim": "Local electrolyte drying changes local potential.",
       "direct": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "results_in", "leads_to"], "target": ["Local Potential Change", "Local Electrode Potential Change"]}],
+      "state_in_description_only": [{"source": ["Local Electrolyte Drying"], "type": ["changes"], "target": ["Local Potential"], "description_contains": "local potential to change"}],
       "related": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "leads_to"], "target": ["Nonuniform Local Current", "Local Current Nonuniformity"], "reason": "potential_intermediate_omitted"}]
     },
     {
@@ -44,7 +45,8 @@
       "pages": [8],
       "pdf_support": "supported_in_context",
       "claim": "Potential change contributes to nonuniform local current during recharging; gas and drying are discussed together.",
-      "direct": [{"source": ["Local Potential Change", "Local Electrode Potential Change"], "type": ["causes", "leads_to", "contributes_to", "results_in"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current", "Nonuniform Recharge Current"]}],
+      "direct": [{"source": ["Local Potential Change", "Local Electrode Potential Change"], "type": ["causes", "leads_to", "contributes_to", "results_in", "influences", "affects"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current", "Nonuniform Recharge Current"]}],
+      "state_in_description_only": [{"source": ["Local Potential"], "type": ["affects", "influences"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"], "description_contains": "potential change"}],
       "related": [{"source": ["Local Electrolyte Drying"], "type": ["causes", "leads_to"], "target": ["Nonuniform Local Current", "Local Current Nonuniformity"], "reason": "potential_intermediate_and_recharge_condition_omitted"}]
     },
     {
@@ -52,7 +54,8 @@
       "pages": [4, 8],
       "pdf_support": "supported_no_sign",
       "claim": "Generated gas changes electrode spacing; the PDF does not specify an increase or decrease.",
-      "direct": [{"source": ["Gas Generation", "Generated Gas"], "type": ["changes", "affects", "influences", "leads_to"], "target": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance"]}],
+      "direct": [{"source": ["Gas Generation", "Generated Gas"], "type": ["changes", "affects", "influences", "leads_to"], "target": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance", "Electrode Distance Change"]}],
+      "state_in_description_only": [{"source": ["Gas Generation", "Generated Gas"], "type": ["changes"], "target": ["Electrode Distance"], "description_contains": "changes the distance"}],
       "related": [{"source": ["Gas Generation"], "type": ["leads_to", "influences"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"], "reason": "spacing_intermediate_omitted"}]
     },
     {
@@ -60,7 +63,7 @@
       "pages": [4, 8],
       "pdf_support": "supported_in_context",
       "claim": "Changed electrode spacing contributes to local current nonuniformity in the discussed charging mechanism.",
-      "direct": [{"source": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance"], "type": ["causes", "leads_to", "contributes_to", "results_in"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"]}],
+      "direct": [{"source": ["Electrode Spacing Change", "Changed Electrode Spacing", "Change In Electrode Distance", "Electrode Distance Change"], "type": ["causes", "leads_to", "contributes_to", "results_in"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"]}],
       "related": [{"source": ["Gas Generation"], "type": ["leads_to", "influences"], "target": ["Local Current Nonuniformity", "Nonuniform Local Current"], "reason": "spacing_intermediate_omitted"}]
     },
     {
@@ -92,7 +95,7 @@
       "pages": [4],
       "pdf_support": "supported_signed",
       "claim": "Aging makes solid-state lithium diffusion more difficult, resulting in increased Warburg resistance; greater diffusion is not equivalent.",
-      "direct": [{"source": ["Increased Difficulty Of Solid-State Lithium Diffusion", "Difficult Lithium Ion Diffusion", "Lithium Ion Diffusion Difficulty In Active Material Particles"], "type": ["increases", "causes", "results_in", "leads_to"], "target": ["Warburg Resistance", "Increased Warburg Resistance"]}],
+      "direct": [{"source": ["Increased Difficulty Of Solid-State Lithium Diffusion", "Difficult Lithium Ion Diffusion", "Lithium Ion Diffusion Difficulty In Active Material Particles", "Lithium Ion Diffusion Difficulty", "Increased Lithium-Ion Diffusion Difficulty"], "type": ["increases", "causes", "results_in", "leads_to"], "target": ["Warburg Resistance", "Increased Warburg Resistance"]}],
       "related": [{"source": ["Cell Aging", "High-Temperature Aging"], "type": ["increases"], "target": ["Warburg Resistance", "Increased Warburg Resistance"], "reason": "diffusion_difficulty_intermediate_omitted"}]
     },
     {

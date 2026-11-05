@@ -32,20 +32,36 @@ def _edges(artifact: dict[str, Any]) -> list[dict[str, str]]:
                         "target": str(record.get("semantic_tgt_id") or edge.get("target") or ""),
                         "chunk": str(record.get("source_id") or ""),
                         "directionality": str(record.get("directionality") or ""),
+                        "description": str(record.get("description") or ""),
                     }
                 )
     return edges
 
 
 def _matches(edge: dict[str, str], pattern: dict[str, Any]) -> bool:
-    return edge["directionality"] == "directed" and all(
-        _key(edge[field]) in {_key(name) for name in pattern[field]}
-        for field in ("source", "type", "target")
+    return (
+        edge["directionality"] == "directed"
+        and all(
+            _key(edge[field]) in {_key(name) for name in pattern[field]}
+            for field in ("source", "type", "target")
+        )
+        and (
+            not pattern.get("description_contains")
+            or _key(pattern["description_contains"]) in _key(edge["description"])
+        )
     )
 
 
 def _evaluate_case(case: dict[str, Any], edges: list[dict[str, str]]) -> dict[str, Any]:
-    direct = [edge for edge in edges if any(_matches(edge, p) for p in case["direct"])]
+    direct = [
+        {**edge, "matched_rule": "direct"}
+        for edge in edges if any(_matches(edge, p) for p in case["direct"])
+    ]
+    state_only = [
+        {**edge, "matched_rule": "state_in_description_only"}
+        for edge in edges
+        if any(_matches(edge, p) for p in case.get("state_in_description_only", []))
+    ]
     related = [
         {**edge, "reason": pattern["reason"]}
         for edge in edges
@@ -54,6 +70,8 @@ def _evaluate_case(case: dict[str, Any], edges: list[dict[str, str]]) -> dict[st
     ]
     if direct:
         status = "direct_match"
+    elif state_only:
+        status = "state_in_description_only"
     elif related:
         status = "related_only"
     else:
@@ -61,9 +79,31 @@ def _evaluate_case(case: dict[str, Any], edges: list[dict[str, str]]) -> dict[st
     return {
         "status": status,
         "direct": direct,
+        "state_in_description_only": state_only,
         "related": related,
         "related_reasons": sorted({edge["reason"] for edge in related}),
     }
+
+
+def _evaluate_chain(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:
+    left = first["direct"] + first["state_in_description_only"]
+    right = second["direct"] + second["state_in_description_only"]
+    matches = [
+        {"first": a, "second": b}
+        for a in left for b in right
+        if a["directionality"] == b["directionality"] == "directed"
+        and _key(a["target"]) == _key(b["source"])
+    ]
+    if any(
+        pair["first"]["matched_rule"] == pair["second"]["matched_rule"] == "direct"
+        for pair in matches
+    ):
+        status = "direct_chain"
+    elif matches:
+        status = "partial_chain"
+    else:
+        status = "missing_chain"
+    return {"status": status, "matched_paths": matches}
 
 
 def audit(
@@ -99,6 +139,19 @@ def audit(
         for case in gold["cases"]
         if case_ids is None or case["id"] in case_ids
     ]
+    by_id = {case["id"]: case for case in cases}
+    chains = []
+    for chain_id, first_id, second_id in (
+        ("potential_to_current", "G01", "G02"),
+        ("spacing_to_current", "G03", "G04"),
+    ):
+        if first_id in by_id and second_id in by_id:
+            chains.append({
+                "id": chain_id,
+                "cases": [first_id, second_id],
+                "baseline": _evaluate_chain(by_id[first_id]["baseline"], by_id[second_id]["baseline"]),
+                "variant": _evaluate_chain(by_id[first_id]["variant"], by_id[second_id]["variant"]),
+            })
 
     def forbidden_matches(edges: list[dict[str, str]]) -> list[dict[str, str]]:
         return [
@@ -120,6 +173,7 @@ def audit(
         "baseline_forbidden": forbidden_matches(baseline_edges),
         "variant_forbidden": forbidden_matches(variant_edges),
         "cases": cases,
+        "chains": chains,
     }
 
 
@@ -130,7 +184,9 @@ def render_markdown(report: dict[str, Any], scores: dict[str, Any] | None = None
         "This offline audit applies the same reviewer-approved, case-specific",
         "endpoint/predicate alternatives to both parsed artifacts. `Related only`",
         "means a shortcut, generic state, or measurement-target mismatch; it",
-        "does **not** count as a complete multi-hop edge. PDF support was judged",
+        "does **not** count as a complete multi-hop edge. `State in description",
+        "only` is partial: the endpoint name omits the change, while the",
+        "relationship description states it. PDF support was judged",
         "by the human reviewer and is not inferred by this script. The audit",
         "does not verify raw LLM output, final Neo4j merge, or answer quality.",
         "",
@@ -158,8 +214,12 @@ def render_markdown(report: dict[str, Any], scores: dict[str, Any] | None = None
         variant = case["variant"]
         if variant["status"] == "direct_match" and baseline["status"] != "direct_match":
             reasons = "resolved: " + ", ".join(baseline["related_reasons"] or ["missing_in_baseline"])
+        elif variant["status"] == "state_in_description_only":
+            reasons = "changed state only in relationship description"
         elif variant["status"] == "missing" and baseline["status"] == "related_only":
             reasons = "regressed: " + ", ".join(baseline["related_reasons"])
+        elif variant["status"] == baseline["status"] == "direct_match":
+            reasons = ""
         else:
             reasons = ", ".join(variant["related_reasons"] or baseline["related_reasons"])
         lines.append(
@@ -169,6 +229,25 @@ def render_markdown(report: dict[str, Any], scores: dict[str, Any] | None = None
     lines.extend([
         "",
         f"Baseline: {report['baseline_summary']}; variant: {report['variant_summary']}.",
+        "",
+        "| Chain | Baseline | Variant |",
+        "| --- | --- | --- |",
+    ])
+    for chain in report["chains"]:
+        lines.append(
+            f"| {chain['id']} | {chain['baseline']['status']} | {chain['variant']['status']} |"
+        )
+    lines.extend(["", "Matched assertions (case-specific structural matches):", ""])
+    for case in report["cases"]:
+        for label in ("baseline", "variant"):
+            result = case[label]
+            for edge in result["direct"] + result["state_in_description_only"]:
+                lines.append(
+                    f"- {case['id']} {label} [{edge['matched_rule']}]: "
+                    f"{edge['source']} --[{edge['type']}]--> {edge['target']} "
+                    f"(`{edge['chunk']}`)"
+                )
+    lines.extend([
         "",
         "Forbidden reverse-direction checks:",
         "",

@@ -139,11 +139,18 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   mentions. No semantic reverse-edge violations in two targeted controls.
   Candidate-only LLM cache snapshots succeeded (two records per profile).
   A second [two-chunk v2/v3 A/B](AGING_CAUSAL_BRIDGE_AB_2026-11-05.md)
-  completed on 2026-11-05. The new clause-decomposition v3 did not solve
-  G01-G04 and regressed G01 (v2 direct, v3 missing); v3 only recovered R02.
-  Do not promote. Next: inspect raw JSON and supporting quotes for the four
-  bridge cases, then use a small gold-separated repeated test to distinguish
-  prompt effect from run variance before full-document re-extraction.
+  completed on 2026-11-05. Artifact inspection showed both profiles contain
+  the G01-G04 bridge paths; the case-specific matcher falsely marked most
+  missing because it omitted supported endpoint and predicate variants.
+  V3 uses more generic intermediate node names and emits more assertions;
+  it is not yet a demonstrated precision improvement. Do not promote.
+  The reviewed-case matcher now has case-specific aliases, partial credit
+  for a changed state named only in prose, and exact intermediate continuity
+  checks. On the frozen two-chunk artifacts v2 has 8/9 direct cases and two
+  direct chains; v3 has 7/9 direct cases, one direct and one partial chain.
+  This does not rescore the live benchmark. Next: judge generic-state naming
+  and PDF support, then sample extra edges for precision before another paid
+  or full-document test.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 
