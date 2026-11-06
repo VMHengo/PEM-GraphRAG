@@ -28,6 +28,13 @@ system with a FastAPI backend and React WebUI. Preserve existing user changes.
 
 ## Implementation And Delivery
 
+- Critically test user proposals against the product goal, evidence, cost,
+  complexity and available alternatives. State material weaknesses and offer a
+  better option when warranted; do not agree merely to be agreeable. When work
+  stays focused on one metric or subsystem without measured product benefit,
+  say so and propose a stopping rule or a small decision-making experiment.
+  Distinguish observed results from assumptions and avoid changing evaluation
+  criteria just to improve a score.
 - Follow nearby code patterns. Use focused tests, mock remote services, and
   report checks actually run. Use Ruff for Python; Bun tests/lint/build for
   WebUI changes when applicable.
