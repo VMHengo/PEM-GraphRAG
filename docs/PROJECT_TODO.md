@@ -113,6 +113,13 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   Partial: new merges persist assertions without quotes or ontology annotation
   and record `quoted`/`unverified`; focused merge and replay tests pass.
   Deterministic sign/negation flags and Staging verification remain open.
+  Offline pilot: `scripts/build_extraction_coverage_review.py` links frozen
+  assertions to candidate extracted-text passages for manual omission review;
+  `scripts/summarize_extraction_coverage.py` counts only reviewed gaps and
+  intermediate steps. See `docs/EXTRACTION_COVERAGE_REVIEW.md`. Next: obtain a
+  random, document-stratified expert sample, adjudicate aliases and conditions,
+  then measure omission recall separately from candidate-link coverage. Do not
+  promote the heuristic quality hints to automatic edge deletion.
 - [ ] **AGE-05: Controlled extraction comparison and decision.** Only after
   AGE-01 through AGE-04, compare the active prompt with at most two targeted
   variants on retained chunks and a fixed scorer/gold set. Measure completion,
@@ -151,6 +158,11 @@ TODO entry alone; the isolated 2026-11-04 A/B had separate user approval.
   This does not rescore the live benchmark. Next: judge generic-state naming
   and PDF support, then sample extra edges for precision before another paid
   or full-document test.
+  A private Staging Human Review session
+  `review_20261105_101111_49430d58` now holds four paired v2/v3 bridge
+  paths and twelve fixed-seed V3-only literal triples with retained source
+  chunks. Expert verdicts are pending. Literal novelty is not semantic
+  novelty, and candidate text spans are not proof.
 
 ### Exploratory Discovery Demo (resumes after AGE-05)
 
