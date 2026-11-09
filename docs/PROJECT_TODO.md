@@ -84,6 +84,12 @@ their unfinished acceptance checks.
   and report recovered source-supported 2-4-hop paths, false merges and review
   load. Done when collision and DE/EN tests pass and the unchanged graph is the
   comparator; any graph migration requires a separate reversible decision.
+  Partial (2026-11-09): an offline, bounded, read-only alias replay now
+  compares original and projected directed 2-4-hop paths using an eight-pair
+  singular/plural mapping; see `docs/OFFLINE_ALIAS_REPLAY.md`. It preserves
+  semantic direction and original sources. The larger curated concept set,
+  DE/EN review, live snapshot comparison and false-bridge adjudication remain
+  open; no graph merge or default retrieval change is implied.
 - [ ] **COV-03: Condition-aware assertion and path pilot.** Store sign,
   negation, temperature, SOC/SOH, rate, material and process stage on individual
   source-backed assertions, with explicit `unknown` values. Preserve multiple

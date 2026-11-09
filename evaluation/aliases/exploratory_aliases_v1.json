@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "concepts": [
+    {"canonical": "Equivalent Circuit Model", "aliases": ["Equivalent Circuit Models"]},
+    {"canonical": "Physics-Based Model", "aliases": ["Physics-Based Models"]},
+    {"canonical": "Battery Pack", "aliases": ["Battery Packs"]},
+    {"canonical": "Prismatic Cell", "aliases": ["Prismatic Cells"]},
+    {"canonical": "Pouch Cell", "aliases": ["Pouch Cells"]},
+    {"canonical": "Battery Module", "aliases": ["Battery Modules"]},
+    {"canonical": "Voltage Prediction", "aliases": ["Voltage Predictions"]},
+    {"canonical": "Temperature Prediction", "aliases": ["Temperature Predictions"]}
+  ]
+}
