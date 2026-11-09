@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.offline_alias_replay import replay
+from scripts.offline_alias_replay import render_review, replay
 
 
 ALIASES = {"version": 1, "concepts": [{"canonical": "Temperature Prediction", "aliases": ["Temperature Predictions"]}]}
@@ -64,3 +64,30 @@ def test_existing_and_duplicate_paths_not_counted_as_new():
 def test_duplicate_ids_rejected():
     with pytest.raises(ValueError, match="Duplicate edge id"):
         replay({"edges": [edge("same", "A", "B"), edge("same", "B", "C")]}, ALIASES)
+
+
+def test_mixed_path_and_review_keep_original_sources():
+    result = replay({"edges": [
+        edge("1", "Model", "Temperature Prediction", "produces"),
+        edge("2", "Temperature Predictions", "Capacity Fade", "affects"),
+    ]}, ALIASES)
+    assert result["mixed_additional_count"] == 1
+    assert result["causal_additional_count"] == 0
+    report = render_review(result)
+    assert "Model --[produces]--> Temperature Prediction" in report
+    assert "chunk-2" in report
+
+
+def test_lexical_leads_require_causal_neighbors_on_both_sides():
+    result = replay({"edges": [
+        edge("1", "Heat", "Battery Model"),
+        edge("2", "Battery Models", "Failure"),
+        edge("3", "Heat", "Temperature Rise Rate"),
+        edge("4", "Temperature Rise Rates", "Failure", "studies"),
+        edge("5", "Heat", "Higher Temperature"),
+        edge("6", "Temperature", "Failure"),
+    ]}, ALIASES)
+    pairs = {(item["left"], item["right"]) for item in result["suggested_aliases"]}
+    assert ("Battery Model", "Battery Models") in pairs
+    assert ("Temperature Rise Rate", "Temperature Rise Rates") not in pairs
+    assert not any("Higher Temperature" in pair for pair in pairs)

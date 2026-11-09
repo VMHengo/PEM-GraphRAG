@@ -90,6 +90,10 @@ their unfinished acceptance checks.
   semantic direction and original sources. The larger curated concept set,
   DE/EN review, live snapshot comparison and false-bridge adjudication remain
   open; no graph merge or default retrieval change is implied.
+  The replay now also emits mixed causal/noncausal paths, a compact manual
+  review sheet and unapproved singular/plural leads adjacent to causal edges.
+  No staging export has been evaluated yet; do not interpret candidate counts
+  as discovered mechanisms.
 - [ ] **COV-03: Condition-aware assertion and path pilot.** Store sign,
   negation, temperature, SOC/SOH, rate, material and process stage on individual
   source-backed assertions, with explicit `unknown` values. Preserve multiple
