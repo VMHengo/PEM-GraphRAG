@@ -65,6 +65,20 @@ every predicate to be in the script's explicit causal allowlist; `produces`,
 Mixed paths contain at least one causal and one noncausal predicate. They are
 exploration leads, never inferred causal statements. The Markdown report
 prioritizes causal, then mixed candidates for a bounded manual source review.
+For the full result, generate a standalone local review page:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.render_alias_replay_review `
+  "$env:TEMP\alias_replay_result.json" `
+  "$env:TEMP\alias_path_review.html"
+Start-Process "$env:TEMP\alias_path_review.html"
+```
+
+The page provides search, category/status filters, per-hop source details and
+review notes. Reviews stay in browser storage until exported as JSON; export
+them before clearing browser data. Neither the page nor its export is suitable
+for Git because descriptions may contain private source text. A reviewed path
+is a human judgment, not a change to the graph or benchmark.
 The `suggested_aliases` list contains lexical singular/plural leads only when
 both names touch causal edges; these require expert approval and are not
 used by the replay until explicitly entered in the versioned alias file.
