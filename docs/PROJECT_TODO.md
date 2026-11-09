@@ -65,6 +65,14 @@ their unfinished acceptance checks.
   a private Markdown adjudication sheet. Candidate aliases, conditions,
   source support, complete entity inventory and active-graph comparison remain
   open; these preliminary categories are not a recall score.
+  Partial (2026-11-09): the midrange-SOC Gold claim was corrected from
+  causation to association in a private v2 export. A read-only frozen Aging
+  audit flagged rise/rate conflation, unstructured reactants and conditions,
+  and double-encoded effect labels. These are overlapping review leads, not
+  prevalence estimates. Before broad re-extraction, verify deployed batch
+  token limits, completion/parseability per chunk, and provenance plus
+  rollback on a bounded staging cohort; compare frozen and active graph
+  separately.
 - [ ] **COV-02: Read-only canonical-concept and alias pilot.** Curate 20-30
   frequent battery aging/thermal concepts with stable IDs, preferred DE/EN
   labels, aliases, provenance and reviewed/ambiguous status. Propose matches

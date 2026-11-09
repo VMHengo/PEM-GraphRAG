@@ -122,6 +122,38 @@ entity is absent; aliases, typos and compositional gold statements can defeat
 the matcher. Do not report recall until the adjudicated gold, matched aliases,
 condition rules and independent source review are fixed.
 
+### Aging structure audit (2026-11-09)
+
+The reviewed midrange-SOC sentence states that lower heat *corresponds to*
+lower temperature-rise rate. It does not establish causation. Correct that one
+claim to `associated_with` in a private Gold v2 export before comparison;
+keep the original export unchanged and do not commit either private file.
+
+After generating the corrected comparison, run the read-only audit:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.audit_description_structure `
+  "$env:TEMP\pem_aging_coverage_review.html" `
+  "$env:TEMP\pem_aging_offline_comparison_v2.json" `
+  "$env:TEMP\pem_aging_structure_audit.json"
+```
+
+The Markdown sidecar lists review leads where a description carries a
+condition or reaction participant missing from graph endpoints, a signed
+effect is duplicated in the target label, or `Temperature Rise` is encoded as
+`Temperature Rise Rate`. It neither assigns correctness nor changes the graph.
+In the frozen Aging pilot, 11 candidate assertions yielded 1 rise/rate flag,
+1 collapsed stateful source, 2 missing reactants, 2 double-encoded effects
+and 4 description-only conditions. Categories overlap; these are not rates.
+
+Before broad re-extraction, verify deployed batch output-token limits,
+completion status and parseability for every response, then check that source
+files, retained chunks and provenance survive a bounded staging cohort.
+The historical 1200-token batch limit truncated all ten Aging responses and
+60 of 74 responses in another document. A later completed isolated pilot
+does not establish that every current staging job is configured correctly.
+Require a reversible before/after comparison before a bulk run.
+
 ## Regeneration (local PowerShell)
 
 ```powershell
