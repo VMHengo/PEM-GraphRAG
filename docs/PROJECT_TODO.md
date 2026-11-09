@@ -58,7 +58,13 @@ their unfinished acceptance checks.
   `docs/RELATION_COVERAGE_BASELINE_PROTOCOL.md`. Eligibility, atomic gold facts,
   independent adjudication and frozen extraction artifacts for papers 2-3 are
   still needed before estimating multi-document recall. The private sample
-  stays outside Git.
+  stays outside Git. A standalone offline HTML review form now supports
+  per-passage eligibility, multiple atomic claims, PDF page links and a
+  sample-bound JSON export. A read-only Aging comparison now contrasts ten
+  reviewed facts with the frozen parsed-assertion snapshot, emitting JSON and
+  a private Markdown adjudication sheet. Candidate aliases, conditions,
+  source support, complete entity inventory and active-graph comparison remain
+  open; these preliminary categories are not a recall score.
 - [ ] **COV-02: Read-only canonical-concept and alias pilot.** Curate 20-30
   frequent battery aging/thermal concepts with stable IDs, preferred DE/EN
   labels, aliases, provenance and reviewed/ambiguous status. Propose matches

@@ -21,6 +21,23 @@ in the private JSON output. The sampler's 80-800 character filter is only an
 extraction convenience; figure/table captions, background citations and
 incomplete OCR remain in the sample and must receive eligibility labels.
 
+For a convenient local review, render the private sample as HTML:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.render_relation_coverage_review `
+  "$env:TEMP\pem_relation_coverage_sample.json" `
+  "$env:TEMP\pem_relation_coverage_review.html" `
+  --pdf-root test_documents/quality_docs
+Start-Process "$env:TEMP\pem_relation_coverage_review.html"
+```
+
+The page shows each passage with adjacent context and a link to its PDF page.
+Select `Ja`, `Nein` or `Unklar`; for `Ja`, add one or more atomic relations
+with conditions and evidence. The form saves locally in the browser, but
+**export the review JSON** before changing browsers or clearing storage.
+Import accepts only reviews whose seed and PDF hashes match this sample.
+The form does not query or change Neo4j.
+
 ## Annotation before matching
 
 For every sampled passage, inspect neighboring context and the PDF page.
@@ -79,6 +96,31 @@ The provisional claims below are paraphrases, not extracted PDF quotations.
 This triage is neither independent adjudication nor an extraction-recall score.
 The next reviewer should first verify page context and atomize the six positive
 cases, then match those fixed facts against the same-document frozen artifact.
+
+## Offline Aging comparison
+
+The previously generated private Aging coverage HTML embeds parsed assertions
+from one frozen, isolated extraction candidate. It is not the active graph and
+does not include a complete isolated-node inventory. Compare only the reviewed
+Aging passages against this same-document snapshot:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.compare_relation_coverage `
+  "$env:TEMP\pem_relation_coverage_sample.json" `
+  "$HOME\Downloads\relation-coverage-review-20261106-gold-v1.json" `
+  "$env:TEMP\pem_aging_coverage_review.html" `
+  "$env:TEMP\pem_aging_offline_comparison.json" `
+  --pdf 'test_documents/quality_docs/Heat Generation and Degradation Mechanism of Lithium-Ion Batteries during High-Temperature Aging.pdf'
+```
+
+The tool verifies sample seed, document names, PDF hashes and passage IDs,
+then writes private JSON plus a Markdown review sheet. `exact_labels` means
+only label agreement, not source or condition support. Semantic candidates,
+predicate mismatches and lexical leads require expert adjudication.
+`no_match_under_conservative_rules` is **not** proof that the relation or an
+entity is absent; aliases, typos and compositional gold statements can defeat
+the matcher. Do not report recall until the adjudicated gold, matched aliases,
+condition rules and independent source review are fixed.
 
 ## Regeneration (local PowerShell)
 
