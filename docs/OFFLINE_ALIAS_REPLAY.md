@@ -79,6 +79,29 @@ review notes. Reviews stay in browser storage until exported as JSON; export
 them before clearing browser data. Neither the page nor its export is suitable
 for Git because descriptions may contain private source text. A reviewed path
 is a human judgment, not a change to the graph or benchmark.
+
+For a reproducible 20-case decision sample, rather than reviewing every path:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.sample_alias_paths `
+  "$env:TEMP\alias_replay_result.json" `
+  "$env:TEMP\alias_review_sample.json"
+.venv\Scripts\python.exe -m scripts.render_alias_replay_review `
+  "$env:TEMP\alias_review_sample.json" `
+  "$env:TEMP\alias_review_sample.html"
+Start-Process "$env:TEMP\alias_review_sample.html"
+```
+
+The fixed seed selects 14 mixed and 6 other paths across alias bridges,
+preferring different edge IDs and endpoints. The selection is a decision
+sample, not a population estimate; no purely causal paths were present in the
+2026-11-09 replay. A normal WebUI Human Review session fetches retained
+chunks from the active graph and presents PDF evidence. This offline export
+contains only graph edge descriptions, which must not be mislabeled as
+original PDF proof. Therefore the pilot uses a distinct local review page,
+not an imported WebUI session. Reopen source chunks/PDFs before accepting a
+path; importing into WebUI requires a separate authenticated, source-resolving
+workflow.
 The `suggested_aliases` list contains lexical singular/plural leads only when
 both names touch causal edges; these require expert approval and are not
 used by the replay until explicitly entered in the versioned alias file.
