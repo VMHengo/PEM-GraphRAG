@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "categories": {
+    "causal": ["causes", "affects", "influences", "leads_to", "results_in", "increases", "decreases", "degrades", "improves", "promotes", "prevents", "reduces", "enables"],
+    "method": ["studies", "measures", "model_validation", "model_comparison", "optimizes"],
+    "structure": ["contains", "part_of", "includes"],
+    "functional": ["produces", "uses", "used_for", "supports", "depends_on", "requires"]
+  },
+  "blocked_pairs": [["method", "causal"], ["method", "functional"], ["structure", "causal"], ["functional", "causal"]],
+  "review_pairs": [["causal", "causal"], ["causal", "method"], ["causal", "functional"], ["causal", "structure"], ["functional", "method"], ["functional", "functional"], ["structure", "structure"]]
+}
