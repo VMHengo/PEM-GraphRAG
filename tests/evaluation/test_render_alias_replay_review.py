@@ -13,3 +13,8 @@ def test_render_embeds_data_without_executable_script_breakout():
 def test_render_rejects_wrong_input():
     with pytest.raises(ValueError):
         render({"edges": []})
+
+
+def test_render_preloads_private_reviews():
+    page = render({"additional_paths": []}, {"reviews": {"edge-1": {"verdict": "uncertain"}}})
+    assert '"edge-1": {"verdict": "uncertain"}' in page

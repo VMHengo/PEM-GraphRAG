@@ -43,7 +43,7 @@ button.secondary{background:#fff;color:#176a68}.empty{padding:24px;color:#61757c
 const data=JSON.parse(document.getElementById('data').textContent);
 const paths=data.additional_paths||[];
 const storageKey='pem-alias-review-'+data.alias_version+'-'+data.edge_count+'-'+data.additional_path_count;
-let reviews={};try{reviews=JSON.parse(localStorage.getItem(storageKey)||'{}')}catch(e){reviews={}}
+let reviews={...(data.initial_reviews||{})};try{reviews={...reviews,...JSON.parse(localStorage.getItem(storageKey)||'{}')}}catch(e){}
 let active=null;
 const $=id=>document.getElementById(id);
 const node=(tag,cls,value)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=String(value);return e};
@@ -68,9 +68,11 @@ renderList();if(paths.length){active=key(paths[0]);renderList();renderDetail(pat
 </script></body></html>"""
 
 
-def render(data: dict) -> str:
+def render(data: dict, reviews: dict | None = None) -> str:
     if not isinstance(data.get("additional_paths"), list):
         raise ValueError("Expected an offline alias replay result")
+    if reviews is not None:
+        data = {**data, "initial_reviews": reviews.get("reviews", {})}
     payload = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
     return PAGE.replace("__DATA__", payload)
 
@@ -79,9 +81,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("result", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--reviews", type=Path)
     args = parser.parse_args()
     data = json.loads(args.result.read_text(encoding="utf-8"))
-    args.output.write_text(render(data), encoding="utf-8")
+    reviews = json.loads(args.reviews.read_text(encoding="utf-8")) if args.reviews else None
+    args.output.write_text(render(data, reviews), encoding="utf-8")
     print(f"Rendered {len(data['additional_paths'])} paths to {args.output}")
 
 

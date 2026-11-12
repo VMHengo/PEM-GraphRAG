@@ -102,6 +102,12 @@ original PDF proof. Therefore the pilot uses a distinct local review page,
 not an imported WebUI session. Reopen source chunks/PDFs before accepting a
 path; importing into WebUI requires a separate authenticated, source-resolving
 workflow.
+To reopen a completed private review export in the standalone page, pass it
+to the renderer with `--reviews <review-json>`; the page preloads verdicts and
+notes. Browser-local edits take precedence over the preloaded file until a
+new JSON export is saved. Keep the completed review JSON, HTML and source
+audit outside Git.
+
 The `suggested_aliases` list contains lexical singular/plural leads only when
 both names touch causal edges; these require expert approval and are not
 used by the replay until explicitly entered in the versioned alias file.
